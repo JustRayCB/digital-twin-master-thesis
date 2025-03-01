@@ -1,0 +1,26 @@
+[project]
+name = "dt"
+version = "0.1.0"
+description = "This thesis will focus on the practical implementation of a Digital Twin integrated in the framework of Internet of Things to monitor the health of a plant, using various sensors as data collectors and a Raspberry Pi as a central device."
+authors = [
+    {name = "JustRayCB",email = "rayancbpro@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas (>=2.2.3,<3.0.0)",
+    "matplotlib (>=3.10.1,<4.0.0)",
+    "flask (>=3.1.0,<4.0.0)",
+    "gpiozero (>=2.0.1,<3.0.0)"
+]
+
+[tool.poetry]
+
+[tool.poetry.group.dev.dependencies]
+basedpyright = "^1.28.1"
+neovim = "^0.3.1"
+debugpy = "^1.8.12"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
