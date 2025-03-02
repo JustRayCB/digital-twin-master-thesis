@@ -17,6 +17,7 @@ class Sensor(ABC):
     """
 
     def __init__(self, name: str, pin: int, read_interval: int) -> None:
+        self.id: int = -1  # Assigned by the database
         self.name: str = name
         self.pin: int = pin
         self.read_interval: int = read_interval
@@ -69,11 +70,12 @@ class Sensor(ABC):
         self.last_data = processed_value
         self.last_read_time = current_time
 
+        assert self.id != -1, "Sensor ID not set"
+
         return {
-            "sensor_name": self.name,
+            "sensor_name": self.id,
             "timestamp": current_time,
             "value": processed_value,
-            "raw_value": raw_value,
             "unit": self.unit,
         }
 
