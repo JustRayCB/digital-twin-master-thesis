@@ -26,6 +26,7 @@ class Sensor(ABC):
         self.last_data: float = -1
         self.last_read_time: float = -1
 
+
     @property
     @abstractmethod  # Use this decorator to ensure not to forget to change the unit  of each sensor
     def unit(self) -> str:
@@ -73,7 +74,7 @@ class Sensor(ABC):
         assert self.id != -1, "Sensor ID not set"
 
         return {
-            "sensor_name": self.id,
+            "sensor_id": self.id,
             "timestamp": current_time,
             "value": processed_value,
             "unit": self.unit,
