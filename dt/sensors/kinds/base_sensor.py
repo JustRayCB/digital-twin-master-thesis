@@ -16,7 +16,7 @@ class Sensor(ABC):
 
     """
 
-    def __init__(self, name: str, pin: int, read_interval: int) -> None:
+    def __init__(self, name: str, read_interval: int, pin: int) -> None:
         self.id: int = -1  # Assigned by the database
         self.name: str = name
         self.pin: int = pin
@@ -25,7 +25,6 @@ class Sensor(ABC):
 
         self.last_data: float = -1
         self.last_read_time: float = -1
-
 
     @property
     @abstractmethod  # Use this decorator to ensure not to forget to change the unit  of each sensor
@@ -63,7 +62,6 @@ class Sensor(ABC):
             Data read with all the metadata (name, timestamp, value, raw_value, unit)
 
         """
-        """Read the sensor and return a dictionary of values"""
         current_time = time.time()
         raw_value = self.read_sensor()
         processed_value = self.process_data(raw_value)
