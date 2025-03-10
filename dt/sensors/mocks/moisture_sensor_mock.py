@@ -2,6 +2,7 @@ import numpy as np
 from typing_extensions import override
 
 from dt.sensors.kinds.base_sensor import Sensor
+from dt.utils.logger import get_logger
 
 
 class MockMoistureSensor(Sensor):
@@ -18,7 +19,9 @@ class MockMoistureSensor(Sensor):
 
         self.min_value = 200  # (very dry)
         self.max_value = 2000  # (very wet)
+        self.logger = get_logger(__name__)
 
+        self.logger.info(f"Initializing MockMoistureSensor with {nb_readings} readings.")
         self._generate_readings()
 
     def _generate_readings(self) -> None:
@@ -53,6 +56,7 @@ class MockMoistureSensor(Sensor):
 
             # Add the moisture level to the readings list
             self.readings.append(max(self.min_value, min(current_moisture, self.max_value)))
+            self.logger.debug(f"Generated reading {self.readings[-1]} at time {t}")
 
     @property
     @override
@@ -65,9 +69,12 @@ class MockMoistureSensor(Sensor):
             self.current_reading = 0
         reading = self.readings[self.current_reading]
         self.current_reading += 1
+        self.logger.debug(f"Read sensor value: {reading}")
         return reading
 
     @override
     def process_data(self, raw_data: float) -> float:
         # Given the raw data in the range [200, 2000], we can normalize it to [0, 100]
-        return (raw_data - self.min_value) / (self.max_value - self.min_value) * 100
+        processed_data = (raw_data - self.min_value) / (self.max_value - self.min_value) * 100
+        self.logger.debug(f"Processed data: {processed_data} from raw data: {raw_data}")
+        return processed_data
