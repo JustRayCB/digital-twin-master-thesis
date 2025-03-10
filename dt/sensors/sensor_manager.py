@@ -1,4 +1,6 @@
-from sensors.kinds.base_sensor import Sensor
+from dt.communication import MQTTClient, MQTTTopics
+
+from .kinds.base_sensor import Sensor
 
 
 class SensorManager:
@@ -13,6 +15,8 @@ class SensorManager:
 
     def __init__(self) -> None:
         self.sensors: dict[str, Sensor] = {}
+        self.mqtt_client = MQTTClient(id="sensor_manager")
+        self.mqtt_client.connect()
 
     def add_sensor(self, sensor: Sensor) -> None:
         self.sensors[sensor.name] = sensor
@@ -31,7 +35,14 @@ class SensorManager:
 
         """
         data = {}
-        for sensor in self.sensors.values():
+        for sensor_name, sensor in self.sensors.items():
             if sensor.needs_data():
                 data[sensor.name] = sensor.read()
+                self.mqtt_client.publish(
+                    MQTTTopics.SENSORS_DATA, data[sensor.name]
+                )  # Publish the data to whoever is subscribed to the topic
+                # TODO: Publish the data to the corresponding topic e.g. temperature, humidity, etc.
         return data
+
+    def __del__(self):
+        self.mqtt_client.disconnect()
