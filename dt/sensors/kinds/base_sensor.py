@@ -38,6 +38,18 @@ class Sensor(ABC):
         """
         raise NotImplementedError(f"Property unit not implemented for {self.name}")
 
+    @property
+    @abstractmethod
+    def mqtt_topic(self) -> str:
+        """
+        Returns
+        -------
+        str
+            The MQTT topic where the sensor data should be published.
+
+        """
+        raise NotImplementedError(f"Property mqtt_topic not implemented for {self.name}")
+
     def needs_data(self) -> bool:
         """Check if the sensor needs to be read.
 
