@@ -1,4 +1,5 @@
 from dt.communication import MQTTClient
+from dt.utils.logger import get_logger
 
 from .kinds.base_sensor import Sensor
 
@@ -18,11 +19,16 @@ class SensorManager:
         self.mqtt_client = MQTTClient(id="sensor_manager")
         self.mqtt_client.connect()
 
+        self.logger = get_logger(__name__)
+        self.logger.info("SensorManager initialized.")
+
     def add_sensor(self, sensor: Sensor) -> None:
         self.sensors[sensor.name] = sensor
+        self.logger.info(f"Added sensor {sensor.name} to the SensorManager.")
 
     def remove_sensor(self, sensor_name: str) -> None:
         if sensor_name in self.sensors:
+            self.logger.info(f"Removed sensor {sensor_name} from the SensorManager.")
             del self.sensors[sensor_name]
 
     def read_all_sensors(self) -> dict[str, dict[str, any]]:
@@ -42,7 +48,11 @@ class SensorManager:
                 self.mqtt_client.publish(
                     mqtt_topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
+                self.logger.info(f"Published data from {sensor_name} to {mqtt_topic}.")
+                self.logger.debug(f"Data: {data[sensor.name]}")
+
         return data
 
     def __del__(self):
+        self.logger.info("Disconnecting MQTT client in SensorManager.")
         self.mqtt_client.disconnect()
