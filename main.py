@@ -1,3 +1,5 @@
+from time import sleep
+
 from dt.sensors import MockMoistureSensor, Sensor, SensorManager
 from dt.utils import get_logger
 
@@ -14,6 +16,7 @@ def main():
         while True:
             sensor_manager.read_all_sensors()
             print("Reading all sensors")
+            sleep(1)
     except KeyboardInterrupt:
         logger.info("Exiting main")
     finally:
