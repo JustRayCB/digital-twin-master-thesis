@@ -1,6 +1,8 @@
 import sqlite3
+from time import sleep
 
-from dt.sensors.kinds.base_sensor import Sensor
+from dt.communication import MQTTClient, MQTTTopics
+from dt.sensors import Sensor
 
 
 class Storage:
@@ -10,12 +12,20 @@ class Storage:
         self.cursor = self.conn.cursor()
         self.create_table()
 
+        self.mqtt_client = MQTTClient(id="database")
+        self.mqtt_client.connect()
+
+        # Subscribe to the topic where the data is published
+        self.mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, self.insert_datas)
+
     def create_table(self) -> None:
         """Create the table to store the data"""
         # I already have a db_init.sql file, so I will use it to create the table
-        with open("db_init.sql", "r") as f:
+        dir_path = "/".join(__file__.split("/")[:-1])
+        with open(f"{dir_path}/db_init.sql", "r") as f:
             self.cursor.executescript(f.read())
             self.conn.commit()
+            # print(f.read())
 
     def insert_data(self, data: dict[str, any]) -> None:
         """Insert read data into the database
@@ -26,11 +36,12 @@ class Storage:
             Data read from a (one) sensor with their metadata
 
         """
-        self.cursor.execute(
-            "INSERT INTO sensors_data (sensor_id, value, unit, timestamp) VALUES (?, ?, ?, ?)",
-            (data["sensor_id"], data["value"], data["unit"], data["timestamp"]),
-        )
-        self.conn.commit()
+        print(f"I received data: {data}")
+        # self.cursor.execute(
+        #     "INSERT INTO sensors_data (sensor_id, value, unit, timestamp) VALUES (?, ?, ?, ?)",
+        #     (data["sensor_id"], data["value"], data["unit"], data["timestamp"]),
+        # )
+        # self.conn.commit()
 
     def insert_datas(self, datas: dict[str, dict[str, any]]) -> None:
         """Insert read data into the database
@@ -117,3 +128,9 @@ class Storage:
             sensor.id = temp_id
         else:
             self.add_sensor(sensor)
+
+
+if __name__ == "__main__":
+    storage = Storage()
+    while True:
+        sleep(1)
