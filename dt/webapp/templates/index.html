@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Plant Digital Twin</title>
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='dashboard.css') }}"
+        />
+    </head>
+    <body>
+        <div class="dashboard-container">
+            <div class="dashboard-header">
+                <span class="title">Plant Digital Twin Dashboard</span>
+                <span class="last-update"
+                    >Last update:
+                    <span id="update-time">{{ data.last_update }}</span></span
+                >
+            </div>
+
+            <div class="dashboard-content">
+                <!-- Left Panel -->
+                <div class="left-panel">
+                    <div class="plant-visualization">
+                        <!-- Temporary placeholder. In the future this area will be replaced by dynamic svg or WebGL visualization-->
+                        <div id="plant-model">
+                            <span class="plant-icon">🌱</span>
+                        </div>
+                        <p class="visualization-label">
+                            Plant Visualization<br />with dynamic elements
+                        </p>
+                    </div>
+
+                    <div class="stats-container">
+                        <h3>Current Stats:</h3>
+                        <div class="stats">
+                            <div class="stat-item">
+                                <span class="temp-icon">🌡️</span>
+                                <span id="temperature"
+                                    >{{ data.temperature }}°C</span
+                                >
+                            </div>
+                            <div class="stat-item">
+                                <span class="humidity-icon">💧</span>
+                                <span id="humidity">{{ data.humidity }}%</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="light-icon">☀️</span>
+                                <span id="light">{{ data.light }}lx</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="system-status">
+                        <span>System: </span>
+                        <span
+                            class="status-indicator {% if data.connection_status == 'Connected' %}connected{% else %}disconnected{% endif %}"
+                        ></span>
+                        <span id="connection-status"
+                            >{{ data.connection_status }}</span
+                        >
+                    </div>
+                </div>
+
+                <!-- Right Panel -->
+                <div class="right-panel">
+                    <div class="alerts-box">
+                        <h3>
+                            Alerts (<span id="alert-count"
+                                >{{ data.alerts|length }}</span
+                            >)
+                        </h3>
+                        <ul id="alerts-list">
+                            {% for alert in data.alerts %}
+                            <li>
+                                <span class="alert-message"
+                                    >{{ alert.message }}</span
+                                >
+                                -
+                                <span class="alert-time">{{ alert.time }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div class="health-box">
+                        <h3>
+                            Plant Health:
+                            <span id="health-status"
+                                >{{ data.health_status }}</span
+                            >
+                        </h3>
+                        <p id="health-details">{{ data.health_details }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // JavaScript for dynamic updates
+            function updateDashboard() {
+                fetch('/api/data')
+                    .then((response) => response.json())
+                    .then((data) => {
+                        // Update timestamp
+                        document.getElementById('update-time').textContent =
+                            data.last_update
+
+                        // Update sensor readings
+                        document.getElementById('temperature').textContent =
+                            data.temperature + '°C'
+                        document.getElementById('humidity').textContent =
+                            data.humidity + '%'
+                        document.getElementById('light').textContent =
+                            data.light + 'lx'
+
+                        // Update connection status
+                        document.getElementById(
+                            'connection-status'
+                        ).textContent = data.connection_status
+                        let statusIndicator =
+                            document.querySelector('.status-indicator')
+                        if (data.connection_status === 'Connected') {
+                            statusIndicator.classList.add('connected')
+                            statusIndicator.classList.remove('disconnected')
+                        } else {
+                            statusIndicator.classList.add('disconnected')
+                            statusIndicator.classList.remove('connected')
+                        }
+
+                        // Update health information
+                        document.getElementById('health-status').textContent =
+                            data.health_status
+                        document.getElementById('health-details').textContent =
+                            data.health_details
+
+                        // Update alerts
+                        document.getElementById('alert-count').textContent =
+                            data.alerts.length
+                        let alertsList = document.getElementById('alerts-list')
+                        alertsList.innerHTML = ''
+                        data.alerts.forEach((alert) => {
+                            let li = document.createElement('li')
+                            li.innerHTML = `<span class="alert-message">${alert.message}</span> - <span class="alert-time">${alert.time}</span>`
+                            alertsList.appendChild(li)
+                        })
+                    })
+                    .catch((error) =>
+                        console.error('Error fetching data:', error)
+                    )
+            }
+
+            // Update every 5 seconds
+            setInterval(updateDashboard, 5000)
+        </script>
+    </body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Plant Digital Twin Dashboard</title>
+        <!-- Global CSS -->
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+
+        <!-- Component-specific CSS -->
+        {% block component_css %}{% endblock %}
+    </head>
+    <body>
+        <div class="dashboard-grid">{% block content %}{% endblock %}</div>
+
+        <!-- Global JavaScript -->
+        <script src="{{ url_for('static', filename='js/main.js') }}" type="module"></script>
+
+        <!-- Component-specific JavaScript -->
+        {% block component_js %}{% endblock %}
+    </body>
+</html>

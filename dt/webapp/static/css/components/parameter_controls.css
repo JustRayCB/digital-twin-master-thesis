@@ -1,0 +1,39 @@
+.parameters-content {
+    padding: 15px;
+}
+
+.parameter {
+    margin-bottom: 20px;
+}
+
+.parameter label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider {
+    flex: 1;
+    height: 5px;
+    background: #555;
+    border-radius: 5px;
+    outline: none;
+}
+
+.current-value {
+    margin-left: auto;
+    font-size: 14px;
+    color: #aab;
+}
+
+.control-mode {
+    font-size: 14px;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 4px 8px;
+    border-radius: 3px;
+}

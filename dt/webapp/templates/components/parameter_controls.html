@@ -1,0 +1,68 @@
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <span class="title">Parameter Controls</span>
+        <!-- <span class="control-mode">{{ data.control_mode }}</span> -->
+    </div>
+
+    <div class="parameters-content">
+        <div class="parameter">
+            <label for="temp-slider">Temperature:</label>
+            <div class="slider-container">
+                <span class="slider-min">18°C</span>
+                <input
+                    type="range"
+                    id="temp-slider"
+                    class="slider"
+                    min="18"
+                    max="30"
+                    value="{{ data.temp_setpoint }}"
+                />
+                <!-- {{ 'disabled' if data.control_mode=='Auto' else '' }}> -->
+                <span class="slider-max">30°C</span>
+                <span class="current-value"
+                    >(Current: <span id="current-temp">{{ data.temperature }}</span>°C)</span
+                >
+            </div>
+        </div>
+
+        <div class="parameter">
+            <label for="humidity-slider">Humidity:</label>
+            <div class="slider-container">
+                <span class="slider-min">30%</span>
+                <input
+                    type="range"
+                    id="humidity-slider"
+                    class="slider"
+                    min="30"
+                    max="70"
+                    value="{{ data.humidity_setpoint }}"
+                />
+                <!-- {{ 'disabled' if data.control_mode=='Auto' else '' }}> -->
+                <span class="slider-max">70%</span>
+                <span class="current-value"
+                    >(Current: <span id="current-humidity">{{ data.humidity }}</span>%)</span
+                >
+            </div>
+        </div>
+
+        <div class="parameter">
+            <label for="moisture-slider">Soil Moisture:</label>
+            <div class="slider-container">
+                <span class="slider-min">20%</span>
+                <input
+                    type="range"
+                    id="moisture-slider"
+                    class="slider"
+                    min="20"
+                    max="60"
+                    value="{{ data.soil_setpoint }}"
+                />
+                <!-- {{ 'disabled' if data.control_mode=='Auto' else '' }}> -->
+                <span class="slider-max">60%</span>
+                <span class="current-value"
+                    >(Current: <span id="current-moisture">{{ data.soil_moisture }}</span>%)</span
+                >
+            </div>
+        </div>
+    </div>
+</div>

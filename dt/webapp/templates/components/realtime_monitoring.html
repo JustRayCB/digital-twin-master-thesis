@@ -1,0 +1,35 @@
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <span class="title">Real-Time Monitoring</span>
+        <div class="monitoring-controls">
+            <input type="radio" class="chooser" name="data-period" value="1h" />1h
+            <input type="radio" class="chooser" name="data-period" value="24h" />24h
+            <input type="radio" class="chooser" name="data-period" value="7d" />7d
+            <input type="radio" class="chooser" name="data-period" value="30d" />30d
+        </div>
+    </div>
+
+    <div class="monitoring-content">
+        <div class="chart-grid">
+            <div class="chart-container">
+                <h3>Temperature & Humidity</h3>
+                <div id="temp-humidity-chart"></div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Soil Moisture</h3>
+                <div id="soil-chart"></div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Light Levels</h3>
+                <div id="light-chart"></div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Growth</h3>
+                <div id="growth-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>

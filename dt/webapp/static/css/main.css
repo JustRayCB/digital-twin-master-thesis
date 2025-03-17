@@ -1,0 +1,30 @@
+/* Global styling */
+body {
+    font-family: 'Consolas', monospace;
+    padding: 10px;
+}
+
+/* Dashboard grid layout */
+.dashboard-grid {
+    display: grid;
+    gap: 20px;
+}
+
+/* Common styles shared by all components */
+.dashboard-container {
+    border: 2px solid black;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 15px;
+    border-bottom: 1px solid black;
+}
+
+.title {
+    font-size: 18px;
+    font-weight: bold;
+}

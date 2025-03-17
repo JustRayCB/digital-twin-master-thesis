@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block component_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/plant_status.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/parameter_controls.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/realtime_monitoring.css') }}">
+{% endblock %}
+
+{% block content %}
+    <div class="grid-item plant-status">
+        {% include "components/plant_status.html" %}
+    </div>
+    
+    <div class="grid-item parameter-controls">
+        {% include "components/parameter_controls.html" %}
+    </div>
+    
+    <div class="grid-item realtime-monitoring">
+        {% include "components/realtime_monitoring.html" %}
+    </div>
+    
+{% endblock %}
+
+{% block component_js %}
+    <script src="https://cdn.plot.ly/plotly-3.0.0.min.js" charset="utf-8"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js" integrity="sha512-8BHxHDLsOHx+flIrQ0DrZcea7MkHqRU5GbTHmbdzMRnAaoCIkZ97PqZcXJkKZckMMhqfoeaJE+DNUVuyoQsO3Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="{{ url_for('static', filename='js/components/plant_status.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/components/parameter_controls.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/components/realtime_monitoring.js') }}" type="module"></script>
+{% endblock %}

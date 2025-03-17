@@ -1,0 +1,76 @@
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <span class="title">Plant Digital Twin Dashboard</span>
+        <span class="last-update"
+            >Last update:
+            <span id="update-time">{{ data.last_update }}</span></span
+        >
+    </div>
+
+    <div class="dashboard-content">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <div class="plant-visualization">
+                <div id="plant-model">
+                    <span class="plant-icon">🌱</span>
+                </div>
+                <p class="visualization-label">
+                    Plant Visualization<br />with dynamic elements
+                </p>
+            </div>
+
+            <div class="stats-container">
+                <h3>Current Stats:</h3>
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="temp-icon">🌡️</span>
+                        <span id="temperature">{{ data.temperature }}°C</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="humidity-icon">💧</span>
+                        <span id="humidity">{{ data.humidity }}%</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="light-icon">☀️</span>
+                        <span id="light">{{ data.light }}lx</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <span>System: </span>
+                <span
+                    class="status-indicator {% if data.connection_status == 'Connected' %}connected{% else %}disconnected{% endif %}"
+                ></span>
+                <span id="connection-status">{{ data.connection_status }}</span>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <div class="alerts-box">
+                <h3>
+                    Alerts (<span id="alert-count"
+                        >{{ data.alerts|length }}</span
+                    >)
+                </h3>
+                <ul id="alerts-list">
+                    {% for alert in data.alerts %}
+                    <li>
+                        <span class="alert-message">{{ alert.message }}</span> -
+                        <span class="alert-time">{{ alert.time }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="health-box">
+                <h3>
+                    Plant Health:
+                    <span id="health-status">{{ data.health_status }}</span>
+                </h3>
+                <p id="health-details">{{ data.health_details }}</p>
+            </div>
+        </div>
+    </div>
+</div>
