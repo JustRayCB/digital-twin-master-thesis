@@ -104,7 +104,7 @@ export function initRealTimeCharts() {
         )
     })
 
-    socket.on('update_soil_moisture', (data) => {
+    socket.on('soil_moisture', (data) => {
         const soilMoistureChart = document.getElementById('soil-chart')
         console.log('Receivd data: ', data)
         // Plotly.update(soilMoistureChart, { x: [data.time], y: [data.soil_moisture] })
@@ -112,7 +112,7 @@ export function initRealTimeCharts() {
             soilMoistureChart,
             {
                 x: [[data.time]],
-                y: [[data.soil_moisture]],
+                y: [[data.value]],
             },
             [0],
             10 // Max number of points to keep on the chart
