@@ -10,9 +10,13 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
+from dt.communication import MQTTClient, MQTTTopics
+from dt.utils.logger import get_logger
+
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+logger = get_logger(__name__)
 
 # Simulated data for all components
 dashboard_data = {
@@ -93,23 +97,44 @@ def dashboard():
 # Handle client connection
 @socketio.on("connect")
 def connect():
-    global thread
-    print(f"Client connected: {request.sid}")  # pyright: ignore[]
-    # Start background thread if it's not already running
-    with thread_lock:
-        if thread is None:
-            thread = socketio.start_background_task(background_thread)
-
-    # Optionally, send some initial data or message on connect
-    socketio.emit("Connected", {"message": "Welcome!"}, to=request.sid)  # pyright: ignore[]
+    logger.info(f"Client connected: {request.sid}")  # pyright: ignore[]
 
 
 # Handle client disconnection
 @socketio.on("disconnect")
 def disconnect():
-    print(f"Client disconnected: {request.sid}")  # pyright: ignore[]
+    logger.info(f"Client disconnected: {request.sid}")  # pyright: ignore[]
+
+
+# Handle MQTT message from SensorManager and forward to web client via socketio
+
+
+def forward_to_socketio(topic):
+    def callback(payload):
+        value = payload["value"]
+        time = payload["timestamp"]
+        socketio_topic = topic.split("/")[-1]  # Get the last part of the topic (sensor's data)
+        logger.info(f"Received message from MQTT: {value} at {time}")
+        # socketio.emit(socketio_topic, {"value": value, "time": time})
+        # print(f"Received message from MQTT: {value} at {time}")
+
+    return callback
+
+
+def setup_mqtt_bridge():
+    mqtt_client = MQTTClient(id="webapp")
+    mqtt_client.connect()
+
+    mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.SOIL_MOISTURE))
+    mqtt_client.subscribe(MQTTTopics.TEMPERATURE, forward_to_socketio(MQTTTopics.TEMPERATURE))
+    mqtt_client.subscribe(MQTTTopics.HUMIDITY, forward_to_socketio(MQTTTopics.HUMIDITY))
+    mqtt_client.subscribe(
+        MQTTTopics.LIGHT_INTENSITY, forward_to_socketio(MQTTTopics.LIGHT_INTENSITY)
+    )
+    mqtt_client.subscribe(MQTTTopics.CAMERA_IMAGE, forward_to_socketio(MQTTTopics.CAMERA_IMAGE))
 
 
 if __name__ == "__main__":
     # app.run(debug=True)
+    setup_mqtt_bridge()
     socketio.run(app, debug=True, host="127.0.0.1", port=5000)
