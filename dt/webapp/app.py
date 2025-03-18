@@ -1,12 +1,9 @@
-import random
-import time
+import uuid
 from datetime import datetime
-from random import uniform
-from threading import Lock
 
 import plotly
 import plotly.express as px
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -53,40 +50,11 @@ dashboard_data = {
     ],
 }
 
-# Global variables
-thread = None
-thread_lock = Lock()
-last_value = None  # To keep track of last emitted value
-
 
 # Function to get current date and time
 def get_current_datetime():
     now = datetime.now()
     return now.strftime("%m/%d/%Y %H:%M:%S")
-
-
-# Function to generate random values and send them to the client
-def background_thread():
-    print("Starting background thread for random value generation")
-    # Start with an initial value
-    current_value = round(uniform(16.0, 26.0), 2)
-    while True:
-        # Generate a random change between -1.0 and 1.0
-        change = round(uniform(-1.0, 1.0), 2)
-        # Update the current value within the range 16.0 - 26.0
-        current_value = max(16.0, min(26.0, current_value + change))
-        # Get the current time
-        current_time = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-        print(f"Generated value: {current_value}  at {current_time}")
-
-        # Send the data to the client via WebSocket
-        socketio.emit(
-            "update_soil_moisture",
-            {"soil_moisture": current_value, "time": current_time},
-        )
-
-        # Sleep for 1 second before generating the next value
-        time.sleep(1)
 
 
 @app.route("/")
@@ -115,16 +83,19 @@ def forward_to_socketio(topic):
         time = payload["timestamp"]
         socketio_topic = topic.split("/")[-1]  # Get the last part of the topic (sensor's data)
         logger.info(f"Received message from MQTT: {value} at {time}")
-        # socketio.emit(socketio_topic, {"value": value, "time": time})
-        # print(f"Received message from MQTT: {value} at {time}")
+        print(socketio_topic)
+        socketio.emit(socketio_topic, {"value": value, "time": time})
 
     return callback
 
 
 def setup_mqtt_bridge():
-    mqtt_client = MQTTClient(id="webapp")
+    # Generate a unique client ID to prevent conflicts
+    unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
+    mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
     mqtt_client.connect()
 
+    # Subscribe to topics
     mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.SOIL_MOISTURE))
     mqtt_client.subscribe(MQTTTopics.TEMPERATURE, forward_to_socketio(MQTTTopics.TEMPERATURE))
     mqtt_client.subscribe(MQTTTopics.HUMIDITY, forward_to_socketio(MQTTTopics.HUMIDITY))
@@ -133,8 +104,26 @@ def setup_mqtt_bridge():
     )
     mqtt_client.subscribe(MQTTTopics.CAMERA_IMAGE, forward_to_socketio(MQTTTopics.CAMERA_IMAGE))
 
+    # Return the client so it doesn't go out of scope
+    return mqtt_client
+
 
 if __name__ == "__main__":
-    # app.run(debug=True)
-    setup_mqtt_bridge()
-    socketio.run(app, debug=True, host="127.0.0.1", port=5000)
+    # Only setup MQTT in the child process when using debug mode
+    import os
+
+    in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    debug_mode = True
+
+    # Store the MQTT client to prevent it from being garbage collected
+    mqtt_client = None
+
+    if debug_mode and in_reloader:
+        # Only setup in child process in debug mode
+        mqtt_client = setup_mqtt_bridge()
+    elif not debug_mode:
+        # Setup normally in production mode
+        mqtt_client = setup_mqtt_bridge()
+
+    # Run the Flask app
+    socketio.run(app, debug=debug_mode, host="127.0.0.1", port=5000)
