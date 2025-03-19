@@ -98,7 +98,7 @@ export function initRealTimeCharts() {
             tempHumidityChart,
             {
                 x: [[data.time]],
-                y: [[data.temperature, data.humidity]],
+                y: [[data.value]],
             },
             [0, 1]
         )
@@ -125,7 +125,7 @@ export function initRealTimeCharts() {
             lightIntensityChart,
             {
                 x: [[data.time]],
-                y: [[data.light_intensity]],
+                y: [[data.value]],
             },
             [0]
         )
@@ -137,7 +137,7 @@ export function initRealTimeCharts() {
             growthProgressChart,
             {
                 x: [[data.time]],
-                y: [[data.growth_progress]],
+                y: [[data.value]],
             },
             [0]
         )
