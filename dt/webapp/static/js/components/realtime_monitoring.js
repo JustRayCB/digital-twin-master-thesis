@@ -119,7 +119,7 @@ export function initRealTimeCharts() {
         )
     })
 
-    socket.on('update_light_intensity', (data) => {
+    socket.on('light_intensity', (data) => {
         const lightIntensityChart = document.getElementById('light-chart')
         Plotly.extendTraces(
             lightIntensityChart,
