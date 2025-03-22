@@ -1,15 +1,10 @@
-import { initRealTimeCharts } from './components/realtime_monitoring.js'
+import { initRealTimeMonitoring } from "./components/realtime_monitoring.js";
 
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('Hello')
+document.addEventListener("DOMContentLoaded", () => {
+    console.log("Hello");
+    initializeComponents();
+});
 
-    initRealTimeCharts()
-    // const plantStatus = new PlantStatusComponent('plant-status', '/api/component/plant-status')
-    // plantStatus.init()
-
-    // const paramControls = new ParameterControlsComponent(
-    //     'parameter-controls',
-    //     '/api/component/parameter-controls'
-    // )
-    // paramControls.init()
-})
+function initializeComponents() {
+    initRealTimeMonitoring();
+}

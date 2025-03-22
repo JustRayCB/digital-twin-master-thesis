@@ -24,6 +24,7 @@
 {% block component_js %}
     <script src="https://cdn.plot.ly/plotly-3.0.0.min.js" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js" integrity="sha512-8BHxHDLsOHx+flIrQ0DrZcea7MkHqRU5GbTHmbdzMRnAaoCIkZ97PqZcXJkKZckMMhqfoeaJE+DNUVuyoQsO3Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="{{ url_for('static', filename='js/store.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/components/plant_status.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/components/parameter_controls.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/components/realtime_monitoring.js') }}" type="module"></script>
