@@ -14,6 +14,7 @@ app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 logger = get_logger(__name__)
+connection_status = False
 
 # Simulated data for all components
 dashboard_data = {
@@ -65,7 +66,9 @@ def dashboard():
 # Handle client connection
 @socketio.on("connect")
 def connect():
+    global connection_status
     logger.info(f"Client connected: {request.sid}")  # pyright: ignore[]
+    socketio.emit("connection_status", {"connected": connection_status})
 
 
 # Handle client disconnection
@@ -90,18 +93,18 @@ def forward_to_socketio(topic):
 
 
 def setup_mqtt_bridge():
+    global connection_status
     # Generate a unique client ID to prevent conflicts
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
-    mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
-    mqtt_client.connect()
+    # mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
+    mqtt_client = MQTTClient(hostname="83.134.103.194", id=unique_id)
+    connection_status = mqtt_client.connect()
 
     # Subscribe to topics
     mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.SOIL_MOISTURE))
     mqtt_client.subscribe(MQTTTopics.TEMPERATURE, forward_to_socketio(MQTTTopics.TEMPERATURE))
     mqtt_client.subscribe(MQTTTopics.HUMIDITY, forward_to_socketio(MQTTTopics.HUMIDITY))
-    mqtt_client.subscribe(
-        MQTTTopics.LIGHT_INTENSITY, forward_to_socketio(MQTTTopics.LIGHT_INTENSITY)
-    )
+    mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.LIGHT_INTENSITY))
     mqtt_client.subscribe(MQTTTopics.CAMERA_IMAGE, forward_to_socketio(MQTTTopics.CAMERA_IMAGE))
 
     # Return the client so it doesn't go out of scope

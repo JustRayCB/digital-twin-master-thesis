@@ -2,8 +2,7 @@
     <div class="dashboard-header">
         <span class="title">Plant Digital Twin Dashboard</span>
         <span class="last-update"
-            >Last update:
-            <span id="update-time">{{ data.last_update }}</span></span
+            >Last update: <span id="update-time">{{ data.last_update }}</span></span
         >
     </div>
 
@@ -14,9 +13,7 @@
                 <div id="plant-model">
                     <span class="plant-icon">🌱</span>
                 </div>
-                <p class="visualization-label">
-                    Plant Visualization<br />with dynamic elements
-                </p>
+                <p class="visualization-label">Plant Visualization<br />with dynamic elements</p>
             </div>
 
             <div class="stats-container">
@@ -41,6 +38,7 @@
                 <span>System: </span>
                 <span
                     class="status-indicator {% if data.connection_status == 'Connected' %}connected{% else %}disconnected{% endif %}"
+                    id="status-indicator"
                 ></span>
                 <span id="connection-status">{{ data.connection_status }}</span>
             </div>
@@ -49,11 +47,7 @@
         <!-- Right Panel -->
         <div class="right-panel">
             <div class="alerts-box">
-                <h3>
-                    Alerts (<span id="alert-count"
-                        >{{ data.alerts|length }}</span
-                    >)
-                </h3>
+                <h3>Alerts (<span id="alert-count">{{ data.alerts|length }}</span>)</h3>
                 <ul id="alerts-list">
                     {% for alert in data.alerts %}
                     <li>

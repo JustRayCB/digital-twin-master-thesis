@@ -1,10 +1,12 @@
-import { initRealTimeMonitoring } from "./components/realtime_monitoring.js";
+import { initRealTimeMonitoring } from './components/realtime_monitoring.js'
+import { initPlantStatus } from './components/plant_status.js'
 
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("Hello");
-    initializeComponents();
-});
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Hello')
+    initializeComponents()
+})
 
 function initializeComponents() {
-    initRealTimeMonitoring();
+    initRealTimeMonitoring()
+    initPlantStatus()
 }
