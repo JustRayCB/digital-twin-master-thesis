@@ -1,3 +1,6 @@
+import sys
+
+sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
 
@@ -63,6 +66,18 @@ def dashboard():
     return render_template("dashboard.html", data=dashboard_data)
 
 
+@app.route("/api/simulate", methods=["POST"])
+def start_simulation():
+    simulation_parameters = request.json
+    logger.info(f"Starting simulation with parameters: {simulation_parameters}")
+
+    temperature = simulation_parameters.get("temperature")
+    humidity = simulation_parameters.get("humidity")
+    soil_moisture = simulation_parameters.get("light")
+
+    return {"status": "success"}
+
+
 # Handle client connection
 @socketio.on("connect")
 def connect():
@@ -78,8 +93,6 @@ def disconnect():
 
 
 # Handle MQTT message from SensorManager and forward to web client via socketio
-
-
 def forward_to_socketio(topic):
     def callback(payload):
         value = payload["value"]
