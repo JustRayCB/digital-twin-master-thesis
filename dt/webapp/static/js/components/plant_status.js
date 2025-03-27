@@ -1,7 +1,11 @@
 import { DataType, plantStore } from '../store.js'
 
+/**  Subscribe all the element to the store to update content when data is received */
 export function initPlantStatus() {
+    // Update time element
     const update_time = document.getElementById('update-time')
+
+    // Sensor data elements
     const stats_temperature = document.getElementById('temperature')
     const stats_humidity = document.getElementById('humidity')
     const stats_light = document.getElementById('light')
@@ -38,8 +42,22 @@ export function initPlantStatus() {
         console.log('Connection status updated')
         updateConnectionStatus(data.connected)
     })
+
+    plantStore.subscribe(DataType.ALERTS, (data) => {
+        console.log('Alerts updated')
+        updateAlerts(data)
+    })
+
+    plantStore.subscribe(DataType.HEALTH_STATUS, (data) => {
+        console.log('Health status updated')
+        updateHealthStatus(data)
+    })
 }
 
+/**
+ * Updates the connection status. It will display a green indicator if connected, red otherwise
+ * @param {Boolean} isConnected - Wether the connection is established or not
+ */
 function updateConnectionStatus(isConnected) {
     const statusText = document.getElementById('connection-status')
     const statusIndicator = document.getElementById('status-indicator')
@@ -50,8 +68,41 @@ function updateConnectionStatus(isConnected) {
     } else {
         statusText.textContent = 'Disconnected'
         statusIndicator.className = 'status-indicator disconnected'
-
-        // Optionally add an alert when disconnection occurs
-        // addAlert('Lost connection to plant monitoring system')
     }
+}
+
+/**
+ * Updates the alerts list with the new updated one
+ * @param {Obj} alerts - The list of alerts to display and alert is typically { id: string, message: string, time: number }
+ */
+function updateAlerts(alerts) {
+    const alertsList = document.getElementById('alerts-list')
+    const alertsCount = document.getElementById('alert-count')
+
+    alertsCount.textContent = alerts.length
+
+    // Clear the current alerts list
+    alertsList.innerHTML = ''
+
+    // Populate the alerts list with the new alerts
+    alerts.forEach((alert) => {
+        const alertItem = document.createElement('li')
+        const time = new Date(alert.time * 1000)
+        const fromattedTime = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`
+        alertItem.textContent = `${alert.message} - ${fromattedTime}`
+        alertsList.appendChild(alertItem)
+    })
+}
+
+/**
+ * Updates the health status elements with the new health data
+ * @param {Obj} healthData - The health status data { status: string, details: string }
+ */
+function updateHealthStatus(healthData) {
+    // Health status elements
+    const healthStatus = document.getElementById('health-status')
+    const healthDetails = document.getElementById('health-details')
+
+    healthStatus.textContent = healthData.status
+    healthDetails.textContent = healthData.details
 }

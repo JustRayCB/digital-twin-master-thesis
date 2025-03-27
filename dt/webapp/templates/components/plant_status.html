@@ -50,10 +50,7 @@
                 <h3>Alerts (<span id="alert-count">{{ data.alerts|length }}</span>)</h3>
                 <ul id="alerts-list">
                     {% for alert in data.alerts %}
-                    <li>
-                        <span class="alert-message">{{ alert.message }}</span> -
-                        <span class="alert-time">{{ alert.time }}</span>
-                    </li>
+                    <li>{{ alert.message }} - {{ alert.time }}</li>
                     {% endfor %}
                 </ul>
             </div>

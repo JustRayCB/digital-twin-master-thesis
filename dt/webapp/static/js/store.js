@@ -5,9 +5,11 @@ export class DataType {
     static LIGHT = new DataType('light_intensity')
     static GROWTH = new DataType('growth')
     static TIME = new DataType('time') // Will not be present in ALL as we only use it to update the latest time in the UI
+    static ALERTS = new DataType('alerts')
+    static HEALTH_STATUS = new DataType('health_status')
 
     // Keep track of all values to iterate through them
-    static ALL = [
+    static SENSORS = [
         DataType.TEMPERATURE,
         DataType.HUMIDITY,
         DataType.SOIL_MOISTURE,
@@ -37,13 +39,22 @@ class PlantDataStore {
         this.listeners = new Map()
 
         // Initialize data and listeners for each DataType
-        DataType.ALL.forEach((dataType) => {
+        DataType.SENSORS.forEach((dataType) => {
             this.data.set(dataType, { value: null, time: null })
             this.listeners.set(dataType, [])
         })
 
         this.listeners.set(DataType.TIME, [])
         this.listeners.set('connection_status', [])
+
+        this.listeners.set(DataType.ALERTS, [])
+        this.alerts = []
+
+        this.listeners.set(DataType.HEALTH_STATUS, [])
+        this.healthStatus = {
+            status: 'Healthy',
+            details: 'No issues detected',
+        }
 
         this.connectionStatus = false
 
@@ -53,17 +64,40 @@ class PlantDataStore {
 
     /** Initialize connection with Socket to receive sensors data and update components */
     initSocketConnection() {
-        DataType.ALL.forEach((dataType) => {
+        DataType.SENSORS.forEach((dataType) => {
             const listeningField = `${dataType}`
             this.socket.on(listeningField, (data) => {
                 this.updateData(dataType, data)
             })
         })
 
-        this.socket.on('connection_status', (data) => {
-            console.log(`Received connection status: ${data.connected}`)
-            this.connectionStatus = data.connected
+        this.socket.on('connection_status', (status) => {
+            console.log(`Received connection status: ${status.connected}`)
+            this.connectionStatus = status.connected
             this.notifyListeners('connection_status', { connected: this.connectionStatus })
+        })
+
+        this.socket.on('alerts_update', (alert) => {
+            console.log(`Received alerts: ${alert}`)
+            this.alerts.unshift(alert) // Add the new alert to the beginning of the list
+
+            // Keep only the last 5 alerts
+            if (this.alerts.length > 5) {
+                this.alerts.pop()
+            }
+            this.notifyListeners(DataType.ALERTS, this.alerts)
+        })
+
+        this.socket.on('alerts_remove', (alertId) => {
+            console.log(`Removing alert with id: ${alertId}`)
+            this.alerts = this.alerts.filter((alert) => alert.id !== alertId)
+            this.notifyListeners(DataType.ALERTS, this.alerts)
+        })
+
+        this.socket.on('health_status', (healthStatus) => {
+            console.log(`Received health status: ${healthStatus.status}`)
+            this.healthStatus = healthStatus
+            this.notifyListeners(DataType.HEALTH_STATUS, this.healthStatus)
         })
     }
 
