@@ -5,7 +5,8 @@ from time import sleep
 
 from dt.communication import MQTTClient, MQTTTopics
 from dt.sensors import Sensor
-from dt.utils.logger import get_logger
+from dt.utils import SensorData, get_logger
+from dt.utils.dataclasses import SensorDataClass
 
 
 class Storage:
@@ -48,7 +49,7 @@ class Storage:
             except Exception as e:
                 self.logger.error(f"Error creating database tables: {e}")
 
-    def insert_data(self, data: dict[str, any]) -> None:
+    def insert_data(self, data: SensorData) -> None:
         """Insert read data into the database
 
         Parameters
@@ -63,15 +64,21 @@ class Storage:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(
-                    "INSERT INTO sensors_data (sensor_id, value, unit, timestamp) VALUES (?, ?, ?, ?)",
-                    (data["sensor_id"], data["value"], data["unit"], data["timestamp"]),
+                    "INSERT INTO sensors_data (sensor_id, value, unit, timestamp, data_type) VALUES (?, ?, ?, ?)",
+                    (
+                        data.sensor_id,
+                        data.value,
+                        data.unit,
+                        data.timestamp,
+                        data.data_type,
+                    ),
                 )
                 self.conn.commit()
-                self.logger.info(f"Successfully inserted data for sensor {data['sensor_id']}")
+                self.logger.info(f"Successfully inserted data for sensor {data.sensor_id}")
             except Exception as e:
                 self.logger.error(f"Error inserting data: {e}")
 
-    def insert_datas(self, datas: dict[str, dict[str, any]]) -> None:
+    def insert_datas(self, datas: dict[str, SensorData]) -> None:
         """Insert read data into the database
 
         Parameters
@@ -82,7 +89,7 @@ class Storage:
         for data in datas.values():
             self.insert_data(data)
 
-    def get_data(self, sensor_id: int, limit: int = 10) -> list[dict[str, any]]:
+    def get_data(self, sensor_id: int, limit: int = 10) -> list[SensorData]:
         """Get the last data read from a sensor
 
         Parameters
@@ -105,7 +112,57 @@ class Storage:
                     "SELECT * FROM sensors_data WHERE sensor_id = ? ORDER BY timestamp DESC LIMIT ?",
                     (sensor_id, limit),
                 )
-                return cursor.fetchall()
+                datas = cursor.fetchall()
+                return [
+                    SensorData(
+                        sensor_id=data[1],
+                        value=data[2],
+                        unit=data[3],
+                        timestamp=data[4],
+                        topic=MQTTTopics.from_short_name(data[5]),
+                    )
+                    for data in datas
+                ]
+
+            except Exception as e:
+                self.logger.error(f"Error getting data: {e}")
+                return []
+
+    def get_data_from_timestamp(self, data_type: str, start_time: float) -> list[SensorData]:
+        """Get the data from a specific timestamp to the current time
+
+        Parameters
+        ----------
+        data_type : str
+            The type of data to retrieve
+        start_time : float
+            The timestamp from which to retrieve the data
+
+        Returns
+        -------
+        list[dict[str, any]]
+            The data from the database
+        """
+        # Acquire lock for database operation
+        with self.db_lock:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM sensors_data WHERE data_type = ? AND timestamp >= ?",
+                    (data_type, start_time),
+                )
+                datas = cursor.fetchall()
+                return [
+                    SensorData(
+                        sensor_id=data[1],
+                        value=data[2],
+                        unit=data[3],
+                        timestamp=data[4],
+                        topic=MQTTTopics.from_short_name(data[5]),
+                    )
+                    for data in datas
+                ]
+
             except Exception as e:
                 self.logger.error(f"Error getting data: {e}")
                 return []
@@ -137,30 +194,37 @@ class Storage:
                 self.logger.error(f"Error getting sensor ID: {e}")
                 return -1
 
-    def add_sensor(self, sensor: Sensor) -> None:
+    def add_sensor(self, sensor: SensorDataClass) -> int:
         """Add a sensor to the database
 
         Parameters
         ----------
         sensor : Sensor
             The sensor to add
+
+        Returns
+        -------
+        int
+            The id of the sensor
         """
         # Acquire lock for database operation
         with self.db_lock:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(
-                    "INSERT INTO sensors (name) VALUES (?)",
-                    (sensor.name,),
+                    "INSERT INTO sensors (name) VALUES (?, ?, ?)",
+                    (sensor.name, sensor.pin, sensor.read_interval),
                 )
                 self.conn.commit()
-                sensor.id = cursor.lastrowid  # pyright: ignore[]
+                id: int = cursor.lastrowid  # pyright: ignore[]
                 assert sensor.id > 0, "Sensor ID not set"
-                self.logger.info(f"Added sensor {sensor.name} with ID {sensor.id}")
+                self.logger.info(f"Added sensor {sensor.name} with ID {id}")
+                return id
             except Exception as e:
                 self.logger.error(f"Error adding sensor: {e}")
+                return -1
 
-    def bind_sensors(self, sensor: Sensor) -> None:
+    def bind_sensors(self, sensor: SensorDataClass) -> None:
         """Bind the sensor to the database
 
         Parameters
@@ -169,11 +233,13 @@ class Storage:
             The sensor to bind
         """
         temp_id = self.get_sensor_id(sensor.name)
-        if temp_id:
-            sensor.id = temp_id
+        if temp_id:  # Already exists in the database
+            sensor.change_id(temp_id)
             self.logger.info(f"Bound sensor {sensor.name} to existing ID {sensor.id}")
         else:
-            self.add_sensor(sensor)
+            temp_id = self.add_sensor(sensor)
+            sensor.change_id(temp_id)
+            assert sensor.id > 0, "Error Adding sensor to the DB"
             self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.id}")
 
     def close(self):
@@ -184,13 +250,13 @@ class Storage:
                 self.logger.info("Database connection closed")
 
 
-if __name__ == "__main__":
-    try:
-        storage = Storage()
-        # Keep the main thread alive
-        while True:
-            sleep(1)
-    except KeyboardInterrupt:
-        # Clean shutdown
-        storage.close()
-        print("Storage service shut down gracefully")
+# if __name__ == "__main__":
+#     try:
+#         storage = Storage()
+#         # Keep the main thread alive
+#         while True:
+#             sleep(1)
+#     except KeyboardInterrupt:
+#         # Clean shutdown
+#         storage.close()
+#         print("Storage service shut down gracefully")
