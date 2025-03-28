@@ -66,7 +66,7 @@ class MockMoistureSensor(Sensor):
 
     @property
     @override
-    def mqtt_topic(self) -> str:
+    def mqtt_topic(self) -> MQTTTopics:
         return MQTTTopics.SOIL_MOISTURE
 
     @override

@@ -1,6 +1,10 @@
 import time
 from abc import ABC, abstractmethod
 
+from dt.communication import MQTTTopics
+from dt.utils import SensorData
+from dt.utils.dataclasses import SensorDataClass
+
 
 class Sensor(ABC):
     """Abstract class that represent a sensor and all basic methods that a sensor should have.
@@ -40,7 +44,7 @@ class Sensor(ABC):
 
     @property
     @abstractmethod
-    def mqtt_topic(self) -> str:
+    def mqtt_topic(self) -> MQTTTopics:
         """
         Returns
         -------
@@ -65,7 +69,7 @@ class Sensor(ABC):
             else True
         )
 
-    def read(self) -> dict[str, any]:
+    def read(self) -> SensorData:
         """Reads the sensor
 
         Returns
@@ -81,14 +85,17 @@ class Sensor(ABC):
         self.last_data = processed_value
         self.last_read_time = current_time
 
-        assert self.id != -1, "Sensor ID not set"
+        # assert self.id != -1, "Sensor ID not set"
 
-        return {
-            "sensor_id": self.id,
-            "timestamp": current_time,
-            "value": processed_value,
-            "unit": self.unit,
-        }
+        data = SensorData(
+            sensor_id=self.id,
+            timestamp=current_time,
+            value=processed_value,
+            unit=self.unit,
+            topic=self.mqtt_topic,
+        )
+
+        return data
 
     @abstractmethod
     def read_sensor(self) -> float:
@@ -117,3 +124,19 @@ class Sensor(ABC):
             The processed data.
         """
         raise NotImplementedError(f"Method process_data not implemented for {self.name}")
+
+    def to_dataclass(self) -> SensorDataClass:
+        """Convert the sensor to a dataclass.
+
+        Returns
+        -------
+        SensorDataClass
+            The sensor as a dataclass.
+
+        """
+        return SensorDataClass(
+            id=self.id,
+            name=self.name,
+            read_interval=self.read_interval,
+            pin=self.pin,
+        )

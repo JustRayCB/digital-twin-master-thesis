@@ -1,4 +1,5 @@
-from dt.communication import MQTTClient
+from dt.communication import MQTTClient, MQTTTopics
+from dt.utils import SensorData
 from dt.utils.logger import get_logger
 
 from .kinds.base_sensor import Sensor
@@ -31,7 +32,7 @@ class SensorManager:
             self.logger.info(f"Removed sensor {sensor_name} from the SensorManager.")
             del self.sensors[sensor_name]
 
-    def read_all_sensors(self) -> dict[str, dict[str, any]]:
+    def read_all_sensors(self) -> dict[str, SensorData]:
         """Read data from all the sensors that needs to be read
 
         Returns
@@ -40,11 +41,11 @@ class SensorManager:
             A dictionary containing the data from all the sensors that needs to be read
 
         """
-        data = {}
+        data: dict[str, SensorData] = {}
         for sensor_name, sensor in self.sensors.items():
             if sensor.needs_data():
                 data[sensor.name] = sensor.read()
-                mqtt_topic = sensor.mqtt_topic
+                mqtt_topic: MQTTTopics = sensor.mqtt_topic
                 self.mqtt_client.publish(
                     mqtt_topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
