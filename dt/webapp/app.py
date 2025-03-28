@@ -4,14 +4,12 @@ sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
 
-import plotly
-import plotly.express as px
 from flask import Flask, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from dt.communication import MQTTClient, MQTTTopics
-from dt.utils.logger import get_logger
+from dt.utils import SensorData, get_logger
 
 app = Flask(__name__)
 CORS(app)
@@ -93,14 +91,14 @@ def disconnect():
 
 
 # Handle MQTT message from SensorManager and forward to web client via socketio
-def forward_to_socketio(topic):
-    def callback(payload):
-        value = payload["value"]
-        time = payload["timestamp"]
+def forward_to_socketio(topic: MQTTTopics):
+    def callback(payload: SensorData):
+        value = payload.value
+        time = payload.timestamp
+        # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
         socketio_topic = topic.split("/")[-1]  # Get the last part of the topic (sensor's data)
         logger.info(f"Received message from MQTT: {value} at {time}")
-        print(socketio_topic)
-        socketio.emit(socketio_topic, {"value": value, "time": time})
+        socketio.emit(socketio_topic, payload.shrink_data())
 
     return callback
 
