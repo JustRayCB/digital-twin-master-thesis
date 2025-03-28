@@ -1,9 +1,10 @@
 import json
+from ast import List
 
 import paho.mqtt.client as mqtt
 from typing_extensions import Any, Callable
 
-from dt.utils import get_logger
+from dt.utils import SensorData, get_logger
 
 
 class MQTTClient:
@@ -24,7 +25,7 @@ class MQTTClient:
         self.client = mqtt.Client(client_id=id)
         self.hostname = hostname
         self.port = port
-        self.topic_callbacks: dict[str, Callable] = {}
+        self.topic_callbacks: dict[str, list[Callable]] = {}
         self.logger = get_logger(__name__)
 
         # Set up callbacks
@@ -49,10 +50,10 @@ class MQTTClient:
         self.client.disconnect()
         self.logger.info("Disconnected from MQTT broker")
 
-    def publish(self, topic: str, payload: dict[str, Any], qos: int = 1):
+    def publish(self, topic: str, payload: SensorData, qos: int = 1):
         """Publish a message to a topic"""
         try:
-            message = json.dumps(payload)
+            message = payload.to_json()
             result = self.client.publish(topic, message, qos=qos)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 self.logger.debug(f"Published to {topic}: {payload}")
@@ -66,7 +67,10 @@ class MQTTClient:
 
     def subscribe(self, topic: str, callback: Callable, qos: int = 1):
         """Subscribe to a topic with a callback"""
-        self.topic_callbacks[topic] = callback
+        if topic in self.topic_callbacks:
+            self.topic_callbacks[topic].append(callback)
+        else:
+            self.topic_callbacks[topic] = [callback]
         result = self.client.subscribe(topic, qos)
         if result[0] == mqtt.MQTT_ERR_SUCCESS:
             self.logger.info(f"Subscribed to {topic}")
@@ -89,12 +93,15 @@ class MQTTClient:
         """Callback for when a message is received"""
         try:
             topic = msg.topic
-            payload = json.loads(msg.payload.decode())
+            payload = SensorData.from_json(msg.payload.decode())
+
             self.logger.debug(f"Received message on {topic}: {payload}")
 
             # Call the appropriate callback for this topic
             if topic in self.topic_callbacks:
-                self.topic_callbacks[topic](payload)
+                for callback in self.topic_callbacks[topic]:
+                    callback(payload)
+                # self.topic_callbacks[topic](payload)
         except json.JSONDecodeError:
             self.logger.error(f"Received malformed JSON on {msg.topic}")
         except Exception as e:
