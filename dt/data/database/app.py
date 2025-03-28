@@ -101,6 +101,7 @@ def get_sensor_data_from_id():
 
 
 if __name__ == "__main__":
+    # TODO: Test wether the app works with the MQTT bridge + the database
     import os
 
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"

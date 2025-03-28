@@ -123,6 +123,8 @@ def setup_mqtt_bridge():
 
 
 if __name__ == "__main__":
+    # TODO: Make queries to the database to get the latest data for the dashboard of data from a specific time to now
+
     # Only setup MQTT in the child process when using debug mode
     import os
 
