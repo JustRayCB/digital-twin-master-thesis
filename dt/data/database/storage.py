@@ -215,8 +215,8 @@ class Storage:
                 )
                 self.conn.commit()
                 id: int = cursor.lastrowid  # pyright: ignore[]
-                assert sensor.sensor_id > 0, f"Sensor ID not set correctly: {sensor.sensor_id}"
                 self.logger.info(f"Added sensor {sensor.name} with ID {id}")
+                assert id > 0, f"Error adding sensor {sensor.name} to the database, ID: {id}"
                 return id
             except Exception as e:
                 self.logger.error(f"Error adding sensor: {e}")
