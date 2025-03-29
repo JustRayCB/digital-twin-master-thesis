@@ -89,6 +89,6 @@ class SensorDataClass:
     def validate_json(json_data: str) -> bool:
         try:
             data = json.loads(json_data)
-            return all(key in data for key in SensorDataClass.__dict__.keys())
+            return all(key in data for key in SensorDataClass.__annotations__.keys())
         except Exception:
             return False
