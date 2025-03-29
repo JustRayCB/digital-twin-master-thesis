@@ -20,4 +20,4 @@ class MQTTTopics(StrEnum):
     @property
     def short_name(self) -> str:
         """Get the short name of the topic"""
-        return self.name.split("/")[-1]
+        return self.value.split("/")[-1]

@@ -24,7 +24,7 @@ def forward_to_database(payload: SensorData):
 def setup_mqtt_bridge():
     logger.info("Setting up MQTT bridge")
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
-    mqtt_client = MQTTClient(hostname="83.134.103.194", id=unique_id)
+    mqtt_client = MQTTClient(hostname="127.0.0.1", id=unique_id)
     if not mqtt_client.connect():
         logger.error("Failed to connect to MQTT broker")
         return

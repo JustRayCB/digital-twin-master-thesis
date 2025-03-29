@@ -49,13 +49,14 @@ class Storage:
             Data read from a (one) sensor with their metadata
         """
         self.logger.debug(f"Received data in thread {threading.get_ident()}: {data}")
+        self.logger.info(f"Inserting data: {data}")
 
         # Acquire lock for database operation
         with self.db_lock:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(
-                    "INSERT INTO sensors_data (sensor_id, value, unit, timestamp, data_type) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO sensors_data (sensor_id, value, unit, timestamp, data_type) VALUES (?, ?, ?, ?, ?)",
                     (
                         data.sensor_id,
                         data.value,
