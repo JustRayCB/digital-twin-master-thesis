@@ -24,13 +24,6 @@ class Storage:
         # Initialize table
         self.create_table()
 
-        # Set up MQTT client
-        self.mqtt_client = MQTTClient(hostname="192.168.129.7", id="database")
-        self.mqtt_client.connect()
-
-        # Subscribe to the topic where the data is published
-        self.mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, self.insert_data)
-
     def create_table(self) -> None:
         """Create the table to store the data"""
         # Acquire lock for database operation
