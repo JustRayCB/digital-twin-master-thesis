@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
     mqtt_client = None
 
-    if debug_mode and not in_reloader:
+    if debug_mode and in_reloader:
         mqtt_client = setup_mqtt_bridge()
     elif not debug_mode:
         mqtt_client = setup_mqtt_bridge()
