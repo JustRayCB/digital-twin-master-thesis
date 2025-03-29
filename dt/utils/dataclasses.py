@@ -1,8 +1,9 @@
 import json
 from dataclasses import dataclass
 
-from dt.communication.topics import MQTTTopics
 from typing_extensions import Union
+
+from dt.communication.topics import MQTTTopics
 
 
 @dataclass
@@ -30,13 +31,21 @@ class SensorData:
         self.timestamp = float(self.timestamp)
         self.value = float(self.value)
         self.unit = str(self.unit)
+        self.topic = MQTTTopics(self.topic)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__)
 
     @classmethod
-    def from_json(cls, json_data: str):
-        return cls(**json.loads(json_data))
+    @classmethod
+    def from_json(cls, json_data: Union[str, dict]):
+        if isinstance(json_data, str):
+            data = json.loads(json_data)
+        elif isinstance(json_data, dict):
+            data = json_data
+        else:
+            raise TypeError("json_data must be a str or dict")
+        return cls(**data)
 
     def shrink_data(self):
         """
