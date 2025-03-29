@@ -187,7 +187,11 @@ class Storage:
                     (sensor_name,),
                 )
                 result = cursor.fetchone()
-                return result
+                assert result is not None, f"Sensor {sensor_name} not found in the database"
+                assert len(result) == 1, f"Multiple sensors found with name {sensor_name}"
+                assert isinstance(result[0], int), f"Sensor ID is not an integer: {result[0]}"
+                assert result[0] > 0, f"Sensor ID is not valid: {result[0]}"
+                return result[0]
             except Exception as e:
                 self.logger.error(f"Error getting sensor ID: {e}")
                 return -1
@@ -237,7 +241,7 @@ class Storage:
         else:
             temp_id = self.add_sensor(sensor)
             sensor.change_id(temp_id)
-            assert sensor.id > 0, "Error Adding sensor to the DB"
+            assert sensor.sensor_id > 0, "Error Adding sensor to the DB"
             self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.sensor_id}")
 
     def close(self):
