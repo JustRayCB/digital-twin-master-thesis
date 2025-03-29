@@ -1,3 +1,5 @@
+from flask import requests
+
 from dt.communication import MQTTClient, MQTTTopics
 from dt.utils import SensorData
 from dt.utils.logger import get_logger
@@ -27,6 +29,12 @@ class SensorManager:
         # TODO: Bind the sensor the the Database
         self.sensors[sensor.name] = sensor
         self.logger.info(f"Added sensor {sensor.name} to the SensorManager.")
+
+    def bind_sensor(self, sensor: Sensor) -> None:
+        db_url = "http://localhost:5001/bind_sensor"
+        sensor_dataclass = sensor.to_dataclass()
+        sensor_json = sensor_dataclass.to_json()
+        response = requests.post(db_url, json=sensor_json)
 
     def remove_sensor(self, sensor_name: str) -> None:
         if sensor_name in self.sensors:
