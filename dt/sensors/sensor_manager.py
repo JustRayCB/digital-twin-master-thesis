@@ -37,8 +37,8 @@ class SensorManager:
         sensor_json = sensor_dataclass.to_json()
         response = requests.post(db_url, json=sensor_json)
         if response.status_code == 200:
-            new_sensor = SensorDataClass.from_json(response.json())
-            sensor.id = new_sensor.id
+            new_id = response.json().get("sensor_id")
+            sensor.sensor_id = new_id
             self.logger.info(f"Sensor {sensor.name} bound to the database successfully.")
         else:
             self.logger.error(

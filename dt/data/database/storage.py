@@ -210,12 +210,12 @@ class Storage:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(
-                    "INSERT INTO sensors (name) VALUES (?, ?, ?)",
+                    "INSERT INTO sensors (name, pin, read_interval) VALUES (?, ?, ?)",
                     (sensor.name, sensor.pin, sensor.read_interval),
                 )
                 self.conn.commit()
                 id: int = cursor.lastrowid  # pyright: ignore[]
-                assert sensor.id > 0, "Sensor ID not set"
+                assert sensor.sensor_id > 0, f"Sensor ID not set correctly: {sensor.sensor_id}"
                 self.logger.info(f"Added sensor {sensor.name} with ID {id}")
                 return id
             except Exception as e:
@@ -233,12 +233,12 @@ class Storage:
         temp_id = self.get_sensor_id(sensor.name)
         if temp_id:  # Already exists in the database
             sensor.change_id(temp_id)
-            self.logger.info(f"Bound sensor {sensor.name} to existing ID {sensor.id}")
+            self.logger.info(f"Bound sensor {sensor.name} to existing ID {sensor.sensor_id}")
         else:
             temp_id = self.add_sensor(sensor)
             sensor.change_id(temp_id)
             assert sensor.id > 0, "Error Adding sensor to the DB"
-            self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.id}")
+            self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.sensor_id}")
 
     def close(self):
         """Close the database connection"""

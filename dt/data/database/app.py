@@ -58,7 +58,7 @@ def bind_sensor():
     sensor = SensorDataClass.from_json(sensor_data)
     storage.bind_sensors(sensor)
     logger.info(f"Sensor bound successfully: {sensor}")
-    return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor.id}), 200
+    return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor.sensor_id}), 200
 
 
 @app.route("/data/timestamp", methods=["GET"])

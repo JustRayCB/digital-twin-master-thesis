@@ -135,7 +135,7 @@ class Sensor(ABC):
 
         """
         return SensorDataClass(
-            id=self.id,
+            sensor_id=self.id,
             name=self.name,
             read_interval=self.read_interval,
             pin=self.pin,

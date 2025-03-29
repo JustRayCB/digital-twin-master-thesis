@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 
 from dt.communication.topics import MQTTTopics
+from typing_extensions import Union
 
 
 @dataclass
@@ -64,23 +65,29 @@ class SensorDataClass:
     read_interval : The interval in seconds between two reads of the sensor.
     """
 
-    id: int
+    sensor_id: int
     name: str
     pin: int
     read_interval: int
 
     def __post_init__(self):
-        self.id = int(self.id)
+        self.sensor_id = int(self.sensor_id)
         self.name = str(self.name)
         self.pin = int(self.pin)
         self.read_interval = int(self.read_interval)
 
     def change_id(self, sensor_id: int):
-        self.id = sensor_id
+        self.sensor_id = sensor_id
 
     @classmethod
-    def from_json(cls, json_data: str):
-        return cls(**json.loads(json_data))
+    def from_json(cls, json_data: Union[str, dict]):
+        if isinstance(json_data, str):
+            data = json.loads(json_data)
+        elif isinstance(json_data, dict):
+            data = json_data
+        else:
+            raise TypeError("json_data must be a str or dict")
+        return cls(**data)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__)
