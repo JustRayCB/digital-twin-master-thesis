@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 
-from dt.communication import MQTTTopics
+from dt.communication.topics import MQTTTopics
 
 
 @dataclass

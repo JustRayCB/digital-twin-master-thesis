@@ -4,9 +4,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from dt.communication import MQTTClient, MQTTTopics
+from dt.data.database.storage import Storage
 from dt.utils import SensorData, SensorDataClass, get_logger
-
-from .storage import Storage
 
 app = Flask(__name__)
 CORS(app)

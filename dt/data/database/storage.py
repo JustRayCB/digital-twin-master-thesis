@@ -1,12 +1,10 @@
 # dt/data/database/storage.py
 import sqlite3
 import threading
-from time import sleep
 
 from dt.communication import MQTTClient, MQTTTopics
 from dt.sensors import Sensor
-from dt.utils import SensorData, get_logger
-from dt.utils.dataclasses import SensorDataClass
+from dt.utils import SensorData, SensorDataClass, get_logger
 
 
 class Storage:

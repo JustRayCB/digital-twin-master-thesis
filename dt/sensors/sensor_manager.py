@@ -1,4 +1,4 @@
-from flask import requests
+import requests
 
 from dt.communication import MQTTClient, MQTTTopics
 from dt.utils import SensorData, SensorDataClass
