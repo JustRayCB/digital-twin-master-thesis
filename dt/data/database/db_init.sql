@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS sensors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255) UNIQUE NOT NULL,
     pin INTEGER NOT NULL,
-    read_interval INTEGER NOT NULL,
+    read_interval INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sensors_data (
@@ -22,4 +22,4 @@ CREATE TABLE IF NOT EXISTS sensors_data_type (
 );
 
 INSERT OR IGNORE INTO sensors_data_type (name) VALUES 
-    ("temperature"), ("soil_moisture"), ("humidity"), ("light_intensity"), ("camera_image")
+    ('temperature'), ('soil_moisture'), ('humidity'), ('light_intensity'), ('camera_image')
