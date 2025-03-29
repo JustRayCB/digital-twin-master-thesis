@@ -1,3 +1,8 @@
+import sys
+
+sys.dont_write_bytecode = True
+
+
 from time import sleep
 
 from dt.sensors import MockMoistureSensor, Sensor, SensorManager
