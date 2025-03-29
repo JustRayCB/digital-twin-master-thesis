@@ -187,11 +187,7 @@ class Storage:
                     (sensor_name,),
                 )
                 result = cursor.fetchone()
-                assert result is not None, f"Sensor {sensor_name} not found in the database"
-                assert len(result) == 1, f"Multiple sensors found with name {sensor_name}"
-                assert isinstance(result[0], int), f"Sensor ID is not an integer: {result[0]}"
-                assert result[0] > 0, f"Sensor ID is not valid: {result[0]}"
-                return result[0]
+                return result[0] if result else -1
             except Exception as e:
                 self.logger.error(f"Error getting sensor ID: {e}")
                 return -1
@@ -235,7 +231,7 @@ class Storage:
             The sensor to bind
         """
         temp_id = self.get_sensor_id(sensor.name)
-        if temp_id:  # Already exists in the database
+        if temp_id > 0:  # Already exists in the database
             sensor.change_id(temp_id)
             self.logger.info(f"Bound sensor {sensor.name} to existing ID {sensor.sensor_id}")
         else:
