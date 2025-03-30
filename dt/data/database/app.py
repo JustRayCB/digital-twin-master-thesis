@@ -74,10 +74,12 @@ def get_sensor_data_from_timestamp():
     # Get the start timestamp from the query parameters
     logger.info("Getting data from timestamp")
     from_timestamp: float = request.args.get("from", 0, type=float)
+    to_timestamp: float = request.args.get("to", 0, type=float)
     data_type: str = request.args.get("data_type", "temperature", type=str)
     data: list[SensorData] = storage.get_data_from_timestamp(data_type, from_timestamp)
+    shrank_data = [d.shrink_data() for d in data]
     logger.info(f"Lenght of data: {len(data)}")
-    return jsonify(data)
+    return jsonify(shrank_data)
 
 
 @app.route("/data/id", methods=["GET"])
