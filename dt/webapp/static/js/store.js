@@ -120,25 +120,30 @@ class PlantDataStore {
     async fetchHistoricalData(timeRangeStart, timeRangeEnd) {
         console.log(`Fetching historical data from ${timeRangeStart} to ${timeRangeEnd}`)
 
-        const fetchPromises = DataType.SENSORS.map(async (dataType) => {
-            const response = await fetch(`/data/timestamp`, {
-                method: 'GET',
+        const fetchPromises = DataType.SENSORS.map((dataType) => {
+            const toSendData = {
+                data_type: dataType.toString(),
+                from: timeRangeStart,
+                to: timeRangeEnd,
+            }
+            console.log(`Sending data to fetch historical data: ${JSON.stringify(toSendData)}`)
+            return fetch(`/data/timestamp`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    data_type: dataType,
-                    from: timeRangeStart,
-                    to: timeRangeEnd,
-                }),
+                body: JSON.stringify(toSendData),
             })
-            const data = await response.json()
-            this.historicalData.set(dataType, data)
-            this.notifyListeners(dataType, data)
+                .then((response) => response.json())
+                .then((data) => {
+                    this.historicalData.set(dataType, data)
+                    console.log(`Fetched historical data for ${dataType}:`, data)
+                })
         })
 
         await Promise.all(fetchPromises)
 
+        console.log('All historical data fetched successfully')
         this.mergeHistoricalAndRealTimeData()
     }
 
