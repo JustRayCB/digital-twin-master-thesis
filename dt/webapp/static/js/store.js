@@ -35,12 +35,14 @@ class PlantDataStore {
     constructor() {
         // Initialize maps using DataType objects as keys
         console.log('Initializing PlantDataStore')
-        this.data = new Map()
+        this.realtimeData = new Map()
+        this.historicalData = new Map()
         this.listeners = new Map()
 
         // Initialize data and listeners for each DataType
         DataType.SENSORS.forEach((dataType) => {
-            this.data.set(dataType, { value: null, time: null })
+            this.realtimeData.set(dataType, [])
+            this.historicalData.set(dataType, [])
             this.listeners.set(dataType, [])
         })
 
@@ -107,10 +109,62 @@ class PlantDataStore {
      */
     updateData(dataType, data) {
         console.log(`Received data: ${data} for datatype: ${dataType}`)
-        this.data.set(dataType, { value: data.value, time: data.time })
+        this.realtimeData.get(dataType).push(data) // Add the new data to the realtime data
+
         this.notifyListeners(dataType, data)
+
         // Send the time to update the latest time in the UI
         this.notifyListeners(DataType.TIME, { time: data.time })
+    }
+
+    async fetchHistoricalData(timeRangeStart, timeRangeEnd) {
+        console.log(`Fetching historical data from ${timeRangeStart} to ${timeRangeEnd}`)
+
+        const fetchPromises = DataType.SENSORS.map(async (dataType) => {
+            const response = await fetch(`/data/timestamp`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    data_type: dataType,
+                    from: timeRangeStart,
+                    to: timeRangeEnd,
+                }),
+            })
+            const data = await response.json()
+            this.historicalData.set(dataType, data)
+            this.notifyListeners(dataType, data)
+        })
+
+        await Promise.all(fetchPromises)
+
+        this.mergeHistoricalAndRealTimeData()
+    }
+
+    mergeHistoricalAndRealTimeData() {
+        DataType.SENSORS.forEach((dataType) => {
+            const historicalData = this.historicalData.get(dataType)
+            const realtimeData = this.realtimeData.get(dataType)
+
+            if (!historicalData || !realtimeData) {
+                console.error(`No data found for ${dataType}`)
+                return
+            }
+
+            // Filter real-time data to only include entries
+            // that are not already in historical data (newest data)
+            const lastHistoricalTimestamp = historicalData[historicalData.length - 1].time
+
+            const newRealtimeData = realtimeData.filter((data) => {
+                return data.time > lastHistoricalTimestamp
+            })
+
+            // Merge historical and real-time data
+            const mergedData = [...historicalData, ...newRealtimeData]
+
+            this.notifyListeners(dataType, { type: 'historical', data: mergedData })
+        })
     }
 
     /**
@@ -149,7 +203,7 @@ class PlantDataStore {
      * @returns {Object|null} The current data for the specified type
      */
     getData(dataType) {
-        return this.data.get(dataType)
+        return this.realtimeData.get(dataType)
     }
 }
 

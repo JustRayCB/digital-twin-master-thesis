@@ -1,12 +1,13 @@
 <div class="dashboard-container">
     <div class="dashboard-header">
         <span class="title">Real-Time Monitoring</span>
-        <div class="monitoring-controls">
+        <form id="monitoring-controls">
+            <input type="radio" , class="chooser" name="data-period" value="0" checked />real-time
             <input type="radio" class="chooser" name="data-period" value="1h" />1h
             <input type="radio" class="chooser" name="data-period" value="24h" />24h
             <input type="radio" class="chooser" name="data-period" value="7d" />7d
             <input type="radio" class="chooser" name="data-period" value="30d" />30d
-        </div>
+        </form>
     </div>
 
     <div class="monitoring-content">

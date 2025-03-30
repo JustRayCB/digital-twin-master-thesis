@@ -2,6 +2,8 @@ export function initiParameterControls() {
     const tempSlider = document.getElementById('temp-slider')
     const humiditySlider = document.getElementById('humidity-slider')
     const moistureSlider = document.getElementById('moisture-slider')
+
+    // Event that modify the value of the text when the slider is moved
     tempSlider.addEventListener('input', () => {
         document.getElementById('current-temp').innerText = tempSlider.value
     })
