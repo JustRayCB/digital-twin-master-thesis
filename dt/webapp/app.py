@@ -1,10 +1,13 @@
 import sys
 
+from dt.utils.dataclasses import DBTimestampQuery
+
 sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
 
-from flask import Flask, render_template, request
+import requests
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -74,6 +77,33 @@ def start_simulation():
     soil_moisture = simulation_parameters.get("light")
 
     return {"status": "success"}
+
+
+@app.route("/api/data/timestamp", methods=["POST"])
+def get_sensor_data_from_timestamp():
+    """API endpoint to get the data from the database from a specific timestamp to the current time.
+
+    Returns
+    -------
+    JSON
+        A JSON object with the data from the database.
+
+    """
+    # Get the start timestamp from the query parameters
+    logger.info("Getting data from timestamp")
+    request_data = request.get_json()
+    if not DBTimestampQuery.validate_json(request_data):
+        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
+        return jsonify({"error": "Invalid JSON data"}), 400
+    db_url = "http://localhost:5001/data/timestamp"
+    response = requests.post(db_url, json=request_data)
+    if response.status_code == 200:
+        data = response.json()
+        logger.info(f"Data from timestamp: {data}")
+        return jsonify(data)
+    else:
+        logger.error(f"Error getting data from timestamp: {response.text}")
+        return jsonify({"error": "Error getting data from timestamp"}), 500
 
 
 # Handle client connection

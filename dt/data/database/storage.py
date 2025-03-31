@@ -93,7 +93,7 @@ class Storage:
 
         Returns
         -------
-        list[dict[str, any]]
+        list[SensorData]
             The last data read from the sensor
         """
         # Acquire lock for database operation
@@ -120,15 +120,19 @@ class Storage:
                 self.logger.error(f"Error getting data: {e}")
                 return []
 
-    def get_data_from_timestamp(self, data_type: str, start_time: float) -> list[SensorData]:
+    def get_data_from_timestamp(
+        self, data_type: str, from_timestamp: float, to_timestamp: float
+    ) -> list[SensorData]:
         """Get the data from a specific timestamp to the current time
 
         Parameters
         ----------
         data_type : str
             The type of data to retrieve
-        start_time : float
+        from_timestamp : float
             The timestamp from which to retrieve the data
+        to_timestamp : float
+            The timestamp to which to retrieve the data
 
         Returns
         -------
@@ -140,8 +144,8 @@ class Storage:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(
-                    "SELECT * FROM sensors_data WHERE data_type = ? AND timestamp >= ?",
-                    (data_type, start_time),
+                    "SELECT * FROM sensors_data WHERE data_type = ? AND timestamp >= ? AND timestamp <= ?",
+                    (data_type, from_timestamp, to_timestamp),
                 )
                 datas = cursor.fetchall()
                 return [

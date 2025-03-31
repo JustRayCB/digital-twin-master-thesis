@@ -123,11 +123,11 @@ class PlantDataStore {
         const fetchPromises = DataType.SENSORS.map((dataType) => {
             const toSendData = {
                 data_type: dataType.toString(),
-                from: timeRangeStart,
-                to: timeRangeEnd,
+                from_timestamp: timeRangeStart,
+                to_timestamp: timeRangeEnd,
             }
             console.log(`Sending data to fetch historical data: ${JSON.stringify(toSendData)}`)
-            return fetch(`/data/timestamp`, {
+            return fetch(`/api/data/timestamp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -6,6 +6,7 @@ from flask_cors import CORS
 from dt.communication import MQTTClient, MQTTTopics
 from dt.data.database.storage import Storage
 from dt.utils import SensorData, SensorDataClass, get_logger
+from dt.utils.dataclasses import DBTimestampQuery
 
 app = Flask(__name__)
 CORS(app)
@@ -73,10 +74,16 @@ def get_sensor_data_from_timestamp():
     """
     # Get the start timestamp from the query parameters
     logger.info("Getting data from timestamp")
-    from_timestamp: float = request.args.get("from", 0, type=float)
-    to_timestamp: float = request.args.get("to", 0, type=float)
-    data_type: str = request.args.get("data_type", "temperature", type=str)
-    data: list[SensorData] = storage.get_data_from_timestamp(data_type, from_timestamp)
+    request_data = request.get_json()
+    if not DBTimestampQuery.validate_json(request_data):
+        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
+        return jsonify({"error": "Invalid JSON data"}), 400
+    request_data = DBTimestampQuery.from_json(request_data)
+    data: list[SensorData] = storage.get_data_from_timestamp(
+        data_type=request_data.data_type,
+        from_timestamp=request_data.from_timestamp,
+        to_timestamp=request_data.to_timestamp,
+    )
     shrank_data = [d.shrink_data() for d in data]
     logger.info(f"Lenght of data: {len(data)}")
     return jsonify(shrank_data)
