@@ -61,14 +61,15 @@
 
 #let template = Template.with(
     language: "en", // If you want to change the language, (Only "fr" and "en" are supported)
-    title: "Ray's Template",
-    ue: "UE", // Coruse Mnemonic
-    subject: "Sujet", // Name of the subject/course
+    title: "Digital Twin for Plant Health Monitoring", 
+    ue: "MEMO-F403", // Coruse Mnemonic
+    subject: "Notes", // Name of the subject/course
     authors: (
       "Ray",
     ),
     teachers: (
-        "M. Name",
+        "G. Bontempi",
+        "P. Tribel",
     ),
     toc: false,
     fig_toc: false, // If you want to display the list of figures (doesn't work right now
