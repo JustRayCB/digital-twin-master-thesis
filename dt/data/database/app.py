@@ -62,7 +62,7 @@ def bind_sensor():
     return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor.sensor_id}), 200
 
 
-@app.route("/data/timestamp", methods=["GET"])
+@app.route("/data/timestamp", methods=["POST"])
 def get_sensor_data_from_timestamp():
     """API endpoint to get the data from the database from a specific timestamp to the current time.
 
