@@ -1,7 +1,5 @@
 import sys
 
-from dt.utils.dataclasses import DBTimestampQuery
-
 sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
@@ -13,6 +11,7 @@ from flask_socketio import SocketIO
 
 from dt.communication import MQTTClient, MQTTTopics
 from dt.utils import SensorData, get_logger
+from dt.utils.dataclasses import DBTimestampQuery
 
 app = Flask(__name__)
 CORS(app)
