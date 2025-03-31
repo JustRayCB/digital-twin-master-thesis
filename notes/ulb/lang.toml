@@ -1,0 +1,66 @@
+[conf]
+default-lang = "fr"
+
+[lang.fr]
+# Months
+January = "Janvier" 
+February = "Février" 
+March = "Mars" 
+April = "Avril" 
+May = "Mai" 
+June = "Juin" 
+July = "Juillet" 
+August = "Août" 
+September = "Septembre" 
+October = "Octobre" 
+November = "Novembre" 
+December = "Décembre" 
+
+Bibliography = "Bibliographie"
+
+Students = "Étudiants"
+Teachers = "Enseignants"
+
+# Boxes titles
+Definition = "Définition"
+Theorem = "Théorème"
+Proof = "Démonstration"
+Example = "Exemple"
+Proposition = "Proposition"
+Corollary = "Corollaire"
+Lemma = "Lemme"
+Remark = "Remarque"
+Notation = "Notation"
+Warning = "Attention"
+
+[lang.en]
+# Months
+January = "January"
+February = "February"
+March = "March"
+April = "April"
+May = "May"
+June = "June"
+July = "July"
+August = "August"
+September = "September"
+October = "October"
+November = "November"
+December = "December"
+
+Bibliography = "Bibliography"
+
+Students = "Students"
+Teachers = "Teachers"
+
+# Boxes titles
+Definition = "Definition"
+Theorem = "Theorem"
+Proof = "Proof"
+Example = "Example"
+Proposition = "Proposition"
+Corollary = "Corollary"
+Lemma = "Lemma"
+Remark = "Remark"
+Notation = "Notation"
+Warning = "Warning"
