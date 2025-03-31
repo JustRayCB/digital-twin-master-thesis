@@ -93,6 +93,9 @@ class MQTTClient:
         """Callback for when a message is received"""
         try:
             topic = msg.topic
+            if not SensorData.validate_json(msg.payload.decode()):
+                self.logger.error(f"Received malformed JSON on {topic}")
+                return
             payload = SensorData.from_json(msg.payload.decode())
 
             self.logger.debug(f"Received message on {topic}: {payload}")
