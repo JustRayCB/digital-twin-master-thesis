@@ -3,7 +3,6 @@ export class DataType {
     static HUMIDITY = new DataType('humidity')
     static SOIL_MOISTURE = new DataType('soil_moisture')
     static LIGHT = new DataType('light_intensity')
-    static GROWTH = new DataType('growth')
     static TIME = new DataType('time') // Will not be present in ALL as we only use it to update the latest time in the UI
     static ALERTS = new DataType('alerts')
     static HEALTH_STATUS = new DataType('health_status')
@@ -14,7 +13,6 @@ export class DataType {
         DataType.HUMIDITY,
         DataType.SOIL_MOISTURE,
         DataType.LIGHT,
-        DataType.GROWTH,
     ]
 
     constructor(name) {

@@ -28,13 +28,6 @@ const CHART_CONFIG = {
         yAxisTitle: 'Value (lux)',
         lineColor: '#17BECF',
     },
-    [DataType.GROWTH]: {
-        elementId: 'growth-chart',
-        title: 'Growth Progress',
-        yAxisTitle: 'Value (%)',
-        lineColor: '#17BECF',
-        yAxisRange: [0, 100],
-    },
 }
 
 export function initRealTimeMonitoring() {
@@ -46,7 +39,6 @@ export function initRealTimeMonitoring() {
         [DataType.HUMIDITY]: document.getElementById('humidity-chart'),
         [DataType.SOIL_MOISTURE]: document.getElementById('soil-chart'),
         [DataType.LIGHT]: document.getElementById('light-chart'),
-        [DataType.GROWTH]: document.getElementById('growth-chart'),
     }
 
     // Initialize all charts
@@ -101,10 +93,6 @@ export function initRealTimeMonitoring() {
     plantStore.subscribe(
         DataType.LIGHT,
         createSubscriptionHandler(DataType.LIGHT, charts[DataType.LIGHT])
-    )
-    plantStore.subscribe(
-        DataType.GROWTH,
-        createSubscriptionHandler(DataType.GROWTH, charts[DataType.GROWTH])
     )
 
     // Add a listener to radio buttons that change the time range
