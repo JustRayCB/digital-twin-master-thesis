@@ -84,8 +84,75 @@ The internal state of the plant is defined as $ I(t) = {G(t), C(t)} $ where:
 - *Global Coloring*: Measured in RGB, it is the color of the plant. 
     $C(t) in [0, 255]$  #highlight(fill: aqua)[Check if it is really relevant]
 
-The state of the digital twin is then defined as $ S(t)$ as a function of the state of the environment and the internal state of the plant:
-$ S(t) = f(E(t), I(t)) $
+The state of the digital twin is then defined as $ S(t)$ as a function of the state of the environment and the internal state of the plant: 
+$ S(t) = f(E(t), I(t)) $ where: 
+- $f$ is a function that maps the state of the environment and the internal state of the plant to the state of the digital twin. 
+- $S(t)$ is the state of the digital twin at time $t$. 
+- $E(t)$ is the state of the environment at time $t$. 
+- $I(t)$ is the internal state of the plant at time $t$. 
+
+=== Data Collection
+
+In order to make predictions about the behavior of the plant, create simulations and to 
+make decisions, data *collection*, data *processing*, data *storage* and data
+*analysis* are an important part of the digital twin system.
+
+The data collection is the process of collecting data from the sensors that are installed around the physical object.
+The data is collected in real-time via *IoT* sensors and is then sent to the digital twin system. 
+The following sensors are used to collect data from the plant:
+- *Temperature & Humidity Sensor*: DHT22 sensor that is used to measure the temperature and humidity of the environment. 
+- *Soil Moisture Sensor*: STEMMA Capacitive soil moisture sensor that is used to measure the moisture of the soil.  
+- *Light Intensity Sensor*: BH1750 sensor that is used to measure the light intensity of the environment. 
+- *Camera*: Raspberry Pi camera that is used to capture the image of the plant. The image is then processed using 
+    image processing algorithms to extract the color of the plant, or othter relevant features.
+
+#highlight(fill: aqua)[TODO: Explain more deeply how the sensors communicate with the RPI]
+
+#highlight(fill: aqua)[
+    TODO: See Spectral imaging, multispectral imaging, hyperspectral imaging 
+    which are used of measures the reflextion of light from plant tissues (chlorophyll level, leaft structure).
+    See also Nomalized Difference Vegetation Index (NDVI) which is used to measure the health of the plant base 
+    on satellite or drone images.
+]
+
+/*
+* Mon module ML service aura besoin d'être une application FLASK afin de pouvoir être appelée via 
+* une API REST depuis l'application principale (web app).
+* J'aurais besoin de faire une classe pour évaluer l'état ou bien pour voir si des threshold sont atteints.
+*/
+
+=== How to handle the huge amount of data?
+
+While the time passes, the amount of data that is collected from the sensors
+will increase and it will be difficult to store, process and analyze all the data.
+Managing that flood of data, a few challenges might arise when implementing the Digital Twin system:
+- *Managing Cardinality*: The digital twin as small as it is now might become a huge system 
+    with a reasonable amount of sensors where each sensors might be measuring many different things 
+    (e.g temperature, humidity, light intensity, etc.). High cardinality means that the system will be 
+    managing a huge number of  *unique data streams*.
+    Traditional database (like RDBMS, often row-based) can become inefficient when dealing with 
+    millions of *unique time series*. Finding and analyzing data for just *one specific metric* accross time 
+    can become slow and inefficient. Timeseries databases (like InfluxDB, TimescaleDB, etc.) are designed to handle 
+    hight cardinality and store time series data column-wise.
+- *Managing Volume*: The digital twin system might be collecting data sensors every second or even 
+    every millisecond. Keeping every single data point for a long period of time can become expensive storage-wise. 
+    One solution that we might use is to store the data in a *compressed format* or to use a *data retention policy*
+    to delete old data that is not needed anymore. This means that we will keep the data for a certain period of time 
+    and then delete it or summarize it (instead of second by second, we can keep the data every minute or every hour).
+    This is called *downsampling* and it is a common practice in timeseries databases.
+    - Note that Time-series database also have built-in compression algorithms that can be used to reduce the size of the data. 
+- *Managing Velocity*: The digital twin system will be collecting data in real-time from the sensors.
+    This means that the data will be flowing into the system at a high speed and it will be difficult to process 
+    all the data in real-time. One solution that we might use is to use a *streaming platform* (like Spark Streaming)
+    to handle the data flow and to process the data in real-time. This means that we will be able 
+    to process the data as it is generated and to make decisions based on the data in real-time. 
+
+
+
+
+
+
+
 
 
 

@@ -14,7 +14,7 @@ Analyser la qualités des modèles ?
 Difficultés sur l'implémentation/architecture. e.g fonctionne si 10 capteurs mais pas plus
 Comment gere tous ce qui à au dessus, pour éviter de tous stocker
 
-Captuer plus haut niveau (couleur, hauteur, comment faire pour analyser la santé, juger )
+Capteur plus haut niveau (couleur, hauteur, comment faire pour analyser la santé, juger )
 => Recherche
 
 Proposition d'idée, capteurs.
