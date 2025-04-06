@@ -144,14 +144,14 @@ class DBTimestampQuery:
     data_type : The type of data to query.
     """
 
+    data_type: str
     from_timestamp: float
     to_timestamp: float
-    data_type: str
 
     def __post_init__(self):
+        self.data_type = str(self.data_type)
         self.from_timestamp = float(self.from_timestamp)
         self.to_timestamp = float(self.to_timestamp)
-        self.data_type = str(self.data_type)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__)
@@ -169,7 +169,10 @@ class DBTimestampQuery:
     @staticmethod
     def validate_json(json_data: str) -> bool:
         try:
-            data = json.loads(json_data)
+            if isinstance(json_data, str):
+                data = json.loads(json_data)
+            elif isinstance(json_data, dict):
+                data = json_data
             assert all(
                 key in data for key in DBTimestampQuery.__annotations__.keys()
             ), "Missing keys in JSON data"
@@ -182,5 +185,6 @@ class DBTimestampQuery:
                 t.short_name for t in MQTTTopics if t != MQTTTopics._PREFIX_SENSOR
             ], f"Topic {data['topic']} is not a valid MQTT topic"
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Error validating JSON data: {e}")
             return False
