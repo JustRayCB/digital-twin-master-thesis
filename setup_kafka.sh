@@ -7,7 +7,7 @@ KAFKA_DIR="/opt/kafka"
 KAFKA_TARBALL="kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz"
 KAFKA_DOWNLOAD_URL="https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/${KAFKA_TARBALL}"
 JAVA_PACKAGE="default-jdk"
-DEPENDENCIES="net-tools jq"
+DEPENDENCIES="net-tools jq netcat-traditional"
 DATA_DIR="/var/kafka-logs"
 
 # Update and install Java
@@ -15,7 +15,7 @@ echo "Updating system and installing Dependencies (Java, net-tools, jq)..."
 sudo apt-get update -y
 sudo apt-get upgrade -y
 sudo apt-get install -y $JAVA_PACKAGE
-sudo apt-get install -y "$DEPENDENCIES"
+sudo apt-get install -y $DEPENDENCIES
 
 # Check if Java is installed
 if ! java -version &>/dev/null; then
@@ -42,6 +42,12 @@ sudo mkdir -p $KAFKA_DIR
 echo "Creating Data directories..."
 sudo mkdir -p $DATA_DIR
 sudo chmod 777 $DATA_DIR # Ensure proper permissions
+
+echo "Creating kafka user"
+sudo useradd -r -d /opt/kafka -s /bin/false kafka
+sudo chown -R kafka:kafka $KAFKA_DIR 
+sudo chown -R kafka:kafka $DATA_DIR 
+
 
 # Download Kafka
 echo "Downloading Kafka version $KAFKA_VERSION..."
@@ -109,7 +115,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(whoami)
+User=kafka
+Group=kafka
 Environment="KAFKA_HEAP_OPTS=-Xmx512M -Xms512M"
 ExecStart=${KAFKA_DIR}/bin/kafka-server-start.sh ${KAFKA_DIR}/config/kraft/server.properties
 ExecStop=${KAFKA_DIR}/bin/kafka-server-stop.sh
