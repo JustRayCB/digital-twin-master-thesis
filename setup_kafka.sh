@@ -80,9 +80,10 @@ controller.quorum.voters=1@localhost:9093
 controller.listener.names=CONTROLLER
 
 # Listener configurations
-listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093
-advertised.listeners=PLAINTEXT://localhost:9092
-listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+listeners=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092,CONTROLLER://localhost:9093
+advertised.listeners=PLAINTEXT://192.168.129.7:9092,EXTERNAL://80.200.51.216:19092
+listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+inter.broker.listener.name=PLAINTEXT
 
 # Log directory
 log.dirs=$DATA_DIR
@@ -93,9 +94,9 @@ default.replication.factor=1
 offsets.topic.replication.factor=1
 transaction.state.log.replication.factor=1
 transaction.state.log.min.isr=1
-auto.create.topics.enable=false
-# Keep logs for 7 days
-log.retention.hours=168
+auto.create.topics.enable=true
+# Keep logs for 2 days
+log.retention.hours=48
 EOF
 
 # num.network.threads=3

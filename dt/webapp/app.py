@@ -140,7 +140,7 @@ def setup_bridge():
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
     # mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
     msg_client: MessagingService = KafkaService(
-        bootstrap_servers="83.134.103.194:9092", client_id=unique_id
+        bootstrap_servers="192.168.129.7:9092", client_id=unique_id
     )
     if not msg_client.connect():
         logger.error("Failed to connect to Messaging Service's broker")

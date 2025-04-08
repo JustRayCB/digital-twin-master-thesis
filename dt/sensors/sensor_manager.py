@@ -68,7 +68,7 @@ class SensorManager:
                 self.messaging_service.publish(
                     topic.processed, data[sensor.name]  # TODO: replace processed with raw
                 )  # Publish the data to whoever is subscribed to the topic
-                self.logger.info(f"Published data from {sensor_name} to {topic}.")
+                self.logger.info(f"Published data from {sensor_name} to {topic.processed}.")
                 self.logger.debug(f"Data: {data[sensor.name]}")
 
         return data
