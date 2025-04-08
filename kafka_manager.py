@@ -26,6 +26,8 @@ import os
 import subprocess
 import sys
 
+from dt.communication import Topics
+
 # Configuration
 KAFKA_DIR = "/opt/kafka"  # Match your installation directory
 KAFKA_BOOTSTRAP_SERVER = "localhost:9092"
@@ -186,6 +188,16 @@ class KafkaManager:
         print(f"Configuration for topic '{topic_name}' updated successfully.")
         return output
 
+    def setup_kafka(self):
+        """Setup Kafka with default topics and configurations"""
+        for topic in Topics.list_topics():
+            self.create_topic(topic_name=topic.raw, partitions=2, replication_factor=1)
+            self.create_topic(topic_name=topic.processed, partitions=2, replication_factor=1)
+        self.create_topic(topic_name="alerts", partitions=1, replication_factor=1)
+        self.create_topic(topic_name="commands", partitions=1, replication_factor=1)
+        self.create_topic(topic_name="commands-response", partitions=1, replication_factor=1)
+        self.create_topic(topic_name="health-status", partitions=1, replication_factor=1)
+
 
 def parse_config_option(config_str):
     """Parse key=value config options into a dictionary"""
@@ -242,6 +254,8 @@ def parse_arguments():
     config_parser.add_argument("--add", nargs="+", help="Add configuration in format key=value")
     config_parser.add_argument("--delete", nargs="+", help="Delete configuration keys")
 
+    conifg_parser = subparsers.add_parser("setup", help="Setup Kafka")
+
     return parser.parse_args()
 
 
@@ -276,6 +290,11 @@ def main():
         add_config = parse_config_option(args.add) if args.add else None
         delete_config = args.delete if args.delete else None
         manager.modify_config(args.topic, add_config, delete_config)
+
+    elif args.command == "setup":
+        # Setup Kafka with default topics
+        manager.setup_kafka()
+        print("Kafka setup completed with default topics.")
 
 
 if __name__ == "__main__":
