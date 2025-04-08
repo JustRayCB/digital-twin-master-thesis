@@ -28,7 +28,7 @@ class SensorManager:
 
     def add_sensor(self, sensor: Sensor) -> None:
         # TODO: Bind the sensor the the Database
-        self.bind_sensor(sensor)
+        # self.bind_sensor(sensor)
         self.sensors[sensor.name] = sensor
         self.logger.info(f"Added sensor {sensor.name} to the SensorManager.")
 
