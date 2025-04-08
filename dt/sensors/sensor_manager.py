@@ -1,6 +1,7 @@
 import requests
 
-from dt.communication import MQTTClient, MQTTTopics
+from dt.communication import (KafkaService, MessagingService, MQTTService,
+                              Topics)
 from dt.utils import SensorData, SensorDataClass
 from dt.utils.logger import get_logger
 
@@ -19,8 +20,8 @@ class SensorManager:
 
     def __init__(self) -> None:
         self.sensors: dict[str, Sensor] = {}
-        self.mqtt_client = MQTTClient(id="sensor_manager")
-        self.mqtt_client.connect()
+        self.messaging_service: MessagingService = KafkaService(client_id="sensor_manager")
+        self.messaging_service.connect()
 
         self.logger = get_logger(__name__)
         self.logger.info("SensorManager initialized.")
@@ -63,15 +64,15 @@ class SensorManager:
         for sensor_name, sensor in self.sensors.items():
             if sensor.needs_data():
                 data[sensor.name] = sensor.read()
-                mqtt_topic: MQTTTopics = sensor.mqtt_topic
-                self.mqtt_client.publish(
-                    mqtt_topic, data[sensor.name]
+                topic: Topics = sensor.topic
+                self.messaging_service.publish(
+                    topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
-                self.logger.info(f"Published data from {sensor_name} to {mqtt_topic}.")
+                self.logger.info(f"Published data from {sensor_name} to {topic}.")
                 self.logger.debug(f"Data: {data[sensor.name]}")
 
         return data
 
     def __del__(self):
-        self.logger.info("Disconnecting MQTT client in SensorManager.")
-        self.mqtt_client.disconnect()
+        self.logger.info("Disconnecting Messaging Service client in SensorManager.")
+        self.messaging_service.disconnect()

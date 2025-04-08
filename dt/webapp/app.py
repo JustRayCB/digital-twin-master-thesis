@@ -1,5 +1,7 @@
 import sys
 
+from dt.communication.messaging_service import KafkaService, MessagingService
+
 sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
@@ -9,7 +11,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import MQTTClient, MQTTTopics
+from dt.communication import MQTTService, Topics
 from dt.utils import SensorData, get_logger
 from dt.utils.dataclasses import DBTimestampQuery
 
@@ -119,56 +121,61 @@ def disconnect():
     logger.info(f"Client disconnected: {request.sid}")  # pyright: ignore[]
 
 
-# Handle MQTT message from SensorManager and forward to web client via socketio
-def forward_to_socketio(topic: MQTTTopics):
+# Handle message from SensorManager and forward to web client via socketio
+def forward_to_socketio(topic: Topics):
     def callback(payload: SensorData):
         value = payload.value
         time = payload.timestamp
         # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
         socketio_topic = topic.split("/")[-1]  # Get the last part of the topic (sensor's data)
-        logger.info(f"Received message from MQTT: {value} at {time}")
+        logger.info(f"Received message from broker: {value} at {time}")
         socketio.emit(socketio_topic, payload.shrink_data())
 
     return callback
 
 
-def setup_mqtt_bridge():
+def setup_bridge():
     global connection_status
     # Generate a unique client ID to prevent conflicts
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
     # mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
-    mqtt_client = MQTTClient(hostname="83.134.103.194", id=unique_id)
-    connection_status = mqtt_client.connect()
+    msg_client: MessagingService = KafkaService(
+        bootstrap_servers="83.134.103.194:9092", client_id=unique_id
+    )
+    if not msg_client.connect():
+        logger.error("Failed to connect to Messaging Service's broker")
+        return
+    connection_status = True
 
     # Subscribe to topics
-    mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.SOIL_MOISTURE))
-    mqtt_client.subscribe(MQTTTopics.TEMPERATURE, forward_to_socketio(MQTTTopics.TEMPERATURE))
-    mqtt_client.subscribe(MQTTTopics.HUMIDITY, forward_to_socketio(MQTTTopics.HUMIDITY))
-    mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_socketio(MQTTTopics.LIGHT_INTENSITY))
-    mqtt_client.subscribe(MQTTTopics.CAMERA_IMAGE, forward_to_socketio(MQTTTopics.CAMERA_IMAGE))
+    msg_client.subscribe(Topics.SOIL_MOISTURE, forward_to_socketio(Topics.SOIL_MOISTURE))
+    msg_client.subscribe(Topics.TEMPERATURE, forward_to_socketio(Topics.TEMPERATURE))
+    msg_client.subscribe(Topics.HUMIDITY, forward_to_socketio(Topics.HUMIDITY))
+    msg_client.subscribe(Topics.SOIL_MOISTURE, forward_to_socketio(Topics.LIGHT_INTENSITY))
+    msg_client.subscribe(Topics.CAMERA_IMAGE, forward_to_socketio(Topics.CAMERA_IMAGE))
 
     # Return the client so it doesn't go out of scope
-    return mqtt_client
+    return msg_client
 
 
 if __name__ == "__main__":
     # TODO: Make queries to the database to get the latest data for the dashboard of data from a specific time to now
 
-    # Only setup MQTT in the child process when using debug mode
+    # Only setup bridge in the child process when using debug mode
     import os
 
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     debug_mode = True
 
-    # Store the MQTT client to prevent it from being garbage collected
-    mqtt_client = None
+    # Store the Messaging Service's client to prevent it from being garbage collected
+    msg_client = None
 
     if debug_mode and in_reloader:
         # Only setup in child process in debug mode
-        mqtt_client = setup_mqtt_bridge()
+        msg_client = setup_bridge()
     elif not debug_mode:
         # Setup normally in production mode
-        mqtt_client = setup_mqtt_bridge()
+        msg_client = setup_bridge()
 
     # Run the Flask app
     socketio.run(app, debug=debug_mode, host="127.0.0.1", port=5000)

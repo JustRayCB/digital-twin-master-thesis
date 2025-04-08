@@ -1,1 +1,1 @@
-from .storage import Storage
+from .storage import InfluxDBStorage, SQLStorage, Storage

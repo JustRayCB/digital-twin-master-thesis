@@ -1,7 +1,7 @@
 import numpy as np
 from typing_extensions import override
 
-from dt.communication import MQTTTopics
+from dt.communication import Topics
 from dt.sensors.kinds.base_sensor import Sensor
 from dt.utils.logger import get_logger
 
@@ -66,8 +66,8 @@ class MockMoistureSensor(Sensor):
 
     @property
     @override
-    def mqtt_topic(self) -> MQTTTopics:
-        return MQTTTopics.SOIL_MOISTURE
+    def topic(self) -> Topics:
+        return Topics.SOIL_MOISTURE
 
     @override
     def read_sensor(self) -> float:

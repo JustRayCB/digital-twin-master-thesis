@@ -3,14 +3,14 @@ from dataclasses import dataclass
 
 from typing_extensions import Union
 
-from dt.communication.topics import MQTTTopics
+from dt.communication.topics import Topics
 
 
 @dataclass
 class SensorData:
     """Represents the typical data structure of a sensor data.
     It is used to store the data read from the sensors.
-    It is also used to send the data via MQTT to the web application and the database.
+    It is also used to send the data via Messaging Service to the web application and the database.
 
     Attributes
     ----------
@@ -24,17 +24,36 @@ class SensorData:
     timestamp: float
     value: float
     unit: str
-    topic: MQTTTopics
+    topic: Topics
 
     def __post_init__(self):
         self.sensor_id = int(self.sensor_id)
         self.timestamp = float(self.timestamp)
         self.value = float(self.value)
         self.unit = str(self.unit)
-        self.topic = MQTTTopics(self.topic)
+        self.topic = Topics(self.topic)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__)
+
+    def to_dict(self) -> dict:
+        return {
+            "sensor_id": self.sensor_id,
+            "timestamp": self.timestamp,
+            "value": self.value,
+            "unit": self.unit,
+            "topic": str(self.topic),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            sensor_id=data["sensor_id"],
+            timestamp=data["timestamp"],
+            value=data["value"],
+            unit=data["unit"],
+            topic=Topics(data["topic"]),
+        )
 
     @classmethod
     def from_json(cls, json_data: Union[str, dict]):
@@ -56,7 +75,7 @@ class SensorData:
     @property
     def data_type(self):
         """
-        Returns the last part of the MQTT topic (sensor's data)
+        Returns the last part of the topic (sensor's data)
         """
         return self.topic.short_name
 
@@ -72,7 +91,7 @@ class SensorData:
             assert isinstance(data["value"], (int, float)), "value must be a float"
             assert isinstance(data["unit"], str), "unit must be a str"
             assert isinstance(data["topic"], str), "topic must be a str"
-            # assert data["topic"] in MQTTTopics.__members__, "topic must be a valid MQTT topic"
+            # assert data["topic"] in Topics.__members__, "topic must be a valid messaging service topic"
             return True
         except Exception:
             return False
@@ -182,8 +201,8 @@ class DBTimestampQuery:
             assert isinstance(data["to_timestamp"], (int, float)), "to_timestamp must be a float"
             assert isinstance(data["data_type"], str), "data_type must be a str"
             assert data["data_type"] in [
-                t.short_name for t in MQTTTopics if t != MQTTTopics._PREFIX_SENSOR
-            ], f"Topic {data['topic']} is not a valid MQTT topic"
+                t.short_name for t in Topics if t != Topics._PREFIX_SENSOR
+            ], f"Topic {data['topic']} is not a valid messaging service topic"
             return True
         except Exception as e:
             print(f"Error validating JSON data: {e}")

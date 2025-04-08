@@ -3,42 +3,43 @@ import uuid
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from dt.communication import MQTTClient, MQTTTopics
-from dt.data.database.storage import Storage
+from dt.communication import MessagingService, Topics
+from dt.communication.messaging_service import KafkaService
+from dt.data.database import SQLStorage, Storage
 from dt.utils import SensorData, SensorDataClass, get_logger
 from dt.utils.dataclasses import DBTimestampQuery
 
 app = Flask(__name__)
 CORS(app)
 logger = get_logger(__name__)
-storage = Storage()
+storage: Storage = SQLStorage()
 
 
-# Handle MQTT message from SensorManager and forward to web client via socketio
+# Handle Messaging Service's message from SensorManager and forward to web client via socketio
 def forward_to_database(payload: SensorData):
     value = payload.value
     time = payload.timestamp
-    logger.info(f"Received message from MQTT: {value} at {time}")
+    logger.info(f"Received message from Broker: {value} at {time}")
     storage.insert_data(payload)
 
 
-def setup_mqtt_bridge():
-    logger.info("Setting up MQTT bridge")
+def setup_bridge():
+    logger.info("Setting up bridge")
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
-    mqtt_client = MQTTClient(hostname="127.0.0.1", id=unique_id)
-    if not mqtt_client.connect():
-        logger.error("Failed to connect to MQTT broker")
+    client: MessagingService = KafkaService(bootstrap_servers="localhost:9092", client_id=unique_id)
+    if not client.connect():
+        logger.error("Failed to connect to Messaging Service's broker")
         return
 
     # Subscribe to topics
-    mqtt_client.subscribe(MQTTTopics.SOIL_MOISTURE, forward_to_database)
-    mqtt_client.subscribe(MQTTTopics.TEMPERATURE, forward_to_database)
-    mqtt_client.subscribe(MQTTTopics.HUMIDITY, forward_to_database)
-    mqtt_client.subscribe(MQTTTopics.LIGHT_INTENSITY, forward_to_database)
-    mqtt_client.subscribe(MQTTTopics.CAMERA_IMAGE, forward_to_database)
+    client.subscribe(Topics.SOIL_MOISTURE, forward_to_database)
+    client.subscribe(Topics.TEMPERATURE, forward_to_database)
+    client.subscribe(Topics.HUMIDITY, forward_to_database)
+    client.subscribe(Topics.LIGHT_INTENSITY, forward_to_database)
+    client.subscribe(Topics.CAMERA_IMAGE, forward_to_database)
 
     # Return the client so it doesn't go out of scope
-    return mqtt_client
+    return client
 
 
 @app.route("/bind_sensor", methods=["POST"])
@@ -115,11 +116,11 @@ if __name__ == "__main__":
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     debug_mode = True
 
-    mqtt_client = None
+    msg_client = None
 
     if debug_mode and in_reloader:
-        mqtt_client = setup_mqtt_bridge()
+        msg_client = setup_bridge()
     elif not debug_mode:
-        mqtt_client = setup_mqtt_bridge()
+        msg_client = setup_bridge()
 
     app.run(host="127.0.0.1", port=5001, debug=debug_mode)

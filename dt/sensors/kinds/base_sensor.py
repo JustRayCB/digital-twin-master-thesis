@@ -1,7 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 
-from dt.communication import MQTTTopics
+from dt.communication import Topics
 from dt.utils import SensorData
 from dt.utils.dataclasses import SensorDataClass
 
@@ -44,15 +44,15 @@ class Sensor(ABC):
 
     @property
     @abstractmethod
-    def mqtt_topic(self) -> MQTTTopics:
+    def topic(self) -> Topics:
         """
         Returns
         -------
         str
-            The MQTT topic where the sensor data should be published.
+            The topic where the sensor data should be published.
 
         """
-        raise NotImplementedError(f"Property mqtt_topic not implemented for {self.name}")
+        raise NotImplementedError(f"Property topic not implemented for {self.name}")
 
     def needs_data(self) -> bool:
         """Check if the sensor needs to be read.
@@ -92,7 +92,7 @@ class Sensor(ABC):
             timestamp=current_time,
             value=processed_value,
             unit=self.unit,
-            topic=self.mqtt_topic,
+            topic=self.topic,
         )
 
         return data

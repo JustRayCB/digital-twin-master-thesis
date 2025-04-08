@@ -1,13 +1,69 @@
-# dt/data/database/storage.py
 import sqlite3
 import threading
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Optional
 
-from dt.communication import MQTTClient, MQTTTopics
-from dt.sensors import Sensor
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
+from typing_extensions import override
+
+from dt.communication import Topics
 from dt.utils import SensorData, SensorDataClass, get_logger
 
 
-class Storage:
+class Storage(ABC):
+    """Abstract base class for storage implementations"""
+
+    @abstractmethod
+    def create_table(self) -> None:
+        """Initialize storage schema"""
+        pass
+
+    @abstractmethod
+    def insert_data(self, data: SensorData) -> None:
+        """Insert a single sensor data reading"""
+        pass
+
+    @abstractmethod
+    def insert_datas(self, datas: dict[str, SensorData]) -> None:
+        """Insert multiple sensor data readings"""
+        pass
+
+    @abstractmethod
+    def get_data(self, sensor_id: int, limit: int = 10) -> list[SensorData]:
+        """Get the last n data points for a sensor"""
+        pass
+
+    @abstractmethod
+    def get_data_from_timestamp(
+        self, data_type: str, from_timestamp: float, to_timestamp: float
+    ) -> list[SensorData]:
+        """Get sensor data within a time range"""
+        pass
+
+    @abstractmethod
+    def get_sensor_id(self, sensor_name: str) -> int:
+        """Get the id of a sensor by name"""
+        pass
+
+    @abstractmethod
+    def add_sensor(self, sensor: SensorDataClass) -> int:
+        """Register a new sensor"""
+        pass
+
+    @abstractmethod
+    def bind_sensors(self, sensor: SensorDataClass) -> None:
+        """Bind a sensor object to its database representation"""
+        pass
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close any open connections"""
+        pass
+
+
+class SQLStorage(Storage):
     def __init__(self) -> None:
         self.db_path = "plant_dt.db"
         # Create a single connection
@@ -24,6 +80,7 @@ class Storage:
         # Initialize table
         self.create_table()
 
+    @override
     def create_table(self) -> None:
         """Create the table to store the data"""
         # Acquire lock for database operation
@@ -40,6 +97,7 @@ class Storage:
             except Exception as e:
                 self.logger.error(f"Error creating database tables: {e}")
 
+    @override
     def insert_data(self, data: SensorData) -> None:
         """Insert read data into the database
 
@@ -70,6 +128,7 @@ class Storage:
             except Exception as e:
                 self.logger.error(f"Error inserting data: {e}")
 
+    @override
     def insert_datas(self, datas: dict[str, SensorData]) -> None:
         """Insert read data into the database
 
@@ -111,7 +170,7 @@ class Storage:
                         value=data[2],
                         unit=data[3],
                         timestamp=data[4],
-                        topic=MQTTTopics.from_short_name(data[5]),
+                        topic=Topics.from_short_name(data[5]),
                     )
                     for data in datas
                 ]
@@ -120,6 +179,7 @@ class Storage:
                 self.logger.error(f"Error getting data: {e}")
                 return []
 
+    @override
     def get_data_from_timestamp(
         self, data_type: str, from_timestamp: float, to_timestamp: float
     ) -> list[SensorData]:
@@ -154,7 +214,7 @@ class Storage:
                         value=data[2],
                         unit=data[3],
                         timestamp=data[4],
-                        topic=MQTTTopics.from_short_name(data[5]),
+                        topic=Topics.from_short_name(data[5]),
                     )
                     for data in datas
                 ]
@@ -163,6 +223,7 @@ class Storage:
                 self.logger.error(f"Error getting data: {e}")
                 return []
 
+    @override
     def get_sensor_id(self, sensor_name: str) -> int:
         """Get the id of a sensor
 
@@ -190,6 +251,7 @@ class Storage:
                 self.logger.error(f"Error getting sensor ID: {e}")
                 return -1
 
+    @override
     def add_sensor(self, sensor: SensorDataClass) -> int:
         """Add a sensor to the database
 
@@ -220,6 +282,7 @@ class Storage:
                 self.logger.error(f"Error adding sensor: {e}")
                 return -1
 
+    @override
     def bind_sensors(self, sensor: SensorDataClass) -> None:
         """Bind the sensor to the database
 
@@ -238,6 +301,7 @@ class Storage:
             assert sensor.sensor_id > 0, "Error Adding sensor to the DB"
             self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.sensor_id}")
 
+    @override
     def close(self):
         """Close the database connection"""
         with self.db_lock:
@@ -246,13 +310,234 @@ class Storage:
                 self.logger.info("Database connection closed")
 
 
-# if __name__ == "__main__":
-#     try:
-#         storage = Storage()
-#         # Keep the main thread alive
-#         while True:
-#             sleep(1)
-#     except KeyboardInterrupt:
-#         # Clean shutdown
-#         storage.close()
-#         print("Storage service shut down gracefully")
+class InfluxDBStorage(Storage):
+    def __init__(
+        self,
+        url: str = "http://localhost:8086",
+        token: str = "my-token",
+        org: str = "ulb",
+        bucket: str = "plant_monitoring",
+    ) -> None:
+        """
+        Initialize the InfluxDB storage client
+
+        Parameters
+        ----------
+        url : str
+            InfluxDB server URL
+        token : str
+            Authentication token
+        org : str
+            Organization name
+        bucket : str
+            Bucket name for storing sensor data
+        """
+        self.url = url
+        self.token = token
+        self.org = org
+        self.bucket = bucket
+
+        # Create a client
+        self.client = InfluxDBClient(url=url, token=token, org=org)
+        self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
+        self.query_api = self.client.query_api()
+
+        # For sensor ID management, we need a separate mapping or table
+        # Since InfluxDB doesn't handle this naturally
+        self.sensor_id_mapping = {}
+        self.next_sensor_id = 1
+        self.id_lock = threading.Lock()
+
+        self.logger = get_logger(__name__)
+
+    def create_table(self) -> None:
+        """Initialize storage schema - not needed for InfluxDB as it's schemaless"""
+        # With InfluxDB, buckets and measurements are created on write
+        # We might need to create the bucket if it doesn't exist
+        try:
+            buckets_api = self.client.buckets_api()
+            existing_buckets = [b.name for b in buckets_api.find_buckets().buckets]
+
+            if self.bucket not in existing_buckets:
+                org_id = self.client.organizations_api().find_organizations()[0].id
+                buckets_api.create_bucket(bucket_name=self.bucket, org_id=org_id)
+                self.logger.info(f"Created bucket {self.bucket}")
+            else:
+                self.logger.info(f"Using existing bucket {self.bucket}")
+
+        except Exception as e:
+            self.logger.error(f"Error initializing InfluxDB: {e}")
+
+    def insert_data(self, data: SensorData) -> None:
+        """Insert a single sensor reading into InfluxDB"""
+        self.logger.info(f"Inserting data: {data}")
+
+        try:
+            # Create a point with proper measurement, tags and fields
+            point = Point("sensor_data")
+
+            # Add tags for querying
+            point = point.tag("sensor_id", str(data.sensor_id)).tag("data_type", data.data_type)
+
+            # Add fields (actual values)
+            point = point.field("value", data.value).field("unit", data.unit)
+
+            # Set timestamp
+            point = point.time(datetime.fromtimestamp(data.timestamp))
+
+            # Write to InfluxDB
+            self.write_api.write(bucket=self.bucket, record=point)
+
+            self.logger.info(f"Successfully inserted data for sensor {data.sensor_id}")
+
+        except Exception as e:
+            self.logger.error(f"Error inserting data: {e}")
+
+    def insert_datas(self, datas: dict[str, SensorData]) -> None:
+        """Insert multiple sensor readings at once"""
+        for data in datas.values():
+            self.insert_data(data)
+
+    def get_data(self, sensor_id: int, limit: int = 10) -> list[SensorData]:
+        """Get the most recent data points for a specific sensor"""
+        try:
+            # Construct Flux query to get latest readings for a sensor
+            query = f"""
+                from(bucket: "{self.bucket}")
+                    |> range(start: -30d)
+                    |> filter(fn: (r) => r._measurement == "sensor_data")
+                    |> filter(fn: (r) => r.sensor_id == "{sensor_id}")
+                    |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+                    |> sort(columns: ["_time"], desc: true)
+                    |> limit(n: {limit})
+            """
+
+            tables = self.query_api.query(query, org=self.org)
+
+            if not tables:
+                return []
+
+            results = []
+            for table in tables:
+                for record in table.records:
+                    # Parse the record into a SensorData object
+                    data_type = record.values.get("data_type", "unknown")
+
+                    # Convert timestamp to epoch seconds for consistency
+                    timestamp = record.get_time().timestamp()
+
+                    results.append(
+                        SensorData(
+                            sensor_id=int(record.values.get("sensor_id")),
+                            value=record.values.get("value"),
+                            unit=record.values.get("unit", ""),
+                            timestamp=timestamp,
+                            topic=Topics.from_short_name(data_type),
+                        )
+                    )
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving data: {e}")
+            return []
+
+    def get_data_from_timestamp(
+        self, data_type: str, from_timestamp: float, to_timestamp: float
+    ) -> list[SensorData]:
+        """Get sensor data within a specific time range"""
+        try:
+            # Convert timestamps to RFC3339 format for Flux
+            from_time = datetime.fromtimestamp(from_timestamp).isoformat() + "Z"
+            to_time = datetime.fromtimestamp(to_timestamp).isoformat() + "Z"
+
+            query = f"""
+                from(bucket: "{self.bucket}")
+                    |> range(start: {from_time}, stop: {to_time})
+                    |> filter(fn: (r) => r._measurement == "sensor_data")
+                    |> filter(fn: (r) => r.data_type == "{data_type}")
+                    |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+            """
+
+            tables = self.query_api.query(query, org=self.org)
+
+            results = []
+            for table in tables:
+                for record in table.records:
+                    timestamp = record.get_time().timestamp()
+
+                    results.append(
+                        SensorData(
+                            sensor_id=int(record.values.get("sensor_id")),
+                            value=record.values.get("value"),
+                            unit=record.values.get("unit", ""),
+                            timestamp=timestamp,
+                            topic=Topics.from_short_name(data_type),
+                        )
+                    )
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving data by timestamp: {e}")
+            return []
+
+    def get_sensor_id(self, sensor_name: str) -> int:
+        """Get the ID for a sensor name"""
+        # InfluxDB doesn't have built-in key generation like SQL databases
+        # So we implement our own ID management
+        with self.id_lock:
+            # Check if we already have an ID for this sensor
+            if sensor_name in self.sensor_id_mapping:
+                return self.sensor_id_mapping[sensor_name]
+
+            # Otherwise return -1 to indicate it doesn't exist
+            return -1
+
+    def add_sensor(self, sensor: SensorDataClass) -> int:
+        """Register a new sensor and return its ID"""
+        with self.id_lock:
+            # Check if sensor already exists
+            if sensor.name in self.sensor_id_mapping:
+                return self.sensor_id_mapping[sensor.name]
+
+            # Assign a new ID
+            new_id = self.next_sensor_id
+            self.sensor_id_mapping[sensor.name] = new_id
+            self.next_sensor_id += 1
+
+            # Store sensor metadata as a special point
+            try:
+                point = (
+                    Point("sensors")
+                    .tag("sensor_id", str(new_id))
+                    .tag("name", sensor.name)
+                    .field("pin", sensor.pin)
+                    .field("read_interval", sensor.read_interval)
+                )
+
+                self.write_api.write(bucket=self.bucket, record=point)
+                self.logger.info(f"Added sensor {sensor.name} with ID {new_id}")
+                return new_id
+
+            except Exception as e:
+                self.logger.error(f"Error adding sensor: {e}")
+                return -1
+
+    def bind_sensors(self, sensor: SensorDataClass) -> None:
+        """Bind a sensor to its database representation"""
+        temp_id = self.get_sensor_id(sensor.name)
+        if temp_id > 0:  # Already exists
+            sensor.change_id(temp_id)
+            self.logger.info(f"Bound sensor {sensor.name} to existing ID {sensor.sensor_id}")
+        else:
+            temp_id = self.add_sensor(sensor)
+            sensor.change_id(temp_id)
+            assert sensor.sensor_id > 0, "Error Adding sensor to the DB"
+            self.logger.info(f"Created new sensor {sensor.name} with ID {sensor.sensor_id}")
+
+    def close(self) -> None:
+        """Close the InfluxDB client connection"""
+        if self.client:
+            self.client.close()
+            self.logger.info("InfluxDB connection closed")

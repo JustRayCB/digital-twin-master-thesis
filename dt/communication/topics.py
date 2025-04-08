@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class MQTTTopics(StrEnum):
+class Topics(StrEnum):
     """MQTT topics for communication between the modules"""
 
     _PREFIX_SENSOR = "dt/sensors/"
@@ -13,8 +13,8 @@ class MQTTTopics(StrEnum):
     CAMERA_IMAGE = _PREFIX_SENSOR + "camera_image"
 
     @classmethod
-    def from_short_name(cls, short_name: str) -> "MQTTTopics":
-        """Get the MQTT topic from the short name"""
+    def from_short_name(cls, short_name: str) -> "Topics":
+        """Get the topic from the short name"""
         return cls[short_name.upper()]
 
     @property
