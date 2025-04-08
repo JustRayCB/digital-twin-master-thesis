@@ -127,7 +127,7 @@ def forward_to_socketio(topic: Topics):
         value = payload.value
         time = payload.timestamp
         # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
-        socketio_topic = topic.split("/")[-1]  # Get the last part of the topic (sensor's data)
+        socketio_topic = topic.short_name  # Get the last part of the topic (sensor's data)
         logger.info(f"Received message from broker: {value} at {time}")
         socketio.emit(socketio_topic, payload.shrink_data())
 
@@ -148,11 +148,13 @@ def setup_bridge():
     connection_status = True
 
     # Subscribe to topics
-    msg_client.subscribe(Topics.SOIL_MOISTURE, forward_to_socketio(Topics.SOIL_MOISTURE))
-    msg_client.subscribe(Topics.TEMPERATURE, forward_to_socketio(Topics.TEMPERATURE))
-    msg_client.subscribe(Topics.HUMIDITY, forward_to_socketio(Topics.HUMIDITY))
-    msg_client.subscribe(Topics.SOIL_MOISTURE, forward_to_socketio(Topics.LIGHT_INTENSITY))
-    msg_client.subscribe(Topics.CAMERA_IMAGE, forward_to_socketio(Topics.CAMERA_IMAGE))
+    msg_client.subscribe(Topics.SOIL_MOISTURE.processed, forward_to_socketio(Topics.SOIL_MOISTURE))
+    msg_client.subscribe(Topics.TEMPERATURE.processed, forward_to_socketio(Topics.TEMPERATURE))
+    msg_client.subscribe(Topics.HUMIDITY.processed, forward_to_socketio(Topics.HUMIDITY))
+    msg_client.subscribe(
+        Topics.SOIL_MOISTURE.processed, forward_to_socketio(Topics.LIGHT_INTENSITY)
+    )
+    msg_client.subscribe(Topics.CAMERA_IMAGE.processed, forward_to_socketio(Topics.CAMERA_IMAGE))
 
     # Return the client so it doesn't go out of scope
     return msg_client

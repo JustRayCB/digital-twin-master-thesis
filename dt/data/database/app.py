@@ -32,11 +32,11 @@ def setup_bridge():
         return
 
     # Subscribe to topics
-    client.subscribe(Topics.SOIL_MOISTURE, forward_to_database)
-    client.subscribe(Topics.TEMPERATURE, forward_to_database)
-    client.subscribe(Topics.HUMIDITY, forward_to_database)
-    client.subscribe(Topics.LIGHT_INTENSITY, forward_to_database)
-    client.subscribe(Topics.CAMERA_IMAGE, forward_to_database)
+    client.subscribe(Topics.SOIL_MOISTURE.processed, forward_to_database)
+    client.subscribe(Topics.TEMPERATURE.processed, forward_to_database)
+    client.subscribe(Topics.HUMIDITY.processed, forward_to_database)
+    client.subscribe(Topics.LIGHT_INTENSITY.processed, forward_to_database)
+    client.subscribe(Topics.CAMERA_IMAGE.processed, forward_to_database)
 
     # Return the client so it doesn't go out of scope
     return client
