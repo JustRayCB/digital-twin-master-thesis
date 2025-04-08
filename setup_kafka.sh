@@ -41,13 +41,15 @@ sudo mkdir -p $KAFKA_DIR
 
 echo "Creating Data directories..."
 sudo mkdir -p $DATA_DIR
-sudo chmod 777 $DATA_DIR # Ensure proper permissions
 
 echo "Creating kafka user"
 sudo useradd -r -d /opt/kafka -s /bin/false kafka
-sudo chown -R kafka:kafka $KAFKA_DIR 
-sudo chown -R kafka:kafka $DATA_DIR 
-
+sudo chown -R kafka:kafka $KAFKA_DIR
+sudo chown -R kafka:kafka $DATA_DIR
+sudo chmod -R 755 $KAFKA_DIR
+sudo chmod -R 755 $DATA_DIR
+# Add your user to the kafka group
+sudo usermod -aG kafka $USER
 
 # Download Kafka
 echo "Downloading Kafka version $KAFKA_VERSION..."
