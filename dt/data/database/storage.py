@@ -516,7 +516,7 @@ class InfluxDBStorage(Storage):
                 from(bucket: "{self.bucket}")
                 |> range(start: -30d)
                 |> filter(fn: (r) => r._measurement == "sensors")
-                |> filter(fn: (r) => r.sensor_name == "{sensor_name}")
+                |> filter(fn: (r) => r.name == "{sensor_name}")
                 |> limit(n: 1)
                 """
 
@@ -524,7 +524,7 @@ class InfluxDBStorage(Storage):
 
                 for table in result:
                     for record in table.records:
-                        sensor_id = int(record.values.get("sensor_id", -1))
+                        sensor_id = int(record.values.get("id", -1))
                         if sensor_id > 0:
                             # Update the cache
                             self.sensor_id_mapping[sensor_name] = sensor_id
@@ -557,7 +557,7 @@ class InfluxDBStorage(Storage):
                 # Store sensor metadata as a point
                 point = (
                     Point("sensors")
-                    .tag("sensor_id", str(new_id))
+                    .tag("id", new_id)
                     .tag("name", sensor.name)
                     .field("pin", sensor.pin)
                     .field("read_interval", sensor.read_interval)
