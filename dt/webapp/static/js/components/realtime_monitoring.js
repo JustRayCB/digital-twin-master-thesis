@@ -45,6 +45,7 @@ export function initRealTimeMonitoring() {
     initPlots()
 
     const max_points = 10 // Max number of points to keep on the chart
+    let currentTimePeriod = '24h' // Default time period
 
     // Create a reusable subscription handler
     const createSubscriptionHandler = (dataType, chartElement) => {
@@ -57,21 +58,21 @@ export function initRealTimeMonitoring() {
                 if (!data.data) {
                     console.error('No data received for historical data')
                     // Revert to empty chart
-                    initPlot(chartConfig)
+                    initPlot(chartConfig, [], [], currentTimePeriod)
                     return
                 }
-                const xValues = data.data.map((item) => item.time)
+                const xValues = data.data.map((item) => new Date(item.time * 1000))
                 const yValues = data.data.map((item) => item.value)
-                initPlot(chartConfig, xValues, yValues)
+                initPlot(chartConfig, xValues, yValues, currentTimePeriod)
             } else {
                 Plotly.extendTraces(
                     chartElement,
                     {
-                        x: [[data.time]],
+                        x: [[new Date(data.time)]],
                         y: [[data.value]],
                     },
-                    [0],
-                    max_points
+                    [0]
+                    // max_points
                 )
             }
         }
@@ -100,6 +101,7 @@ export function initRealTimeMonitoring() {
     for (const button of radioButtons) {
         button.addEventListener('change', (event) => {
             const value = event.target.value
+            currentTimePeriod = value
             const range = getRange(value)
             updatePlotRanges(range)
         })
@@ -123,12 +125,15 @@ function initPlots() {
     })
 }
 
-function initPlot(config, xValues = [], yValues = []) {
+function initPlot(config, xValues = [], yValues = [], timePeriod = 'default') {
     const element = document.getElementById(config.elementId)
+
+    // Get appropriate time formatting based on current range
+    const xAxisConfig = getTimeFormat(timePeriod)
 
     const layout = {
         title: config.title,
-        xaxis: { title: 'Time' },
+        xaxis: xAxisConfig,
         yaxis: {
             title: config.yAxisTitle,
             range: config.yAxisRange,
@@ -150,6 +155,51 @@ function initPlot(config, xValues = [], yValues = []) {
 }
 
 /**
+ * Determine the appropriate time format for the x-axis based on the selected time period
+ * @param {string} timePeriod - The selected time period (1h, 24h, 7d, 30d)
+ * @returns {Object} - Plotly xaxis configuration
+ */
+function getTimeFormat(timePeriod) {
+    switch (timePeriod) {
+        case '1h':
+            return {
+                title: 'Time',
+                type: 'date',
+                tickformat: '%H:%M:%S', // Hours:Minutes:Seconds
+                // dtick: 60 * 10 * 1000, // Tick every 10 minutes WARNING: BUG SLOWS DOWN THE PAGE
+            }
+        case '24h':
+            return {
+                title: 'Time',
+                type: 'date',
+                tickformat: '%H:%M', // Hours:Minutes
+                // dtick: 60 * 60 * 2 * 1000, // Tick every 2 hours
+            }
+        case '7d':
+            return {
+                title: 'Date',
+                type: 'date',
+                tickformat: '%m-%d %H:%M', // Month-Day Hour:Minute
+                // dtick: 60 * 60 * 24 * 1000, // Tick every day
+            }
+        case '30d':
+            console.log('HERE4')
+            return {
+                title: 'Date',
+                type: 'date',
+                tickformat: '%m-%d', // Month-Day
+                // dtick: 60 * 60 * 24 * 5 * 1000, // Tick every 5 days
+            }
+        default:
+            return {
+                title: 'Time',
+                type: 'date',
+                tickformat: '%H:%M:%S',
+            }
+    }
+}
+
+/**
  * Get the start date based on the selected time period.
  * This function calculates the start date based on the current time and the selected time period.
  * @param {string} timePeriod - The time period for which to get the start date
@@ -160,6 +210,7 @@ function getRange(timePeriod) {
     let startDate
 
     switch (timePeriod) {
+        // NOTE: The *1000 is used to convert seconds to milliseconds as js Date uses milliseconds
         case '1h':
             startDate = new Date(now.getTime() - 60 * 60 * 1000) // 1 hour ago
             break

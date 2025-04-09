@@ -31,7 +31,7 @@ export function initPlantStatus() {
     plantStore.subscribe(DataType.TIME, (data) => {
         // Transform the timestamp to a human-readable format
         console.log(data.time)
-        const date = new Date(data.time * 1000)
+        const date = new Date(data.time)
         const hours = date.getHours().toString().padStart(2, '0')
         const minutes = date.getMinutes().toString().padStart(2, '0')
         const formatted_time = `${hours}:${minutes}`
@@ -87,7 +87,7 @@ function updateAlerts(alerts) {
     // Populate the alerts list with the new alerts
     alerts.forEach((alert) => {
         const alertItem = document.createElement('li')
-        const time = new Date(alert.time * 1000)
+        const time = new Date(alert.time)
         const fromattedTime = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`
         alertItem.textContent = `${alert.message} - ${fromattedTime}`
         alertsList.appendChild(alertItem)

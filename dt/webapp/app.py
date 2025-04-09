@@ -1,7 +1,5 @@
 import sys
 
-from dt.communication.messaging_service import KafkaService, MessagingService
-
 sys.dont_write_bytecode = True
 import uuid
 from datetime import datetime
@@ -11,7 +9,8 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import MQTTService, Topics
+from dt.communication import (KafkaService, MessagingService, MQTTService,
+                              Topics)
 from dt.utils import SensorData, get_logger
 from dt.utils.dataclasses import DBTimestampQuery
 
@@ -96,7 +95,12 @@ def get_sensor_data_from_timestamp():
     if not DBTimestampQuery.validate_json(request_data):
         logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
         return jsonify({"error": "Invalid JSON data"}), 400
+    # Convert the JSON data to a DBTimestampQuery object
+    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
+    db_query.js_to_py_timestamp()
+    request_data = db_query.to_json()
     db_url = "http://localhost:5001/data/timestamp"
+    print(f"Request data: {request_data}")
     response = requests.post(db_url, json=request_data)
     if response.status_code == 200:
         data = response.json()
@@ -129,6 +133,7 @@ def forward_to_socketio(topic: Topics):
         # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
         socketio_topic = topic.short_name  # Get the last part of the topic (sensor's data)
         logger.info(f"Received message from broker: {value} at {time}")
+        payload.py_to_js_timestamp()
         socketio.emit(socketio_topic, payload.shrink_data())
 
     return callback
@@ -140,7 +145,7 @@ def setup_bridge():
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
     # mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
     msg_client: MessagingService = KafkaService(
-        bootstrap_servers="192.168.129.7:9092", client_id=unique_id
+        bootstrap_servers="80.200.51.216:9092", client_id=unique_id
     )
     if not msg_client.connect():
         logger.error("Failed to connect to Messaging Service's broker")

@@ -150,8 +150,8 @@ class PlantDataStore {
             const historicalData = this.historicalData.get(dataType)
             const realtimeData = this.realtimeData.get(dataType)
 
-            if (!historicalData || !realtimeData) {
-                console.error(`No data found for ${dataType}`)
+            if (historicalData.length === 0) {
+                console.error(`No historical data found for ${dataType}`)
                 return
             }
 

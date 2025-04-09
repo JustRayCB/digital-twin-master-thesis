@@ -96,6 +96,14 @@ class SensorData:
         except Exception:
             return False
 
+    def py_to_js_timestamp(self):
+        """
+        Converts the timestamp from Python format to JavaScript format
+        NOTE: JavaScript uses milliseconds since epoch, while Python uses seconds since epoch
+        """
+        # Convert the timestamp from seconds to milliseconds
+        self.timestamp = self.timestamp * 1000
+
 
 @dataclass
 class SensorDataClass:
@@ -207,3 +215,11 @@ class DBTimestampQuery:
         except Exception as e:
             print(f"Error validating JSON data: {e}")
             return False
+
+    def js_to_py_timestamp(self):
+        """
+        Converts the timestamp from JavaScript format to Python format
+        """
+        # Convert the timestamp from milliseconds to seconds
+        self.from_timestamp = self.from_timestamp / 1000
+        self.to_timestamp = self.to_timestamp / 1000
