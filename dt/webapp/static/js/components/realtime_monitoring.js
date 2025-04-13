@@ -4,28 +4,28 @@ import { DataType, plantStore } from '../store.js'
 const CHART_CONFIG = {
     [DataType.TEMPERATURE]: {
         elementId: 'temp-chart',
-        title: 'Temperature',
-        yAxisTitle: 'Value (°C)',
+        title: { text: 'Temperature' },
+        yAxisTitle: { text: 'Value (°C)' },
         lineColor: '#17BECF',
     },
     [DataType.HUMIDITY]: {
         elementId: 'humidity-chart',
-        title: 'Humidity',
-        yAxisTitle: 'Value (%)',
+        title: { text: 'Humidity' },
+        yAxisTitle: { text: 'Value (%)' },
         lineColor: '#17BECF',
         yAxisRange: [0, 100],
     },
     [DataType.SOIL_MOISTURE]: {
         elementId: 'soil-chart',
-        title: 'Soil Moisture',
-        yAxisTitle: 'Value (%)',
+        title: { text: 'Soil Moisture' },
+        yAxisTitle: { text: 'Value (%)' },
         lineColor: '#17BECF',
         yAxisRange: [0, 100],
     },
     [DataType.LIGHT]: {
         elementId: 'light-chart',
-        title: 'Light Intensity',
-        yAxisTitle: 'Value (lux)',
+        title: { text: 'Light Intensity' },
+        yAxisTitle: { text: 'Value (lux)' },
         lineColor: '#17BECF',
     },
 }
@@ -55,7 +55,7 @@ export function initRealTimeMonitoring() {
                 // Get proper chart configuration based on data type
                 const chartConfig = getChartConfigForDataType(dataType)
 
-                if (!data.data) {
+                if (data.data.length === 0) {
                     console.error('No data received for historical data')
                     // Revert to empty chart
                     initPlot(chartConfig, [], [], currentTimePeriod)
@@ -132,7 +132,7 @@ function initPlot(config, xValues = [], yValues = [], timePeriod = 'default') {
     const xAxisConfig = getTimeFormat(timePeriod)
 
     const layout = {
-        title: config.title,
+        // title: config.title,
         xaxis: xAxisConfig,
         yaxis: {
             title: config.yAxisTitle,
@@ -163,36 +163,35 @@ function getTimeFormat(timePeriod) {
     switch (timePeriod) {
         case '1h':
             return {
-                title: 'Time',
+                title: { text: 'Time' },
                 type: 'date',
                 tickformat: '%H:%M:%S', // Hours:Minutes:Seconds
                 // dtick: 60 * 10 * 1000, // Tick every 10 minutes WARNING: BUG SLOWS DOWN THE PAGE
             }
         case '24h':
             return {
-                title: 'Time',
+                title: { text: 'Time' },
                 type: 'date',
                 tickformat: '%H:%M', // Hours:Minutes
                 // dtick: 60 * 60 * 2 * 1000, // Tick every 2 hours
             }
         case '7d':
             return {
-                title: 'Date',
+                title: { text: 'Date' },
                 type: 'date',
                 tickformat: '%m-%d %H:%M', // Month-Day Hour:Minute
                 // dtick: 60 * 60 * 24 * 1000, // Tick every day
             }
         case '30d':
-            console.log('HERE4')
             return {
-                title: 'Date',
+                title: { text: 'Date' },
                 type: 'date',
                 tickformat: '%m-%d', // Month-Day
                 // dtick: 60 * 60 * 24 * 5 * 1000, // Tick every 5 days
             }
         default:
             return {
-                title: 'Time',
+                title: { text: 'Time' },
                 type: 'date',
                 tickformat: '%H:%M:%S',
             }
