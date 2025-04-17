@@ -231,7 +231,7 @@ def process_sensor_batch(
                     float(np.std(recent_data[:, 0])) if N > 1 else 0.0,  # Std deviation
                     float(np.max(recent_data[:, 0])) if N > 0 else 0.0,  # Max
                     float(np.min(recent_data[:, 0])) if N > 0 else 0.0,  # Min
-                    float(new_values["timestamp"] % 86400),  # Time of day (cyclical)
+                    float(new_values.iloc[0]["timestamp"] % 86400),  # Time of day (cyclical)
                 ],
                 dtype=float,
             )
