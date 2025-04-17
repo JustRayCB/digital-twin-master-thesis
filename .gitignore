@@ -171,3 +171,4 @@ cython_debug/
 .pypirc
 .prettierrc
 connections.json
+path/to/HDFS/dir
