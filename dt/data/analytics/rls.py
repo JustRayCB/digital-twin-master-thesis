@@ -1,81 +1,35 @@
+"""
+Digital Twin Real-time Sensor Prediction Module using Recursive Least Squares (RLS).
+
+This module implements a Recursive Least Squares algorithm to predict sensor values
+in real-time from streaming data, providing a digital twin representation of
+environmental monitoring systems.
+"""
+
 import dataclasses
-import json
 import os
-import time
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, expr, from_json, struct
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, from_json
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
 from pyspark.sql.types import (ArrayType, FloatType, IntegerType, StringType,
                                StructField, StructType)
 
 from dt.communication.topics import Topics
 
-
-# Those two classes are taken out from https://www.waitingforcode.com/apache-spark-structured-streaming/making-applyinpandaswithstate-less-painful/read#optimizations_state_management
-@dataclasses.dataclass
-class StructFieldWithStateUpdateHandler:
-    field: StructField
-
-    def get(self, state_dict_to_read: Dict[str, Any]) -> Any:
-        return state_dict_to_read[self.field.name]
-
-    def update(self, state_dict_to_update: Dict[str, Any], new_value: Any):
-        state_dict_to_update[self.field.name] = new_value
-
-
-class StateSchemaHandler:
-    def __init__(
-        self,
-        beta: StructFieldWithStateUpdateHandler,
-        V: StructFieldWithStateUpdateHandler,
-        nu: StructFieldWithStateUpdateHandler,
-        mse: StructFieldWithStateUpdateHandler,
-        N: StructFieldWithStateUpdateHandler,
-        recent_data: StructFieldWithStateUpdateHandler,
-        errors: StructFieldWithStateUpdateHandler,
-    ):
-        self.beta = beta
-        self.V = V
-        self.nu = nu
-        self.mse = mse
-        self.N = N
-        self.recent_data = recent_data
-        self.errors = errors
-        self.schema = StructType(
-            [
-                beta.field,
-                V.field,
-                nu.field,
-                mse.field,
-                N.field,
-                recent_data.field,
-                errors.field,
-            ]
-        )
-
-    def get_state_as_dict(self, state_tuple: Tuple) -> Dict[str, Any]:
-        return dict(zip(self.schema.fieldNames(), state_tuple))
-
-    def get_empty_state_dict(self) -> Dict[str, Any]:
-        field_names = self.schema.fieldNames()
-        return {field_names[i]: None for i in range(0, len(field_names))}
-
-    @staticmethod
-    def transform_in_flight_state_to_state_to_write(in_flight_state: Dict[str, Any]) -> Tuple:
-        return tuple(in_flight_state.values())
-
-
-# Kafka setup
+""" 
+Kafka configuration if not : 
+Failed to find data source: kafka. Please deploy the application as per the deployment section of Structured Streaming + Kafka Integration Guide. 
+"""
 os.environ["PYSPARK_SUBMIT_ARGS"] = (
     "--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.0 pyspark-shell"
 )
 
-# Schema for sensor data
-sensor_schema = StructType(
+# Define schemas
+SENSOR_SCHEMA = StructType(
     [
         StructField("sensor_id", IntegerType()),
         StructField("timestamp", FloatType()),
@@ -85,23 +39,7 @@ sensor_schema = StructType(
     ]
 )
 
-# Schema for RLS state - we need to define it for structured streaming
-# rls_state_schema = StateSchemaHandler(
-#     beta=StructFieldWithStateUpdateHandler(StructField("beta", ArrayType(FloatType()))),
-#     V=StructFieldWithStateUpdateHandler(
-#         StructField("V", ArrayType(ArrayType(FloatType())))
-#     ),
-#     nu=StructFieldWithStateUpdateHandler(StructField("nu", FloatType())),
-#     mse=StructFieldWithStateUpdateHandler(StructField("mse", FloatType())),
-#     N=StructFieldWithStateUpdateHandler(StructField("N", IntegerType())),
-#     recent_data=StructFieldWithStateUpdateHandler(
-#         StructField("recent_data", ArrayType(ArrayType(FloatType())))
-#     ),
-#     errors=StructFieldWithStateUpdateHandler(
-#         StructField("errors", ArrayType(FloatType()))
-#     ),
-# )
-rls_state_schema = StructType(
+RLS_STATE_SCHEMA = StructType(
     [
         StructField("beta", ArrayType(FloatType())),
         StructField("V", ArrayType(ArrayType(FloatType()))),
@@ -112,181 +50,341 @@ rls_state_schema = StructType(
         StructField("errors", ArrayType(FloatType())),
     ]
 )
+# Define output schema
+OUTPUT_SCHEMA = StructType(
+    [
+        StructField("topic", StringType()),
+        StructField("timestamp", FloatType()),
+        StructField("value", FloatType()),
+        StructField("prediction", FloatType()),
+        StructField("error", FloatType()),
+        StructField("mse", FloatType()),
+    ]
+)
 
 
-def initializeRLSState(n_features: int) -> Dict:
-    """Initialize the state for a RLS model with structured streaming format"""
-    # Initialize parameters
-    beta = np.zeros(n_features + 1)  # +1 for intercept
-
-    # Initial covariance matrix (high values for faster initial adaptation)
-    v0 = 10.0
-    # V = np.eye(n_features + 1) * v0
-    V = np.diag(np.zeros(n_features + 1) + v0)
-
-    # Forgetting factor (1.0 = no forgetting, <1.0 = older samples have less weight)
-    nu = 0.98  # Slight forgetting for adapting to changes
-
-    # Metrics
-    mse = 0.0
-    N = 0
-
-    # Recent data storage
-    recent_size = 10
-    recent_data = np.zeros((recent_size, n_features + 1))
-    errors = np.zeros((1, 1))
-
-    return {
-        "beta": beta,
-        "V": V,
-        "nu": nu,
-        "mse": mse,
-        "N": N,
-        "recent_data": recent_data,
-        "errors": errors,
-    }
+# Model parameters
+DEFAULT_FORGETTING_FACTOR = 0.98  # Slight forgetting for adapting to changes
+INITIAL_COVARIANCE_VALUE = 10.0  # High values for faster initial adaptation
+# RECENT_DATA_SIZE = 100  # Number of recent data points to store
+# ERROR_HISTORY_SIZE = 100  # Number of recent errors to store
+MAX_HISTORY_SIZE = 100  # Maximum number of historical data points/errors to keep
+N_FEATURES = 10  # Number of features in the model
 
 
-def RLSstep(
-    y: float, x: np.ndarray, beta: np.ndarray, V: np.ndarray, nu: float = 0.9
-) -> Tuple[np.ndarray, np.ndarray, float, float]:
-    """Perform one step of Recursive Least Squares update
+@dataclasses.dataclass
+class RLSState:
+    """Represents the state of the Recursive Least Squares model.
 
-    Parameters
-    ----------
-    y : float
-        Target variable (scalar)
-    x : numpy.ndarray
-        Feature vector (1D array)
-    beta : numpy.ndarray
-        Current parameter vector
-    V : numpy.ndarray
-        Current covariance matrix
-    nu : float, optional
-        Forgetting factor (default is 0.9)
-
-    Returns
-    -------
-    tuple
-        Updated beta, V, prediction error, and predicted value
-
+    This class encapsulates all state parameters needed for the RLS algorithm,
+    making state management more explicit and maintainable.
     """
-    # Ensure we include intercept
-    x_with_intercept = np.append(1, x)
 
-    # Make prediction using current parameters
-    yhat = np.dot(x_with_intercept, beta)
+    beta: np.ndarray  # Model parameters (weights)
+    V: np.ndarray  # Covariance matrix
+    nu: float  # Forgetting factor
+    mse: float  # Mean squared error
+    N: int  # Number of samples processed
+    recent_data: np.ndarray  # Recent data points for feature engineering
+    errors: np.ndarray  # History of prediction errors
 
-    # Calculate prediction error
-    err = y - yhat
+    @classmethod
+    def initialize(
+        cls, n_features: int = N_FEATURES, nu: float = DEFAULT_FORGETTING_FACTOR
+    ) -> "RLSState":
+        """Initialize a new RLS state with default parameters.
 
-    # Update covariance matrix V
-    Vx = np.dot(V, x_with_intercept)
-    denominator = nu + np.dot(x_with_intercept, Vx)
-    V_new = (V - np.outer(Vx, Vx) / denominator) / nu
+        Args:
+            n_features: Number of features in the model
 
-    # Compute Kalman gain
-    alpha = Vx / denominator
+        Returns:
+            A new RLSState instance with initialized values
+        """
+        beta = np.zeros(n_features + 1)  # +1 for intercept
+        V = np.eye(n_features + 1) * INITIAL_COVARIANCE_VALUE
+        recent_data = np.zeros((MAX_HISTORY_SIZE, n_features + 1))
+        errors = np.array([])
 
-    # Update parameters
-    beta_new = beta + alpha * err
+        return cls(
+            beta=beta,
+            V=V,
+            nu=nu,
+            mse=0.0,
+            N=0,
+            recent_data=recent_data,
+            errors=errors,
+        )
 
-    return beta_new, V_new, err, yhat
+    def to_tuple(self) -> Tuple:
+        """Convert the state to a tuple format for Spark state storage.
+
+        Returns:
+            Tuple representation of the state
+        """
+        return (
+            self.beta.tolist(),
+            self.V.tolist(),
+            float(self.nu),
+            float(self.mse),
+            int(self.N),
+            self.recent_data.tolist(),
+            self.errors.tolist(),
+        )
+
+    @classmethod
+    def from_tuple(cls, state_data: Tuple) -> "RLSState":
+        """Create an RLSState from a tuple of state values.
+
+        Args:
+            state_data: Tuple containing state parameters
+
+        Returns:
+            Reconstructed RLSState object
+        """
+        beta, V, nu, mse, N, recent_data, errors = state_data
+        return cls(
+            beta=np.array(beta),
+            V=np.array(V),
+            nu=nu,
+            mse=mse,
+            N=N,
+            recent_data=np.array(recent_data),
+            errors=np.array(errors),
+        )
 
 
-def process_sensor_batch(
-    _, new_values_iter: Iterable[pd.DataFrame], current_state: GroupState
-) -> Iterable[pd.DataFrame]:
-    if current_state.exists:
-        # If state exists, retrieve it
-        state_data = current_state.get
-    else:
-        # If no state exists, initialize it
-        state_data = tuple(initializeRLSState(10).values())
-        current_state.update(state_data)
+class RLSPredictor:
+    """Implements the Recursive Least Squares prediction algorithm.
 
-    beta, V, nu, mse, N, recent_data, errors = state_data
-    recent_data = np.array(recent_data)  # Convert the list of lists to a NumPy array
+    This class handles the core RLS algorithm logic, including prediction,
+    parameter updates, and feature engineering.
+    """
 
-    results: list[pd.DataFrame] = []
-    for new_values in new_values_iter:
-        # Convert the incoming DataFrame to a NumPy array
+    def __init__(
+        self,
+        feature_dim: int,
+        nu: float = DEFAULT_FORGETTING_FACTOR,
+        max_history: int = MAX_HISTORY_SIZE,
+    ):
+        """
+        Initialize the RLS predictor
 
-        print("=========")
-        print(new_values)
-        print(type(new_values))
-        y = float(new_values.iloc[0]["value"])
+        Args:
+            feature_dim: dimension of feature vector
+            nu: forgetting factor (0 < nu <= 1)
+            max_history: maximum number of recent observations to store
+        """
+        self.feature_dim = feature_dim
+        self.nu = nu
+        self.max_history = max_history
 
-        # Create feature vector from historical data
-        # TODO: have more meaningful features
-        if N > 0:
-            x = np.array(
-                [
-                    float(N),  # Counter
-                    float(new_values.iloc[0]["timestamp"]),  # Time feature
-                    float(recent_data[-1][0]) if N > 0 else 0.0,  # Last value
-                    float(recent_data[-2][0]) if N > 1 else 0.0,  # Second last value
-                    float(recent_data[-3][0]) if N > 2 else 0.0,  # Third last value
-                    float(np.mean(recent_data[:, 0])) if N > 0 else 0.0,  # Mean
-                    float(np.std(recent_data[:, 0])) if N > 1 else 0.0,  # Std deviation
-                    float(np.max(recent_data[:, 0])) if N > 0 else 0.0,  # Max
-                    float(np.min(recent_data[:, 0])) if N > 0 else 0.0,  # Min
-                    float(new_values.iloc[0]["timestamp"] % 86400),  # Time of day (cyclical)
-                ],
-                dtype=float,
-            )
-        else:
-            # Initial features when no history exists
-            x = np.zeros(10, dtype=float)
-            x[0] = float(N)
-            x[1] = float(new_values.iloc[0]["timestamp"])
-            x[9] = float(new_values.iloc[0]["timestamp"] % 86400)
-        # Apply RLS step
-        beta, V, err, yhat = RLSstep(y, x, beta, V, nu)
+    def initialize_state(self) -> RLSState:
+        """Create initial state for RLS algorithm"""
+        return RLSState.initialize(self.feature_dim, self.nu)
 
-        # Update metrics
-        N += 1
-        mse = (mse * (N - 1) + err**2) / N if N > 0 else err**2
-        # Update recent data (add new data point and shift)
+    def RLS_step(
+        self,
+        state: RLSState,
+        x: np.ndarray,
+        y: float,
+    ) -> Tuple[np.ndarray, np.ndarray, float, float]:
+        """Perform one step of Recursive Least Squares update
+
+        Parameters
+        ----------
+        y : float
+            Target variable (scalar)
+        x : numpy.ndarray
+            Feature vector (1D array)
+        beta : numpy.ndarray
+            Current parameter vector
+        V : numpy.ndarray
+            Current covariance matrix
+        nu : float, optional
+            Forgetting factor (default is 0.9)
+
+        Returns
+        -------
+        tuple
+            Updated beta, V, prediction error, and predicted value
+
+        """
+        # Add intercept term to features
+        x_with_intercept = np.append(1, x)
+
+        # Make prediction using current parameters
+        yhat = np.dot(x_with_intercept, state.beta)
+
+        # Calculate prediction error
+        err = y - yhat
+
+        # Update covariance matrix V
+        Vx = np.dot(state.V, x_with_intercept)
+        denominator = state.nu + np.dot(x_with_intercept, Vx)
+        V_new = (state.V - np.outer(Vx, Vx) / denominator) / state.nu
+
+        # Compute Kalman gain
+        alpha = Vx / denominator
+
+        # Update parameters
+        beta_new = state.beta + alpha * err
+
+        return beta_new, V_new, err, yhat
+
+    def update(
+        self, state: RLSState, x: np.ndarray, y: float
+    ) -> Tuple[RLSState, float, float, float]:
+        """Update the RLS state with new observation
+
+        Parameters
+        ----------
+        state : RLSState
+            Current state of the RLS algorithm
+        x : numpy.ndarray
+            Feature vector (1D array)
+        y : float
+            Target variable (scalar)
+
+        Returns
+        -------
+        tuple
+            Updated state, predicted value, prediction error, and mean squared error
+
+        """
+        # Perform RLS step and update state
+        beta_new, V_new, error, yhat = self.RLS_step(state, x, y)
+        N_new = state.N + 1
+        mse_new = (state.mse * (N_new - 1) + error**2) / N_new if N_new > 1 else error**2
+
+        # Update recent data (add new data point and shift if needed)
         new_data_point = np.append(y, x)
-        if N <= len(recent_data):
-            recent_data[N - 1] = new_data_point
+        if N_new <= len(state.recent_data):
+            recent_data_new = state.recent_data.copy()
+            recent_data_new[N_new - 1] = new_data_point
         else:
-            recent_data = np.roll(recent_data, -1, axis=0)
-            recent_data[-1] = new_data_point
+            recent_data_new = np.roll(state.recent_data, -1, axis=0)
+            recent_data_new[-1] = new_data_point
+
         # Add error to history
-        errors = np.append(errors, err)
-        if len(errors) > 100:  # Keep last 100 errors
-            errors = errors[-100:]
-        # Add results
+        errors_new = np.append(state.errors, error)
+        if len(errors_new) > self.max_history:
+            errors_new = errors_new[-self.max_history :]
+
+        new_state = RLSState(
+            beta=beta_new,
+            V=V_new,
+            nu=self.nu,
+            mse=mse_new,
+            N=N_new,
+            recent_data=recent_data_new,
+            errors=errors_new,
+        )
+        return new_state, yhat, error, mse_new
+
+    def engineer_features(self, new_value: Dict[str, Any], state: RLSState) -> np.ndarray:
+        """
+        Create feature vector from current value and historical data
+
+        Args:
+            new_value: dictionary with current sensor reading
+            state: current RLS state containing historical data
+
+        Returns:
+            feature vector for prediction
+        """
+        # Prepare historical data array
+        historical_values = np.array(state.recent_data)
+
+        # Initialize feature vector
+        features = np.zeros(self.feature_dim, dtype=float)
+
+        # If we have historical data, extract meaningful features
+        if state.N > 0:
+            features[0] = float(state.N)  # Counter/time feature
+            features[1] = float(new_value["timestamp"])  # Timestamp
+
+            # Last observations
+            features[2] = float(historical_values[-1][0]) if state.N > 0 else 0.0
+            features[3] = float(historical_values[-2][0]) if state.N > 1 else 0.0
+            features[4] = float(historical_values[-3][0]) if state.N > 2 else 0.0
+
+            # Statistical features
+            values = historical_values[:, 0]
+            features[5] = float(np.mean(values)) if state.N > 0 else 0.0
+            features[6] = float(np.std(values)) if state.N > 1 else 0.0
+            features[7] = float(np.max(values)) if state.N > 0 else 0.0
+            features[8] = float(np.min(values)) if state.N > 0 else 0.0
+
+            # Time-related features
+            features[9] = float(new_value["timestamp"] % 86400)  # Time of day (seconds)
+        else:
+            # If no history yet, populate what we can
+            features[0] = 0.0  # First observation
+            features[1] = float(new_value["timestamp"])
+            features[9] = float(new_value["timestamp"] % 86400)
+
+        return features
+
+
+def process_batch(
+    _: Any, new_values_iter: Iterable[pd.DataFrame], current_state: GroupState
+) -> List[pd.DataFrame]:
+    """Process a batch of sensor data with RLS prediction.
+
+    This function is used with Spark's applyInPandasWithState to process
+    grouped sensor data while maintaining state across micro-batches.
+
+    Args:
+        _: Key for the group (not used)
+        new_values_iter: Iterator of DataFrames containing new sensor values
+        current_state: GroupState object for maintaining state
+
+    Returns:
+        List of DataFrames containing prediction results
+    """
+
+    predictor = RLSPredictor(N_FEATURES)
+    # Initialize or retrieve state
+    if current_state.exists:
+        state = RLSState.from_tuple(current_state.get)
+    else:
+        state = predictor.initialize_state()
+
+    results = []
+
+    # Process each batch of new values
+    for new_values in new_values_iter:
+        # Extract sensor value
+        new_v = new_values.iloc[0].to_dict()
+        y = new_v["value"]
+        timestamp = new_v["timestamp"]
+
+        # Engineer features
+        x = predictor.engineer_features(new_v, state)
+
+        state, yhat, err, mse = predictor.update(state, x, y)
+
+        # Create result record
         result = {
-            "topic": new_values["topic"],
-            "timestamp": new_values["timestamp"],
+            "topic": new_v["topic"],
+            "timestamp": timestamp,
             "value": float(y),
             "prediction": float(yhat),
             "error": float(err),
+            "mse": float(mse),
         }
-        results.append(pd.DataFrame(result))
+        results.append(pd.DataFrame([result]))
 
     # Update state for next batch
-    updated_state = {
-        "beta": beta.tolist(),
-        "V": V.tolist(),
-        "nu": float(nu),
-        "mse": float(mse),
-        "N": int(N),
-        "recent_data": recent_data.tolist(),
-        "errors": errors.tolist(),
-    }
-
-    # Update the state with the new values
-    current_state.update(tuple(updated_state.values()))
+    current_state.update(state.to_tuple())
 
     return results
 
 
 def main():
-    # Create Spark session
+    """Main entry point to start the Digital Twin RLS streaming job."""
+
+    # Create Spark session with appropriate configurations
     spark = (
         SparkSession.builder.appName("DigitalTwinRLS")  # pyright: ignore[]
         .master("local[*]")
@@ -302,40 +400,35 @@ def main():
         .option("kafka.bootstrap.servers", "81.243.95.83:9092")
         .option(
             "subscribe",
-            f"{Topics.SOIL_MOISTURE.processed}, {Topics.TEMPERATURE.processed}, {Topics.HUMIDITY.processed}, {Topics.LIGHT_INTENSITY.processed}",
+            ", ".join(
+                [
+                    Topics.SOIL_MOISTURE.processed,
+                    Topics.TEMPERATURE.processed,
+                    Topics.HUMIDITY.processed,
+                    Topics.LIGHT_INTENSITY.processed,
+                ]
+            ),
         )
         .option("startingOffsets", "latest")
         .option("failOnDataLoss", "false")
         .load()
     )
 
-    # Parse the Kafka value column into our sensor schema
+    # Parse the Kafka messages into our sensor schema
     parsed_stream = kafka_stream.select(
-        from_json(col("value").cast("string"), sensor_schema).alias("data")
+        from_json(col("value").cast("string"), SENSOR_SCHEMA).alias("data")
     ).select("data.*")
-
-    # Set up state timeout to prevent stale states
-
-    output_schema = StructType(
-        [
-            StructField("topic", StringType()),
-            StructField("timestamp", FloatType()),
-            StructField("value", FloatType()),
-            StructField("prediction", FloatType()),
-            StructField("error", FloatType()),
-        ]
-    )
 
     # Group by topic and apply RLS algorithm with state
     result_stream = parsed_stream.groupBy("topic").applyInPandasWithState(
-        process_sensor_batch,
-        outputStructType=output_schema,
-        stateStructType=rls_state_schema,
+        process_batch,
+        outputStructType=OUTPUT_SCHEMA,
+        stateStructType=RLS_STATE_SCHEMA,
         outputMode="append",
         timeoutConf=GroupStateTimeout.NoTimeout,
     )
 
-    # Output the predictions to console (for debugging)
+    # Write predictions to console for debugging
     console_output = (
         result_stream.writeStream.outputMode("append")
         .format("console")
@@ -343,7 +436,7 @@ def main():
         .start()
     )
 
-    # Wait for termination
+    # Wait for stream termination
     console_output.awaitTermination()
 
 
