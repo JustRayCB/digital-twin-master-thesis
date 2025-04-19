@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dt.communication import Topics
 from dt.utils import SensorData
 from dt.utils.dataclasses import SensorDataClass
+from dt.utils.logger import get_logger
 
 
 class Sensor(ABC):
@@ -29,6 +30,8 @@ class Sensor(ABC):
 
         self.last_data: float = -1
         self.last_read_time: float = -1
+
+        self.logger = get_logger(__name__)
 
     @property
     @abstractmethod  # Use this decorator to ensure not to forget to change the unit  of each sensor
