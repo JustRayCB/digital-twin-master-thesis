@@ -239,11 +239,10 @@ class KafkaService(MessagingService):
                                     self.logger.error(f"Received malformed data on {topic}")
                                     continue
 
-                                sensor_data = SensorData.from_dict(message.value)
-
                                 # Execute callbacks for this topic
                                 if topic in self.topic_callbacks:
                                     for callback in self.topic_callbacks.get(topic, []):
+                                        sensor_data = SensorData.from_dict(message.value)
                                         callback(sensor_data)
                             except Exception as e:
                                 self.logger.error(f"Error processing message: {e}")
