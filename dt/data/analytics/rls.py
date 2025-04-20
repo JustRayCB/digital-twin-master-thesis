@@ -281,6 +281,71 @@ class RLSPredictor:
         )
         return new_state, yhat, error, mse_new
 
+    def predict_future(
+        self, state: RLSState, steps_ahead: int = 1, timestamp_increment: float = 1.0
+    ) -> List[Dict[str, float]]:
+        """Predict future values based on current state
+
+        Args:
+            state: Current RLS state
+            steps_ahead: Number of time points to predict ahead
+            timestamp_increment: Time increment between predictions (in seconds)
+
+        Returns:
+            List of predicted future values
+        """
+        # At least half of the history is needed for prediction
+        if state.N < self.max_history // 2 and not state.N % timestamp_increment == 0:
+            # No data available for prediction
+            return []
+        predictions = []
+        # Get the correct index for the most recent data
+        most_recent_idx = min(state.N - 1, len(state.recent_data) - 1)
+
+        most_recent_data = state.recent_data[most_recent_idx]
+        original_timestamp = most_recent_data[2]  # Timestamp is at index 2
+        last_value = most_recent_data[0]  # Value is at index 0
+
+        # TODO: Calculate average time difference between recent samples if not provided
+
+        # Work with a copy of features to avoid modifying state
+        # NOTE: timestamp is at index 1 in engineer_features + 1 because we add the value at 0 in update
+        # original_timestamp = state.recent_data[-1][2]
+        # last_value = state.recent_data[-1][0]  # See update
+        sim_state = RLSState(
+            beta=state.beta.copy(),
+            V=state.V.copy(),
+            nu=state.nu,
+            mse=state.mse,
+            N=state.N,
+            recent_data=state.recent_data.copy(),
+            errors=state.errors.copy(),
+        )
+
+        for step in range(1, steps_ahead + 1):
+
+            next_timestamp = original_timestamp + step * timestamp_increment
+            x = self.engineer_features(
+                {"timestamp": next_timestamp},  # Only need timestamp
+                sim_state,
+            )
+
+            # Make prediction using current beta
+            x_with_intercept = np.append(1, x)
+            yhat = np.dot(x_with_intercept, sim_state.beta)
+            predictions.append(
+                {
+                    "timestamp": next_timestamp,
+                    "value": yhat,
+                }
+            )
+
+            # Update state with the predicted value
+            # NOTE: we use the predicted value as the new value
+            sim_state, _, _, _ = self.update(sim_state, x, yhat)
+
+        return predictions
+
     def engineer_features(self, new_value: Dict[str, Any], state: RLSState) -> np.ndarray:
         """
         Create feature vector from current value and historical data
@@ -375,6 +440,19 @@ def process_batch(
         }
         results.append(pd.DataFrame([result]))
 
+        # Predict future values
+        future_predictions = predictor.predict_future(state, steps_ahead=5, timestamp_increment=5)
+        for future in future_predictions:
+            future_result = {
+                "topic": new_v["topic"],
+                "timestamp": future["timestamp"],
+                "value": None,
+                "prediction": float(future["value"]),  # Predicted value
+                "error": None,
+                "mse": None,
+            }
+            results.append(pd.DataFrame([future_result]))
+
     # Update state for next batch
     current_state.update(state.to_tuple())
 
@@ -397,7 +475,7 @@ def main():
     # Connect to Kafka stream
     kafka_stream = (
         spark.readStream.format("kafka")
-        .option("kafka.bootstrap.servers", "81.243.95.83:9092")
+        .option("kafka.bootstrap.servers", "91.86.62.242:9092")
         .option(
             "subscribe",
             ", ".join(
