@@ -7,7 +7,7 @@ from dt.communication import MessagingService, Topics
 from dt.communication.messaging_service import KafkaService
 from dt.data.database import InfluxDBStorage, SQLStorage, Storage
 from dt.utils import SensorData, SensorDataClass, get_logger
-from dt.utils.dataclasses import DBTimestampQuery
+from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
 
 app = Flask(__name__)
 CORS(app)
@@ -60,18 +60,20 @@ def bind_sensor():
 
     """
     logger.info("Binding sensor to the database")
+
     sensor_data = request.get_json()
     if not SensorDataClass.validate_json(sensor_data):
         logger.error(f"Invalid JSON data to bind sensor {sensor_data}")
         return jsonify({"error": "Invalid JSON data"}), 400
     sensor = SensorDataClass.from_json(sensor_data)
+
     storage.bind_sensors(sensor)
     logger.info(f"Sensor bound successfully: {sensor}")
     return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor.sensor_id}), 200
 
 
 @app.route("/data/timestamp", methods=["POST"])
-def get_sensor_data_from_timestamp():
+def get_data_by_timeframe():
     """API endpoint to get the data from the database from a specific timestamp to the current time.
 
     Returns
@@ -82,12 +84,14 @@ def get_sensor_data_from_timestamp():
     """
     # Get the start timestamp from the query parameters
     logger.info("Getting data from timestamp")
+
     request_data = request.get_json()
     if not DBTimestampQuery.validate_json(request_data):
         logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
         return jsonify({"error": "Invalid JSON data"}), 400
     request_data = DBTimestampQuery.from_json(request_data)
-    data: list[SensorData] = storage.get_data_from_timestamp(
+
+    data: list[SensorData] = storage.get_data_by_timeframe(
         data_type=request_data.data_type,
         from_timestamp=request_data.from_timestamp,
         to_timestamp=request_data.to_timestamp,
@@ -97,7 +101,7 @@ def get_sensor_data_from_timestamp():
     return jsonify(shrank_data)
 
 
-@app.route("/data/id", methods=["GET"])
+@app.route("/data/id", methods=["POST"])
 def get_sensor_data_from_id():
     """API endpoint to get the data from the database from a specific sensor id.
 
@@ -109,9 +113,17 @@ def get_sensor_data_from_id():
     """
     # Get the start timestamp from the query parameters
     logger.info("Getting data from sensor id")
-    sensor_id: int = request.args.get("sensor_id", 1, type=int)
-    limit: int = request.args.get("limit", 10, type=int)
-    data: list[SensorData] = storage.get_data(sensor_id, limit)
+
+    request_data = request.get_json()
+    if not DBIdQuery.validate_json(request_data):
+        logger.error(f"Invalid JSON data to get data from id {request_data}")
+        return jsonify({"error": "Invalid JSON data"}), 400
+    request_data = DBIdQuery.from_json(request_data)
+
+    data: list[SensorData] = storage.get_data(
+        sensor_id=request_data.sensor_id, limit=request_data.limit
+    )
+
     logger.info(f"Lenght of data: {len(data)}")
     return jsonify(data)
 

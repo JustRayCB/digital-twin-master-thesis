@@ -194,7 +194,7 @@ class DBTimestampQuery:
         return cls(**data)
 
     @staticmethod
-    def validate_json(json_data: str) -> bool:
+    def validate_json(json_data: Union[str, dict]) -> bool:
         try:
             if isinstance(json_data, str):
                 data = json.loads(json_data)
@@ -223,3 +223,55 @@ class DBTimestampQuery:
         # Convert the timestamp from milliseconds to seconds
         self.from_timestamp = self.from_timestamp / 1000
         self.to_timestamp = self.to_timestamp / 1000
+
+
+@dataclass
+class DBIdQuery:
+    """Represents a query to the database to get the data from a specific sensor id.
+
+    Attributes
+    ----------
+    sensor_id : The id of the sensor.
+    limit : The maximum number of data points to return.
+    """
+
+    sensor_id: int
+    limit: int
+
+    def __post_init__(self):
+        self.sensor_id = int(self.sensor_id)
+        self.limit = int(self.limit)
+        if self.limit < 1:
+            raise ValueError("Limit must be greater than 0")
+        if self.sensor_id < 1:
+            raise ValueError("Sensor id must be greater than 0")
+
+    def to_json(self) -> str:
+        return json.dumps(self.__dict__)
+
+    @classmethod
+    def from_json(cls, json_data: Union[str, dict]):
+        if isinstance(json_data, str):
+            data = json.loads(json_data)
+        elif isinstance(json_data, dict):
+            data = json_data
+        else:
+            raise TypeError("json_data must be a str or dict")
+        return cls(**data)
+
+    @staticmethod
+    def validate_json(json_data: Union[str, dict]) -> bool:
+        try:
+            if isinstance(json_data, str):
+                data = json.loads(json_data)
+            elif isinstance(json_data, dict):
+                data = json_data
+            assert all(
+                key in data for key in DBIdQuery.__annotations__.keys()
+            ), "Missing keys in JSON data"
+            assert isinstance(data["sensor_id"], int), "sensor_id must be an int"
+            assert isinstance(data["limit"], int), "limit must be an int"
+            return True
+        except Exception as e:
+            print(f"Error validating JSON data: {e}")
+            return False

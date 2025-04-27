@@ -36,7 +36,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def get_data_from_timestamp(
+    def get_data_by_timeframe(
         self, data_type: str, from_timestamp: float, to_timestamp: float
     ) -> list[SensorData]:
         """Get sensor data within a time range"""
@@ -180,7 +180,7 @@ class SQLStorage(Storage):
                 return []
 
     @override
-    def get_data_from_timestamp(
+    def get_data_by_timeframe(
         self, data_type: str, from_timestamp: float, to_timestamp: float
     ) -> list[SensorData]:
         """Get the data from a specific timestamp to the current time
@@ -446,7 +446,8 @@ class InfluxDBStorage(Storage):
                 self.logger.error(f"Error retrieving data: {e}")
                 return []
 
-    def get_data_from_timestamp(
+    @override
+    def get_data_by_timeframe(
         self, data_type: str, from_timestamp: float, to_timestamp: float
     ) -> list[SensorData]:
         """Get sensor data within a specific time range"""
