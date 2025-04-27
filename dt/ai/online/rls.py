@@ -19,6 +19,7 @@ from pyspark.sql.types import (ArrayType, FloatType, IntegerType, StringType,
                                StructField, StructType)
 
 from dt.communication.topics import Topics
+from dt.utils import Config
 
 """ 
 Kafka configuration if not : 
@@ -475,7 +476,7 @@ def main():
     # Connect to Kafka stream
     kafka_stream = (
         spark.readStream.format("kafka")
-        .option("kafka.bootstrap.servers", "91.86.62.242:9092")
+        .option("kafka.bootstrap.servers", Config.KAFKA_URL)
         .option(
             "subscribe",
             ", ".join(
