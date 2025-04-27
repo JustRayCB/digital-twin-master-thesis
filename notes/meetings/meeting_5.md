@@ -50,7 +50,7 @@ Prendre 2 semaines pour avancer puis rapport
 
 - Introduction
 - SOA
-- ANalyse gestion donénes en streaming, architecture, comment faire du ML
+- Analyse gestion données en streaming, architecture, comment faire du ML
 - Partie modèlisation
 - Implémentation
-- Qu'est-ce qu'on va faire l'année prochaine
+- Que faire l'année prochaine
