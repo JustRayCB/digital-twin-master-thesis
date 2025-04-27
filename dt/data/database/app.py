@@ -6,17 +6,17 @@ from flask_cors import CORS
 from dt.communication import MessagingService, Topics
 from dt.communication.messaging_service import KafkaService
 from dt.data.database import InfluxDBStorage, SQLStorage, Storage
-from dt.utils import SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDataClass, get_logger
 from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
 
 app = Flask(__name__)
 CORS(app)
 logger = get_logger(__name__)
 storage: Storage = InfluxDBStorage(
-    url="http://localhost:8086",
-    token="ttX_TQAsmsu9SAJ0xUGosEdA72b6DJoIFhbOYK8iRzRMHl5dggZAJwbPsGjxt8K-mgdSIPKEkuXUIsGOWxDotA==",
-    org="dt-ulb",
-    bucket="plant-health-monitoring",
+    url=Config.INFLUX_URL,
+    token=Config.INFLUX_TOKEN,
+    org=Config.INFLUX_ORG,
+    bucket=Config.INFLUX_BUCKET,
 )
 
 
@@ -31,9 +31,7 @@ def forward_to_database(payload: SensorData):
 def setup_bridge():
     logger.info("Setting up bridge")
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
-    client: MessagingService = KafkaService(
-        bootstrap_servers="80.200.51.216:9092", client_id=unique_id
-    )
+    client: MessagingService = KafkaService(host=Config.KAFKA_URL, client_id=unique_id)
     if not client.connect():
         logger.error("Failed to connect to Messaging Service's broker")
         return

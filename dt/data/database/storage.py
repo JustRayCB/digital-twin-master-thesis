@@ -9,7 +9,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 from typing_extensions import override
 
 from dt.communication import Topics
-from dt.utils import SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDataClass, get_logger
 
 
 class Storage(ABC):
@@ -313,10 +313,10 @@ class SQLStorage(Storage):
 class InfluxDBStorage(Storage):
     def __init__(
         self,
-        url: str = "http://localhost:8086",
-        token: str = "PLfvkC4_f4_ceBfqeaPkgKdtoT22aeTbnAKfdJGtKWDN-gvNIO5upIsTWR9h8aMetkMoRXbWyt83jGfEGQnGjg==",
-        org: str = "dt-ulb",
-        bucket: str = "plant-health-monitoring",
+        url: str = Config.INFLUX_BUCKET,
+        token: str = Config.INFLUX_TOKEN,
+        org: str = Config.INFLUX_ORG,
+        bucket: str = Config.INFLUX_BUCKET,
     ) -> None:
         """
         Initialize the InfluxDB storage client

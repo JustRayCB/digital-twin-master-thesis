@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
-from dt.utils import SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDataClass, get_logger
 from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
 
 
@@ -18,7 +18,7 @@ class DatabaseApiClient:
     details of the API implementation.
     """
 
-    def __init__(self, base_url: str = "http://localhost:5001"):
+    def __init__(self, base_url: str = Config.FLASK_DB_URL):
         """
         Initialize the API client.
 
@@ -54,41 +54,35 @@ class DatabaseApiClient:
             if response.status_code == 200:
                 return response.json().get("sensor_id", -1)
             else:
-                print(f"Error registering sensor: {response.text}")
+                self.logger.error(f"Error registering sensor: {response.text}")
                 return -1
 
         except Exception as e:
-            print(f"Error in register_sensor API call: {e}")
+            self.logger.error(f"Error in bind_sensor API call: {e}")
             return -1
 
-    def get_data_by_timeframe(
-        self, data_type: str, start_time: float, end_time: float
-    ) -> List[Dict]:
+    def get_data_by_timeframe(self, time_frame: DBTimestampQuery) -> List[Dict]:
         """
         Get sensor data within a specific time range.
 
         Parameters
         ----------
-        data_type : str
-            The type of data to retrieve
-        start_time : float
-            Start time (timestamp)
-        end_time : float
-            End time (timestamp)
+        time_frame : DBTimestampQuery
+            The time frame for the data query:
+                - data_type: str
+                - from_timestamp: float
+                - to_timestamp: float
 
         Returns
         -------
         List[Dict]
             List of sensor data dictionaries
         """
-        query = DBTimestampQuery(
-            data_type=data_type, from_timestamp=start_time, to_timestamp=end_time
-        )
 
         try:
             response = requests.post(
                 f"{self.base_url}/data/timestamp",
-                json=query.to_json(),
+                json=time_frame.to_json(),
                 headers={"Content-Type": "application/json"},
             )
 

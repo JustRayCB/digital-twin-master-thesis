@@ -147,11 +147,11 @@ class MQTTService(MessagingService):
 class KafkaService(MessagingService):
     def __init__(
         self,
-        bootstrap_servers: str = "localhost:9092",
+        host: str = "localhost:9092",
         client_id: str = "digital_twin",
         group_id: str = "digital_twin_group",
     ) -> None:
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = host
         self.client_id = client_id
         self.group_id = group_id
         self.logger = get_logger(__name__)

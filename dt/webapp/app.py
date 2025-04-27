@@ -9,9 +9,9 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import (KafkaService, MessagingService, MQTTService,
-                              Topics)
-from dt.utils import SensorData, get_logger
+from dt.communication import (DatabaseApiClient, KafkaService,
+                              MessagingService, Topics)
+from dt.utils import Config, SensorData, get_logger
 from dt.utils.dataclasses import DBTimestampQuery
 
 app = Flask(__name__)
@@ -56,12 +56,6 @@ dashboard_data = {
 }
 
 
-# Function to get current date and time
-def get_current_datetime():
-    now = datetime.now()
-    return now.strftime("%m/%d/%Y %H:%M:%S")
-
-
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html", data=dashboard_data)
@@ -80,7 +74,7 @@ def start_simulation():
 
 
 @app.route("/api/data/timestamp", methods=["POST"])
-def get_sensor_data_from_timestamp():
+def get_data_by_timeframe():
     """API endpoint to get the data from the database from a specific timestamp to the current time.
 
     Returns
@@ -89,8 +83,8 @@ def get_sensor_data_from_timestamp():
         A JSON object with the data from the database.
 
     """
-    # Get the start timestamp from the query parameters
-    logger.info("Getting data from timestamp")
+
+    """
     request_data = request.get_json()
     if not DBTimestampQuery.validate_json(request_data):
         logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
@@ -109,6 +103,26 @@ def get_sensor_data_from_timestamp():
     else:
         logger.error(f"Error getting data from timestamp: {response.text}")
         return jsonify({"error": "Error getting data from timestamp"}), 500
+    """
+
+    request_data = request.get_json()
+    if not DBTimestampQuery.validate_json(request_data):
+        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
+        return jsonify({"error": "Invalid JSON data"}), 400
+    # Convert the JSON data to a DBTimestampQuery object
+    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
+    db_query.js_to_py_timestamp()  # Convert the timestamp from JavaScript format to Python format
+
+    db_client = DatabaseApiClient()
+    data = db_client.get_data_by_timeframe(db_query)
+
+    logger.info(f"Getting data by timefreame for {db_query}")
+
+    # if not data:
+    #     logger.error(f"Error getting data from timestamp: {data}")
+    #     return jsonify({"error": "Error getting data from timestamp"}), 500
+
+    return jsonify(data)
 
 
 # Handle client connection
@@ -143,10 +157,7 @@ def setup_bridge():
     global connection_status
     # Generate a unique client ID to prevent conflicts
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
-    # mqtt_client = MQTTClient(hostname="192.168.129.7", id=unique_id)
-    msg_client: MessagingService = KafkaService(
-        bootstrap_servers="80.200.51.216:9092", client_id=unique_id
-    )
+    msg_client: MessagingService = KafkaService(host=Config.KAFKA_URL, client_id=unique_id)
     if not msg_client.connect():
         logger.error("Failed to connect to Messaging Service's broker")
         return
