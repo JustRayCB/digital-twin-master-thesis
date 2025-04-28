@@ -14,5 +14,8 @@ class Config(StrEnum):
     INFLUX_BUCKET = "plant-health-monitoring"  # InfluxDB bucket
 
     # Flask server URLs
-    FLASK_DB_URL = "http://localhost:5001/"
     FLASK_DASHBOARD_URL = "http://localhost:5000/"
+    FLASK_DB_URL = "http://localhost:5001/"
+    FLASK_AI_URL = "http://localhost:5002/"
+
+    MODELS_DIR = "../data/models/"  # Directory for storing models

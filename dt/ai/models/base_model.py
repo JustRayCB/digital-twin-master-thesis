@@ -21,6 +21,26 @@ class BaseModel(ABC):
             metadata if metadata else ModelMetadata(model_id=model_id)  # pyright: ignore[]
         )
 
+    @property
+    def name(self) -> str:
+        return self.metadata.name
+
+    @property
+    def created_at(self) -> datetime.datetime:
+        return self.metadata.created_at
+
+    @property
+    def updated_at(self) -> datetime.datetime:
+        return self.metadata.updated_at
+
+    @property
+    def version(self) -> str:
+        return self.metadata.version
+
+    @version.setter
+    def version(self, version: float) -> None:
+        self.metadata.version = str(version)
+
     @abstractmethod
     def predict(self, inputs: Dict[str, Any]) -> Any:
         pass
@@ -38,15 +58,14 @@ class BaseModel(ABC):
         """
         """
         Each subclass should implement this method to update mandatory fields like 
-        metrics, parameters, created_by, etc... BEFORE SAVING TO THE REGISTRY.
+        updated_at, metrics, parameters, created_by, etc... BEFORE SAVING TO THE REGISTRY.
         """
         return self.metadata
 
     def to_dict(self) -> Dict[str, Any]:
-        self.metadata = self.update_metadata()
         return {
             "model_id": self.model_id,
-            "metadata": self.metadata.to_dict(),
+            **self.metadata.to_dict(),  # Include metadata fields in root dict
             "type": self.__class__.__name__,
         }
 
