@@ -1,5 +1,9 @@
 #!/bin/bash
 
+PUBLIC_IP=$(curl -4 ifconfig.me)
+echo "Your public IP address is: $PUBLIC_IP"
+LOCAL_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n 1)
+
 # Variables
 KAFKA_VERSION="4.0.0"
 SCALA_VERSION="2.13"
@@ -81,7 +85,7 @@ controller.listener.names=CONTROLLER
 
 # Listener configurations
 listeners=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092,CONTROLLER://localhost:9093
-advertised.listeners=PLAINTEXT://192.168.129.7:9092,EXTERNAL://80.200.51.216:19092
+advertised.listeners=PLAINTEXT://$LOCAL_IP:9092,EXTERNAL://$PUBLIC_IP:19092
 listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
 inter.broker.listener.name=PLAINTEXT
 
