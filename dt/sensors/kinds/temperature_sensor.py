@@ -4,6 +4,7 @@ from typing_extensions import override
 
 from dt.communication import Topics
 from dt.sensors.kinds.base_sensor import Sensor
+from dt.sensors.kinds.dht22_sensor import DHT22Singleton
 
 
 class TemperatureSensor(Sensor):
@@ -13,7 +14,8 @@ class TemperatureSensor(Sensor):
         super().__init__(name, read_interval, pin)
         self._unit = "°C"
         # self._board_pin = board.D23 if pin == 23 else board.D4
-        self._sensor = adafruit_dht.DHT22(self.pin)  # DHT11 or DHT22
+        # self._sensor = adafruit_dht.DHT22(self.pin)  # DHT11 or DHT22
+        self._sensor = DHT22Singleton.get_instance(self.pin)
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 
