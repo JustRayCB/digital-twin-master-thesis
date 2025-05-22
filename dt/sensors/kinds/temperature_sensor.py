@@ -1,5 +1,6 @@
 import adafruit_dht
 import board
+from board import Pin
 from typing_extensions import override
 
 from dt.communication import Topics
@@ -9,11 +10,11 @@ from dt.sensors.kinds.base_sensor import Sensor
 class TemperatureSensor(Sensor):
     """DHT22 Temperature/Humidity sensor."""
 
-    def __init__(self, name: str, read_interval: int, pin: int) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "°C"
-        self._board_pin = board.D23 if pin == 23 else board.D4
-        self._sensor = adafruit_dht.DHT22(self._board_pin)  # DHT11 or DHT22
+        # self._board_pin = board.D23 if pin == 23 else board.D4
+        self._sensor = adafruit_dht.DHT22(self.pin)  # DHT11 or DHT22
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 

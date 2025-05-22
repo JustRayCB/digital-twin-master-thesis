@@ -1,6 +1,7 @@
 import board
 import busio
 from adafruit_seesaw.seesaw import Seesaw
+from board import Pin
 from typing_extensions import override
 
 from dt.communication import Topics
@@ -10,7 +11,7 @@ from dt.sensors.kinds.base_sensor import Sensor
 class SoilMoistureSensor(Sensor):
     """AddaFruit Stemma Soil Moisture Sensor"""
 
-    def __init__(self, name: str, read_interval: int, pin: int) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "%"
         self._i2c_bus = busio.I2C(board.D1, board.D0)

@@ -1,6 +1,8 @@
 import time
 from abc import ABC, abstractmethod
 
+from board import Pin
+
 from dt.communication import Topics
 from dt.utils import SensorData
 from dt.utils.dataclasses import SensorDataClass
@@ -14,17 +16,17 @@ class Sensor(ABC):
     ----------
     name : str
         Name of the sensor.
-    pin : int
+    pin : Pin
         Pin where the sensor is connected.
     read_interval : int
         Interval in seconds that the sensor should be read.
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: int) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.name: str = name
-        self.pin: int = pin
+        self.pin: Pin = pin
         self.read_interval: int = read_interval
         self._unit: str = ""
 
@@ -137,9 +139,14 @@ class Sensor(ABC):
             The sensor as a dataclass.
 
         """
+        try:
+            pin_id = int(str(self.pin))
+        except ValueError:
+            self.logger.error(f"Invalid pin value: {self.pin}")
+            pin_id = -2
         return SensorDataClass(
             sensor_id=self.sensor_id,
             name=self.name,
             read_interval=self.read_interval,
-            pin=self.pin,
+            pin=pin_id,
         )
