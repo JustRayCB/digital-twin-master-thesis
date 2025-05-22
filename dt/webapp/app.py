@@ -157,7 +157,9 @@ def setup_bridge():
     global connection_status
     # Generate a unique client ID to prevent conflicts
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
-    msg_client: MessagingService = KafkaService(host=Config.KAFKA_URL, client_id=unique_id)
+    msg_client: MessagingService = KafkaService(
+        host=Config.KAFKA_URL, client_id=unique_id, group_id="webapp_consumer_group"
+    )
     if not msg_client.connect():
         logger.error("Failed to connect to Messaging Service's broker")
         return
@@ -168,7 +170,7 @@ def setup_bridge():
     msg_client.subscribe(Topics.TEMPERATURE.processed, forward_to_socketio(Topics.TEMPERATURE))
     msg_client.subscribe(Topics.HUMIDITY.processed, forward_to_socketio(Topics.HUMIDITY))
     msg_client.subscribe(
-        Topics.SOIL_MOISTURE.processed, forward_to_socketio(Topics.LIGHT_INTENSITY)
+        Topics.LIGHT_INTENSITY.processed, forward_to_socketio(Topics.LIGHT_INTENSITY)
     )
     msg_client.subscribe(Topics.CAMERA_IMAGE.processed, forward_to_socketio(Topics.CAMERA_IMAGE))
 

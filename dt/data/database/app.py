@@ -31,7 +31,9 @@ def forward_to_database(payload: SensorData):
 def setup_bridge():
     logger.info("Setting up bridge")
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
-    client: MessagingService = KafkaService(host=Config.KAFKA_URL, client_id=unique_id)
+    client: MessagingService = KafkaService(
+        host=Config.KAFKA_URL, client_id=unique_id, group_id="database_consumer_group"
+    )
     if not client.connect():
         logger.error("Failed to connect to Messaging Service's broker")
         return
