@@ -1,7 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 
-from board import Pin
+import board
 
 from dt.communication import Topics
 from dt.utils import SensorData
@@ -23,10 +23,10 @@ class Sensor(ABC):
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: board.Pin) -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.name: str = name
-        self.pin: Pin = pin
+        self.pin: board.Pin = pin
         self.read_interval: int = read_interval
         self._unit: str = ""
 
