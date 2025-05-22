@@ -27,15 +27,17 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisturee_sensor = SoilMoistureSensor("moisture_sensor", 5, board.D1)
+    moisture_sensor = SoilMoistureSensor("moisture_sensor", 5, board.D1)
     temperature_sensor = TemperatureSensor("temperature_sensor", 5, board.D23)
-    humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D23)
+    # humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D23)
     light_sensor = LightSensor("light_sensor", 5, board.D3)
 
-    sensor_manager.add_sensor(moisturee_sensor)
+    sensor_manager.add_sensor(moisture_sensor)
     sensor_manager.add_sensor(temperature_sensor)
-    sensor_manager.add_sensor(humidity_sensor)
+    # sensor_manager.add_sensor(humidity_sensor)
     sensor_manager.add_sensor(light_sensor)
+
+    wait = input("Press Enter to start data collector module ...")
 
     try:
         while True:

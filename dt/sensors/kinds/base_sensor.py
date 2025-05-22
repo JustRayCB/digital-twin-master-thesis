@@ -23,7 +23,7 @@ class Sensor(ABC):
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: board.Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: "Pin" ) -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.name: str = name
         self.pin: board.Pin = pin

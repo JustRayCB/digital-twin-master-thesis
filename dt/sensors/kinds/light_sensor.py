@@ -9,7 +9,7 @@ from dt.sensors.kinds.base_sensor import Sensor
 class LightSensor(Sensor):
     """BH1750 light sensor."""
 
-    def __init__(self, name: str, read_interval: int, pin: board.Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "lx"
         self._sensor = adafruit_bh1750.BH1750(board.I2C())

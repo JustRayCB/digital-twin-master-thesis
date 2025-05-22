@@ -10,7 +10,7 @@ from dt.sensors.kinds.base_sensor import Sensor
 class SoilMoistureSensor(Sensor):
     """AddaFruit Stemma Soil Moisture Sensor"""
 
-    def __init__(self, name: str, read_interval: int, pin: board.Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "%"
         self._i2c_bus = busio.I2C(board.D1, board.D0)
