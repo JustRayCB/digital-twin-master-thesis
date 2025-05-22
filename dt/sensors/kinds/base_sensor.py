@@ -23,7 +23,7 @@ class Sensor(ABC):
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: "Pin" ) -> None:
+    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.name: str = name
         self.pin: board.Pin = pin
@@ -59,7 +59,7 @@ class Sensor(ABC):
         """
         raise NotImplementedError(f"Property topic not implemented for {self.name}")
 
-    def needs_data(self) -> bool:
+    def needs_data(self, time) -> bool:
         """Check if the sensor needs to be read.
 
         Returns
@@ -69,9 +69,7 @@ class Sensor(ABC):
 
         """
         return (
-            time.time() - self.last_read_time >= self.read_interval
-            if self.last_read_time != -1
-            else True
+            time - self.last_read_time >= self.read_interval if self.last_read_time != -1 else True
         )
 
     def read(self) -> SensorData:

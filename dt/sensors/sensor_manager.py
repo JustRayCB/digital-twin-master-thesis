@@ -1,7 +1,6 @@
-import requests
+import time
 
-from dt.communication import (DatabaseApiClient, KafkaService,
-                              MessagingService, Topics)
+from dt.communication import DatabaseApiClient, KafkaService, MessagingService, Topics
 from dt.utils import SensorData, SensorDataClass
 from dt.utils.exceptions import BadSensorBindingException
 from dt.utils.logger import get_logger
@@ -63,7 +62,8 @@ class SensorManager:
         """
         data: dict[str, SensorData] = {}
         for sensor_name, sensor in self.sensors.items():
-            if sensor.needs_data():
+            current_time = time.time()
+            if sensor.needs_data(current_time):
                 data[sensor.name] = sensor.read()
                 topic: Topics = sensor.topic
                 self.messaging_service.publish(
