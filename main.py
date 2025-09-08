@@ -28,8 +28,8 @@ def main():
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
     moisture_sensor = SoilMoistureSensor("moisture_sensor", 5, board.D1)
-    temperature_sensor = TemperatureSensor("temperature_sensor", 5, board.D23)
-    humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D23)
+    temperature_sensor = TemperatureSensor("temperature_sensor", 5, board.D17)
+    humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D17)
     light_sensor = LightSensor("light_sensor", 5, board.D3)
 
     sensor_manager.add_sensor(moisture_sensor)

@@ -1,5 +1,4 @@
 import board
-import busio
 from adafruit_seesaw.seesaw import Seesaw
 from typing_extensions import override
 
@@ -13,7 +12,7 @@ class SoilMoistureSensor(Sensor):
     def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "%"
-        self._i2c_bus = busio.I2C(board.D1, board.D0)
+        self._i2c_bus = board.I2C()
         self._sensor = Seesaw(self._i2c_bus, addr=0x36)
 
         self.min_value = 200  # Minimum value for the sensor
