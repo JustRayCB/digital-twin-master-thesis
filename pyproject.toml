@@ -1,31 +1,23 @@
 [project]
 name = "dt"
 version = "0.1.0"
-description = "This thesis will focus on the practical implementation of a Digital Twin integrated in the framework of Internet of Things to monitor the health of a plant, using various sensors as data collectors and a Raspberry Pi as a central device."
-authors = [
-    {name = "JustRayCB",email = "rayancbpro@gmail.com"}
-]
+description = "Digital Twin for plant health monitoring."
+authors = [{ name = "JustRayCB", email = "rayancbpro@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 dependencies = [
-    "pandas (>=2.2.3,<3.0.0)",
-    "matplotlib (>=3.10.1,<4.0.0)",
-    "paho-mqtt (>=2.1.0,<3.0.0)",
-    "adafruit-circuitpython-dht (>=4.0.7,<5.0.0)",
-    "adafruit-circuitpython-seesaw (>=1.16.5,<2.0.0)",
-    "adafruit-circuitpython-bh1750 (>=1.1.14,<2.0.0)",
-    "typing-extensions (>=4.12.2,<5.0.0)",
-    "plotly (>=6.0.0,<7.0.0)",
-    "flask (>=3.1.0,<4.0.0)",
-    "flask-socketio (>=5.5.1,<6.0.0)",
-    "flask-cors (>=5.0.1,<6.0.0)",
-    "requests (>=2.32.3,<3.0.0)",
-    "kafka-python (>=2.1.5,<3.0.0)",
-    "pyspark (>=3.5.5,<4.0.0)",
-    "influxdb-client (>=1.48.0,<2.0.0)",
-    "pyarrow (>=19.0.1,<20.0.0)",
-    "rpi-gpio (>=0.7.1,<0.8.0)",
-    "adafruit-blinka (>=8.58.1,<9.0.0)",
+  "pandas >=2.2.3,<3.0.0",
+  "matplotlib >=3.10.1,<4.0.0",
+  "paho-mqtt >=2.1.0,<3.0.0",
+  "typing-extensions >=4.12.2,<5.0.0",
+  "plotly >=6.0.0,<7.0.0",
+  "flask >=3.1.0,<4.0.0",
+  "flask-socketio >=5.5.1,<6.0.0",
+  "flask-cors >=5.0.1,<6.0.0",
+  "requests >=2.32.3,<3.0.0",
+  "kafka-python >=2.1.5,<3.0.0",
+  "influxdb-client >=1.48.0,<2.0.0",
+  "pyarrow >=19.0.1,<20.0.0",
 ]
 
 [tool.poetry]
@@ -35,12 +27,28 @@ basedpyright = "^1.28.1"
 neovim = "^0.3.1"
 debugpy = "^1.8.12"
 
+# Raspberry Pi / hardware-only deps (not installed by default)
+[tool.poetry.group.raspi]
+optional = true
+
+[tool.poetry.group.raspi.dependencies]
+# Restrict RPi.GPIO to ARM/Linux so even if someone enables raspi on x86 it won’t install.
+RPi.GPIO = { version = "^0.7.1", markers = "platform_system == 'Linux' and (platform_machine == 'armv7l' or platform_machine == 'aarch64' or platform_machine == 'arm64')" }
+adafruit-blinka = "^8.58.1"
+adafruit-circuitpython-dht = "^4.0.7"
+adafruit-circuitpython-seesaw = "^1.16.5"
+adafruit-circuitpython-bh1750 = "^1.1.14"
+
+# Spark / JVM stuff (also optional)
+[tool.poetry.group.spark]
+optional = true
+
+[tool.poetry.group.spark.dependencies]
+pyspark = ">=3.5.5,<4.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-
 [tool.black]
 line-length = 100
-
