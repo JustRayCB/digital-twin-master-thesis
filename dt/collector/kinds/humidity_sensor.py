@@ -2,9 +2,9 @@ import adafruit_dht
 import board
 from typing_extensions import override
 
+from dt.collector.kinds.base_sensor import Sensor
+from dt.collector.kinds.dht22_sensor import DHT22Singleton
 from dt.communication import Topics
-from dt.sensors.kinds.base_sensor import Sensor
-from dt.sensors.kinds.dht22_sensor import DHT22Singleton
 
 
 class HumiditySensor(Sensor):

@@ -7,8 +7,14 @@ sys.dont_write_bytecode = True
 
 from time import sleep
 
-from dt.sensors import (HumiditySensor, LightSensor, MockMoistureSensor,
-                        SensorManager, SoilMoistureSensor, TemperatureSensor)
+from dt.collector import (
+    HumiditySensor,
+    LightSensor,
+    MockMoistureSensor,
+    SensorManager,
+    SoilMoistureSensor,
+    TemperatureSensor,
+)
 from dt.utils import get_logger
 
 

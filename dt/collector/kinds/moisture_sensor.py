@@ -2,8 +2,8 @@ import board
 from adafruit_seesaw.seesaw import Seesaw
 from typing_extensions import override
 
+from dt.collector.kinds.base_sensor import Sensor
 from dt.communication import Topics
-from dt.sensors.kinds.base_sensor import Sensor
 
 
 class SoilMoistureSensor(Sensor):

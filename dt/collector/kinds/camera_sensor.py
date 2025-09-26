@@ -1,6 +1,6 @@
 from typing_extensions import override
 
-from dt.sensors.kinds.base_sensor import Sensor
+from dt.collector.kinds.base_sensor import Sensor
 
 
 class CameraSensor(Sensor):
