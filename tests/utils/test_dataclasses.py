@@ -29,6 +29,7 @@ def test_sensor_data_serialization_roundtrip():
         '"topic":"dt.sensors.light_intensity","correlation_id":"abc-123"}'
     )
     assert payload.to_json() == expected_json
+    print(payload.to_json())
 
     decoded = SensorData.from_json(expected_json)
     assert decoded == payload
