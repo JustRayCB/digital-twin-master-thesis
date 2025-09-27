@@ -150,7 +150,13 @@ class DatabaseApiClient:
         end_time = time.time()
         start_time = end_time - (hours * 3600)
 
-        return self.get_data_by_timeframe(data_type, start_time, end_time)
+        timeframe = DBTimestampQuery(
+            data_type=data_type,
+            from_timestamp=start_time,
+            to_timestamp=end_time,
+        )
+
+        return self.get_data_by_timeframe(timeframe)
 
     def get_latest_value(self, data_type: str) -> Optional[Dict]:
         """
@@ -169,11 +175,15 @@ class DatabaseApiClient:
         # Get a small window of recent data and take the most recent
         try:
             # Get data from the last hour
-            data = self.get_data_by_timeframe(
+
+            start_time = time.time() - 3600
+            end_time = time.time()
+            timeframe = DBTimestampQuery(
                 data_type=data_type,
-                start_time=time.time() - 3600,
-                end_time=time.time(),
+                from_timestamp=start_time,
+                to_timestamp=end_time,
             )
+            data = self.get_data_by_timeframe(timeframe)
 
             if not data:
                 return None
