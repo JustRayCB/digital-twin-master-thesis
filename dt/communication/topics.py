@@ -12,6 +12,8 @@ class Topics(StrEnum):
     SOIL_MOISTURE = PREFIX_SENSOR + "soil_moisture"
     LIGHT_INTENSITY = PREFIX_SENSOR + "light_intensity"
     CAMERA_IMAGE = PREFIX_SENSOR + "camera_image"
+    ALERTS = "dt.alerts"
+    ACTIONS = "dt.actions"
 
     @classmethod
     def list_topics(cls) -> list["Topics"]:
