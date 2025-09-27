@@ -1,13 +1,60 @@
 import json
-from dataclasses import dataclass
-
-from typing_extensions import Union
+from abc import ABC
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, TypeVar, Union
 
 from dt.communication.topics import Topics
 
+T = TypeVar("T", bound="JsonSerializable")
+
 
 @dataclass
-class SensorData:
+class JsonSerializable(ABC):
+    """
+    Abstract base for message/query records:
+    - consistent to_dict / to_json (with Enum-safe conversion)
+    - from_dict / from_json
+    - lightweight required-field validation
+    """
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        return d
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), separators=(",", ":"))
+
+    @classmethod
+    def from_dict(cls: type[T], data: Dict[str, Any]) -> T:
+        converted: Dict[str, Any] = {}
+        for field, field_type in cls.__annotations__.items():
+            if field not in data:
+                raise ValueError(f"Missing field: {field}")
+            value = data[field]
+            if isinstance(field_type, type):
+                converted[field] = field_type(value)
+            else:
+                converted[field] = value
+        return cls(**converted)
+
+    @classmethod
+    def from_json(cls: type[T], json_data: Union[str, Dict[str, Any]]) -> T:
+        data = json_data
+        if isinstance(data, str):
+            data = json.loads(json_data)  # type: ignore
+        return cls.from_dict(data)
+
+    @classmethod
+    def validate_json(cls: type[T], json_data: Union[str, Dict[str, Any]]) -> bool:
+        try:
+            cls.from_json(json_data)
+        except Exception:
+            return False
+        return True
+
+
+@dataclass
+class SensorData(JsonSerializable):
     """Represents the typical data structure of a sensor data.
     It is used to store the data read from the sensors.
     It is also used to send the data via Messaging Service to the web application and the database.
@@ -33,38 +80,6 @@ class SensorData:
         self.unit = str(self.unit)
         self.topic = Topics(self.topic)
 
-    def to_json(self) -> str:
-        return json.dumps(self.__dict__)
-
-    def to_dict(self) -> dict:
-        return {
-            "sensor_id": self.sensor_id,
-            "timestamp": self.timestamp,
-            "value": self.value,
-            "unit": self.unit,
-            "topic": str(self.topic),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        return cls(
-            sensor_id=data["sensor_id"],
-            timestamp=data["timestamp"],
-            value=data["value"],
-            unit=data["unit"],
-            topic=Topics(data["topic"]),
-        )
-
-    @classmethod
-    def from_json(cls, json_data: Union[str, dict]):
-        if isinstance(json_data, str):
-            data = json.loads(json_data)
-        elif isinstance(json_data, dict):
-            data = json_data
-        else:
-            raise TypeError("json_data must be a str or dict")
-        return cls(**data)
-
     def shrink_data(self):
         """
         Returns a dictionary with only the value and the timestamp of the SensorData object
@@ -79,23 +94,6 @@ class SensorData:
         """
         return self.topic.short_name
 
-    @staticmethod
-    def validate_json(json_data: str) -> bool:
-        try:
-            data = json.loads(json_data)
-            assert all(
-                key in data for key in SensorData.__annotations__.keys()
-            ), "Missing keys in JSON data"
-            assert isinstance(data["sensor_id"], int), "sensor_id must be an int"
-            assert isinstance(data["timestamp"], (int, float)), "timestamp must be a float"
-            assert isinstance(data["value"], (int, float)), "value must be a float"
-            assert isinstance(data["unit"], str), "unit must be a str"
-            assert isinstance(data["topic"], str), "topic must be a str"
-            # assert data["topic"] in Topics.__members__, "topic must be a valid messaging service topic"
-            return True
-        except Exception:
-            return False
-
     def py_to_js_timestamp(self):
         """
         Converts the timestamp from Python format to JavaScript format
@@ -106,7 +104,7 @@ class SensorData:
 
 
 @dataclass
-class SensorDataClass:
+class SensorDataClass(JsonSerializable):
     """Represents a sensor in the system.
 
     Attributes
@@ -131,37 +129,9 @@ class SensorDataClass:
     def change_id(self, sensor_id: int):
         self.sensor_id = sensor_id
 
-    @classmethod
-    def from_json(cls, json_data: Union[str, dict]):
-        if isinstance(json_data, str):
-            data = json.loads(json_data)
-        elif isinstance(json_data, dict):
-            data = json_data
-        else:
-            raise TypeError("json_data must be a str or dict")
-        return cls(**data)
-
-    def to_json(self) -> str:
-        return json.dumps(self.__dict__)
-
-    @staticmethod
-    def validate_json(json_data: str) -> bool:
-        try:
-            data = json.loads(json_data)
-            assert all(
-                key in data for key in SensorDataClass.__annotations__.keys()
-            ), "Missing keys in JSON data"
-            assert isinstance(data["sensor_id"], int), "sensor_id must be an int"
-            assert isinstance(data["name"], str), "name must be a str"
-            assert isinstance(data["pin"], int), "pin must be an int"
-            assert isinstance(data["read_interval"], int), "read_interval must be an int"
-            return True
-        except Exception:
-            return False
-
 
 @dataclass
-class DBTimestampQuery:
+class DBTimestampQuery(JsonSerializable):
     """Represents a query to the database to get the data from a specific timestamp.
 
     Attributes
@@ -180,42 +150,6 @@ class DBTimestampQuery:
         self.from_timestamp = float(self.from_timestamp)
         self.to_timestamp = float(self.to_timestamp)
 
-    def to_json(self) -> str:
-        return json.dumps(self.__dict__)
-
-    @classmethod
-    def from_json(cls, json_data: Union[str, dict]):
-        if isinstance(json_data, str):
-            data = json.loads(json_data)
-        elif isinstance(json_data, dict):
-            data = json_data
-        else:
-            raise TypeError("json_data must be a str or dict")
-        return cls(**data)
-
-    @staticmethod
-    def validate_json(json_data: Union[str, dict]) -> bool:
-        try:
-            if isinstance(json_data, str):
-                data = json.loads(json_data)
-            elif isinstance(json_data, dict):
-                data = json_data
-            assert all(
-                key in data for key in DBTimestampQuery.__annotations__.keys()
-            ), "Missing keys in JSON data"
-            assert isinstance(
-                data["from_timestamp"], (int, float)
-            ), "from_timestamp must be a float"
-            assert isinstance(data["to_timestamp"], (int, float)), "to_timestamp must be a float"
-            assert isinstance(data["data_type"], str), "data_type must be a str"
-            assert data["data_type"] in [
-                t.short_name for t in Topics if t != Topics._PREFIX_SENSOR
-            ], f"Topic {data['topic']} is not a valid messaging service topic"
-            return True
-        except Exception as e:
-            print(f"Error validating JSON data: {e}")
-            return False
-
     def js_to_py_timestamp(self):
         """
         Converts the timestamp from JavaScript format to Python format
@@ -226,7 +160,7 @@ class DBTimestampQuery:
 
 
 @dataclass
-class DBIdQuery:
+class DBIdQuery(JsonSerializable):
     """Represents a query to the database to get the data from a specific sensor id.
 
     Attributes
@@ -245,33 +179,3 @@ class DBIdQuery:
             raise ValueError("Limit must be greater than 0")
         if self.sensor_id < 1:
             raise ValueError("Sensor id must be greater than 0")
-
-    def to_json(self) -> str:
-        return json.dumps(self.__dict__)
-
-    @classmethod
-    def from_json(cls, json_data: Union[str, dict]):
-        if isinstance(json_data, str):
-            data = json.loads(json_data)
-        elif isinstance(json_data, dict):
-            data = json_data
-        else:
-            raise TypeError("json_data must be a str or dict")
-        return cls(**data)
-
-    @staticmethod
-    def validate_json(json_data: Union[str, dict]) -> bool:
-        try:
-            if isinstance(json_data, str):
-                data = json.loads(json_data)
-            elif isinstance(json_data, dict):
-                data = json_data
-            assert all(
-                key in data for key in DBIdQuery.__annotations__.keys()
-            ), "Missing keys in JSON data"
-            assert isinstance(data["sensor_id"], int), "sensor_id must be an int"
-            assert isinstance(data["limit"], int), "limit must be an int"
-            return True
-        except Exception as e:
-            print(f"Error validating JSON data: {e}")
-            return False
