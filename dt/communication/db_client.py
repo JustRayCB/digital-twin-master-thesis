@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
-from dt.utils import Config, SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDescriptor, get_logger
 from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
 
 
@@ -30,7 +30,7 @@ class DatabaseApiClient:
         self.base_url = base_url.rstrip("/")
         self.logger = get_logger(__name__)
 
-    def bind_sensor(self, sensor: SensorDataClass) -> int:
+    def bind_sensor(self, sensor: SensorDescriptor) -> int:
         """
         Register a sensor via the API.
 
@@ -152,8 +152,8 @@ class DatabaseApiClient:
 
         timeframe = DBTimestampQuery(
             data_type=data_type,
-            from_timestamp=start_time,
-            to_timestamp=end_time,
+            since=start_time,
+            until=end_time,
         )
 
         return self.get_data_by_timeframe(timeframe)
@@ -180,8 +180,8 @@ class DatabaseApiClient:
             end_time = time.time()
             timeframe = DBTimestampQuery(
                 data_type=data_type,
-                from_timestamp=start_time,
-                to_timestamp=end_time,
+                since=start_time,
+                until=end_time,
             )
             data = self.get_data_by_timeframe(timeframe)
 

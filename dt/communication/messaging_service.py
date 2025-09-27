@@ -158,7 +158,7 @@ class KafkaService(MessagingService):
         self.producer = None
         self.consumer = None
         self.consumer_thread = None
-        self.topic_callbacks = {}
+        self.topic_callbacks: dict[str, list[Callable]] = {}
         self._running = False
 
     def connect(self) -> bool:

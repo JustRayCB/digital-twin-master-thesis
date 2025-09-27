@@ -6,7 +6,7 @@ from flask_cors import CORS
 from dt.communication import MessagingService, Topics
 from dt.communication.messaging_service import KafkaService
 from dt.data.database import InfluxDBStorage, SQLStorage, Storage
-from dt.utils import Config, SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDescriptor, get_logger
 from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
 
 app = Flask(__name__)
@@ -62,10 +62,10 @@ def bind_sensor():
     logger.info("Binding sensor to the database")
 
     sensor_data = request.get_json()
-    if not SensorDataClass.validate_json(sensor_data):
+    if not SensorDescriptor.validate_json(sensor_data):
         logger.error(f"Invalid JSON data to bind sensor {sensor_data}")
         return jsonify({"error": "Invalid JSON data"}), 400
-    sensor = SensorDataClass.from_json(sensor_data)
+    sensor = SensorDescriptor.from_json(sensor_data)
 
     storage.bind_sensors(sensor)
     logger.info(f"Sensor bound successfully: {sensor}")
@@ -93,8 +93,8 @@ def get_data_by_timeframe():
 
     data: list[SensorData] = storage.get_data_by_timeframe(
         data_type=request_data.data_type,
-        from_timestamp=request_data.from_timestamp,
-        to_timestamp=request_data.to_timestamp,
+        from_timestamp=request_data.since,
+        to_timestamp=request_data.until,
     )
     shrank_data = [d.shrink_data() for d in data]
     logger.info(f"Lenght of data: {len(data)}")

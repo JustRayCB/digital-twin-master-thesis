@@ -67,18 +67,22 @@ class SensorData(JsonSerializable):
     unit : The unit of measurement of the sensor.
     """
 
+    plant_id: int
     sensor_id: int
     timestamp: float
     value: float
     unit: str
     topic: Topics
+    correlation_id: str
 
     def __post_init__(self):
+        self.plant_id = int(self.plant_id)
         self.sensor_id = int(self.sensor_id)
         self.timestamp = float(self.timestamp)
         self.value = float(self.value)
         self.unit = str(self.unit)
         self.topic = Topics(self.topic)
+        self.correlation_id = str(self.correlation_id)
 
     def shrink_data(self):
         """
@@ -104,7 +108,7 @@ class SensorData(JsonSerializable):
 
 
 @dataclass
-class SensorDataClass(JsonSerializable):
+class SensorDescriptor(JsonSerializable):
     """Represents a sensor in the system.
 
     Attributes
@@ -142,21 +146,21 @@ class DBTimestampQuery(JsonSerializable):
     """
 
     data_type: str
-    from_timestamp: float
-    to_timestamp: float
+    since: float
+    until: float
 
     def __post_init__(self):
         self.data_type = str(self.data_type)
-        self.from_timestamp = float(self.from_timestamp)
-        self.to_timestamp = float(self.to_timestamp)
+        self.since = float(self.since)
+        self.until = float(self.until)
 
     def js_to_py_timestamp(self):
         """
         Converts the timestamp from JavaScript format to Python format
         """
         # Convert the timestamp from milliseconds to seconds
-        self.from_timestamp = self.from_timestamp / 1000
-        self.to_timestamp = self.to_timestamp / 1000
+        self.since = self.since / 1000
+        self.until = self.until / 1000
 
 
 @dataclass
@@ -179,3 +183,45 @@ class DBIdQuery(JsonSerializable):
             raise ValueError("Limit must be greater than 0")
         if self.sensor_id < 1:
             raise ValueError("Sensor id must be greater than 0")
+
+
+@dataclass
+class ActionCommand(JsonSerializable):
+    """Represents a command to be sent to an actuator.
+
+    Attributes
+    ----------
+    actuator_id : The id of the actuator.
+    action : The action to be performed by the actuator.
+    """
+
+    action_id: str
+    actuator_id: int
+    timestamp: float
+    command: str  # e.g. "ON"
+    reason: str  # e.g. "moisture below threshold"
+    correlation_id: str
+
+    def __post_init__(self):
+        self.action_id = str(self.action_id)
+        self.actuator_id = int(self.actuator_id)
+        self.timestamp = float(self.timestamp)
+        self.command = str(self.command)
+        self.reason = str(self.reason)
+        self.correlation_id = str(self.correlation_id)
+
+
+@dataclass
+class AlertEvent(JsonSerializable):
+    alert_id: str
+    timestamp: float
+    description: str  # e.g. "low moisture"
+    severity: str  # e.g. "warning", "critical"
+    correlation_id: str
+
+    def __post_init__(self):
+        self.alert_id = str(self.alert_id)
+        self.timestamp = float(self.timestamp)
+        self.description = str(self.description)
+        self.severity = str(self.severity)
+        self.correlation_id = str(self.correlation_id)

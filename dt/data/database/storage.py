@@ -9,7 +9,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 from typing_extensions import override
 
 from dt.communication import Topics
-from dt.utils import Config, SensorData, SensorDataClass, get_logger
+from dt.utils import Config, SensorData, SensorDescriptor, get_logger
 
 
 class Storage(ABC):
@@ -48,12 +48,12 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def add_sensor(self, sensor: SensorDataClass) -> int:
+    def add_sensor(self, sensor: SensorDescriptor) -> int:
         """Register a new sensor"""
         pass
 
     @abstractmethod
-    def bind_sensors(self, sensor: SensorDataClass) -> None:
+    def bind_sensors(self, sensor: SensorDescriptor) -> None:
         """Bind a sensor object to its database representation"""
         pass
 
@@ -252,7 +252,7 @@ class SQLStorage(Storage):
                 return -1
 
     @override
-    def add_sensor(self, sensor: SensorDataClass) -> int:
+    def add_sensor(self, sensor: SensorDescriptor) -> int:
         """Add a sensor to the database
 
         Parameters
@@ -283,7 +283,7 @@ class SQLStorage(Storage):
                 return -1
 
     @override
-    def bind_sensors(self, sensor: SensorDataClass) -> None:
+    def bind_sensors(self, sensor: SensorDescriptor) -> None:
         """Bind the sensor to the database
 
         Parameters
@@ -537,7 +537,7 @@ class InfluxDBStorage(Storage):
                 return -1
 
     @override
-    def add_sensor(self, sensor: SensorDataClass) -> int:
+    def add_sensor(self, sensor: SensorDescriptor) -> int:
         """Add a new sensor to the database
 
         Parameters
@@ -576,7 +576,7 @@ class InfluxDBStorage(Storage):
                 return -1
 
     @override
-    def bind_sensors(self, sensor: SensorDataClass) -> None:
+    def bind_sensors(self, sensor: SensorDescriptor) -> None:
         """Bind a sensor object to its database representation
 
         Parameters

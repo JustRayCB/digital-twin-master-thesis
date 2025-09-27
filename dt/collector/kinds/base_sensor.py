@@ -5,7 +5,7 @@ import board
 
 from dt.communication import Topics
 from dt.utils import SensorData
-from dt.utils.dataclasses import SensorDataClass
+from dt.utils.dataclasses import SensorDescriptor
 from dt.utils.logger import get_logger
 
 
@@ -128,7 +128,7 @@ class Sensor(ABC):
         """
         raise NotImplementedError(f"Method process_data not implemented for {self.name}")
 
-    def to_dataclass(self) -> SensorDataClass:
+    def to_dataclass(self) -> SensorDescriptor:
         """Convert the sensor to a dataclass.
 
         Returns
@@ -142,7 +142,7 @@ class Sensor(ABC):
         except ValueError:
             self.logger.error(f"Invalid pin value: {self.pin}")
             pin_id = -2
-        return SensorDataClass(
+        return SensorDescriptor(
             sensor_id=self.sensor_id,
             name=self.name,
             read_interval=self.read_interval,

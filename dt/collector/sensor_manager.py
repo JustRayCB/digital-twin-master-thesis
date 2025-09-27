@@ -1,7 +1,7 @@
 import time
 
 from dt.communication import DatabaseApiClient, KafkaService, MessagingService, Topics
-from dt.utils import SensorData, SensorDataClass
+from dt.utils import SensorData, SensorDescriptor
 from dt.utils.exceptions import BadSensorBindingException
 from dt.utils.logger import get_logger
 
