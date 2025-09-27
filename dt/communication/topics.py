@@ -1,21 +1,22 @@
 from enum import StrEnum
 
+PREFIX_SENSOR = "dt.sensors."
+
 
 class Topics(StrEnum):
     """MQTT topics for communication between the modules"""
 
-    _PREFIX_SENSOR = "dt.sensors."
-    SENSORS_DATA = _PREFIX_SENSOR + "data"
-    TEMPERATURE = _PREFIX_SENSOR + "temperature"
-    HUMIDITY = _PREFIX_SENSOR + "humidity"
-    SOIL_MOISTURE = _PREFIX_SENSOR + "soil_moisture"
-    LIGHT_INTENSITY = _PREFIX_SENSOR + "light_intensity"
-    CAMERA_IMAGE = _PREFIX_SENSOR + "camera_image"
+    SENSORS_DATA = PREFIX_SENSOR + "data"
+    TEMPERATURE = PREFIX_SENSOR + "temperature"
+    HUMIDITY = PREFIX_SENSOR + "humidity"
+    SOIL_MOISTURE = PREFIX_SENSOR + "soil_moisture"
+    LIGHT_INTENSITY = PREFIX_SENSOR + "light_intensity"
+    CAMERA_IMAGE = PREFIX_SENSOR + "camera_image"
 
     @classmethod
     def list_topics(cls) -> list["Topics"]:
         """Get all topics"""
-        return [topic for topic in cls if topic not in (cls.SENSORS_DATA, cls._PREFIX_SENSOR)]
+        return [topic for topic in cls if topic not in (cls.SENSORS_DATA, PREFIX_SENSOR)]
 
     @property
     def raw(self) -> str:
