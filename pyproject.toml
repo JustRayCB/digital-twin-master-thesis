@@ -10,43 +10,56 @@ requires-python = ">=3.11,<4.0"
 dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
     "matplotlib (>=3.10.1,<4.0.0)",
-    "paho-mqtt (>=2.1.0,<3.0.0)",
-    "adafruit-circuitpython-dht (>=4.0.7,<5.0.0)",
-    "adafruit-circuitpython-seesaw (>=1.16.5,<2.0.0)",
-    "adafruit-circuitpython-bh1750 (>=1.1.14,<2.0.0)",
     "typing-extensions (>=4.12.2,<5.0.0)",
-    "plotly (>=6.0.0,<7.0.0)",
     "flask (>=3.1.0,<4.0.0)",
     "flask-socketio (>=5.5.1,<6.0.0)",
     "flask-cors (>=5.0.1,<6.0.0)",
     "requests (>=2.32.3,<3.0.0)",
     "kafka-python (>=2.1.5,<3.0.0)",
-    "influxdb-client (>=1.48.0,<2.0.0)",
-    "pyarrow (>=19.0.1,<20.0.0)",
-    "adafruit-blinka (>=8.58.1,<9.0.0)",
-    "pytest (>=8.4.2,<9.0.0)",
 ]
 
-[tool.poetry]
-
-[project.optional-dependencies]
-raspi = [
-  "RPi.GPIO>=0.7.1,<0.8.0; platform_system == 'Linux' and (platform_machine == 'armv7l' or platform_machine == 'aarch64')"
-]
-spark = [
-  "pyspark>=3.5.5,<4.0.0"
-]
+# Dev tools
+[tool.poetry.group.dev]
+optional = true
 
 [tool.poetry.group.dev.dependencies]
 basedpyright = "^1.28.1"
 neovim = "^0.3.1"
 debugpy = "^1.8.12"
+pytest = ">=8.4.2,<9.0.0"
+ruff = "^0.13.2"
+mypy = "^1.18.2"
+
+
+# Spark kept out of default installs
+[tool.poetry.group.spark]
+optional = true
+
+[tool.poetry.group.spark.dependencies]
+pyspark = ">=3.5.5,<4.0.0"
+pyarrow = ">=19.0.1,<20.0.0"
+
+# InfluxDB client and later other DB clients
+[tool.poetry.group.db]
+optional = true
+
+[tool.poetry.group.db.dependencies]
+influxdb-client = ">=1.48.0,<2.0.0"
+
+# Raspberry Pi / hardware IO — guarded with platform markers
+[tool.poetry.group.rpi]
+optional = true
+
+[tool.poetry.group.rpi.dependencies]
+"RPi.GPIO" = {version=">=0.7.1,<0.8.0", markers="sys_platform == 'linux' and (platform_machine == 'armv7l' or platform_machine == 'aarch64')"}
+adafruit-circuitpython-dht = {version=">=4.0.7,<5.0.0", markers="sys_platform == 'linux'"}
+adafruit-circuitpython-seesaw = {version=">=1.16.5,<2.0.0", markers="sys_platform == 'linux'"}
+adafruit-circuitpython-bh1750 = {version=">=1.1.14,<2.0.0", markers="sys_platform == 'linux'"}
+adafruit-blinka = {version=">=8.58.1,<9.0.0", markers="sys_platform == 'linux'"}
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-
 [tool.black]
 line-length = 100
-
