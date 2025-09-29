@@ -3,7 +3,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 
-import paho.mqtt.client as mqtt
+# import paho.mqtt.client as mqtt # Uncomment this line if paho-mqtt is installed
 from kafka import KafkaConsumer, KafkaProducer
 from typing_extensions import Callable, override
 
