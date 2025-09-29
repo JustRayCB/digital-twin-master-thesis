@@ -22,7 +22,7 @@ def activate_water_pump(duration):
 # Example usage
 if __name__ == "__main__":
     try:
-        duration = 5
+        duration = 2 
         activate_water_pump(duration)
     except KeyboardInterrupt:
         print("Water pump control interrupted.")
