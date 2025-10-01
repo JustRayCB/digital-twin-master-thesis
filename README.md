@@ -20,6 +20,18 @@ A modular digital-twin stack for monitoring plant health. Physical sensors (DHT2
 
 ![Block diagram architecture](./notes/block-diagram.svg) 
 
+## Hardware architecture
+
+<div style="position: relative; width: 100%; padding-top: calc(max(56.25%, 400px));">
+  <iframe src="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f?view=interactive_preview" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"></iframe>
+</div>
+<!--Please include the following link, which help us continue to improve and support the embed, making it a valuable tool for your audience.--> <p style= "margin-top: 5px;" >Edit this project interactively in <a href="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f" target = "_blank">Cirkit Designer</a>.</p>
+
+### Physical Twin
+
+![Digital Twin Box](./notes/dt_box_1.jpg) 
+![Digital Twin Box LED ON](./notes/dt_box_night.jpg) 
+![Digital Twin Box opened](./notes/dt_box_open.jpg) 
 ---
 
 ## Repository Layout
