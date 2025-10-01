@@ -22,10 +22,150 @@ A modular digital-twin stack for monitoring plant health. Physical sensors (DHT2
 
 ## Hardware architecture
 
-<div style="position: relative; width: 100%; padding-top: calc(max(56.25%, 400px));">
-  <iframe src="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f?view=interactive_preview" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"></iframe>
-</div>
+
+![Circuit Architecture diagram](./notes/circuit_image.svg) 
 <!--Please include the following link, which help us continue to improve and support the embed, making it a valuable tool for your audience.--> <p style= "margin-top: 5px;" >Edit this project interactively in <a href="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f" target = "_blank">Cirkit Designer</a>.</p>
+
+### **Circuit Documentation**
+
+#### **Component List**
+
+1. **Adafruit STEMMA Soil Sensor**  
+   * **Description**: Measures soil moisture levels.  
+   * **Pins**: GND, VIN, SDA, SCL  
+2. **BH1750**  
+   * **Description**: Digital light sensor for measuring ambient light.  
+   * **Pins**: VCC, GND, SCL, SDA, ADDR  
+3. **12V White LED Strip**  
+   * **Description**: Provides illumination.  
+   * **Pins**: \+12V, GND  
+4. **PTC**  
+   * **Description**: Positive Temperature Coefficient heater for temperature control.  
+   * **Pins**: Neutral, Live  
+5. **FAN 12V**  
+   * **Description**: Provides air circulation.  
+   * **Pins**: RED, BLACK  
+6. **5V Mini Water Pump**  
+   * **Description**: Pumps water for irrigation.  
+   * **Pins**: Positive pin, Negative pin  
+7. **12V Power Supply**  
+   * **Description**: Provides 12V power to various components.  
+   * **Pins**: \+, \-  
+8. **Raspberry Pi 4b**  
+   * **Description**: Central processing unit for the system.  
+   * **Pins**: Multiple GPIO pins, power, and communication interfaces  
+9. **DHT22**  
+   * **Description**: Measures temperature and humidity.  
+   * **Pins**: GND, VCC, DAT  
+10. **MB102 Breadboard Power Supply Module 3.3V/5V**  
+    * **Description**: Provides 3.3V and 5V power outputs.  
+    * **Pins**: VCC, GND, 3.3V, 5V  
+11. **Relay 4 Channel 5V**  
+    * **Description**: Controls high-power devices using low-power signals.  
+    * **Pins**: GND, IN1, IN2, IN3, IN4, VCC, COM1, COM2, COM3, COM4, NO1, NO2, NO3, NO4, NC1, NC2, NC3, NC4
+
+#### **Wiring Details**
+
+##### **Adafruit STEMMA Soil Sensor**
+
+* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
+* **VIN**: Connected to MB102 Breadboard Power Supply Module VCC  
+* **SDA**: Connected to Raspberry Pi GPIO 2 SDA  
+* **SCL**: Connected to Raspberry Pi GPIO 3 SCL
+
+##### ---
+
+**BH1750**
+
+* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
+* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
+* **SDA**: Connected to Raspberry Pi GPIO 2 SDA  
+* **SCL**: Connected to Raspberry Pi GPIO 3 SCL
+
+##### ---
+
+**12V White LED Strip**
+
+* **\+12V**: Connected to Relay 4 Channel 5V COM2  
+* **GND**: Connected to 12V Power Supply \-
+
+##### ---
+
+**PTC**
+
+* **Neutral**: Connected to 12V Power Supply \-  
+* **Live**: Connected to Relay 4 Channel 5V COM3
+
+##### ---
+
+**FAN 12V**
+
+* **RED**: Connected to Relay 4 Channel 5V COM4  
+* **BLACK**: Connected to 12V Power Supply \-
+
+##### ---
+
+**5V Mini Water Pump**
+
+* **Positive pin**: Connected to Relay 4 Channel 5V COM1  
+* **Negative pin**: Connected to MB102 Breadboard Power Supply Module GND
+
+##### ---
+
+**12V Power Supply**
+
+* **\+**: Connected to various components through relays  
+* **\-**: Connected to respective component grounds
+
+##### ---
+
+**Raspberry Pi 4b**
+
+* **GPIO 2 SDA**: Connected to Adafruit STEMMA Soil Sensor SDA and BH1750 SDA  
+* **GPIO 3 SCL**: Connected to Adafruit STEMMA Soil Sensor SCL and BH1750 SCL  
+* **GPIO 17**: Connected to Relay 4 Channel 5V IN1  
+* **GPIO 27**: Connected to Relay 4 Channel 5V IN2  
+* **GPIO 22**: Connected to Relay 4 Channel 5V IN3  
+* **GPIO 24**: Connected to Relay 4 Channel 5V IN4  
+* **GND**: Connected to MB102 Breadboard Power Supply Module GND
+
+##### ---
+
+**DHT22**
+
+* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
+* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
+* **DAT**: Connected to Raspberry Pi GPIO 23
+
+##### ---
+
+**MB102 Breadboard Power Supply Module 3.3V/5V**
+
+* **VCC**: Connected to 12V Power Supply \+  
+* **GND**: Connected to 12V Power Supply \-  
+* **3.3V**: Not used in this configuration  
+* **5V**: Not used in this configuration
+
+##### ---
+
+**Relay 4 Channel 5V**
+
+* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
+* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
+* **IN1**: Connected to Raspberry Pi GPIO 17  
+* **IN2**: Connected to Raspberry Pi GPIO 27  
+* **IN3**: Connected to Raspberry Pi GPIO 22  
+* **IN4**: Connected to Raspberry Pi GPIO 24  
+* **COM1**: Connected to 5V Mini Water Pump positive pin  
+* **NO1**: Connected to MB102 Breadboard Power Supply Module VCC  
+* **COM2**: Connected to 12V White LED Strip \+12V  
+* **NO2**: Connected to 12V Power Supply \+  
+* **COM3**: Connected to PTC Live  
+* **NO3**: Connected to 12V Power Supply \+  
+* **COM4**: Connected to FAN 12V RED  
+* **NO4**: Connected to 12V Power Supply \+
+
+##### ---
 
 ### Physical Twin
 
