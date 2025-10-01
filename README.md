@@ -2,6 +2,32 @@
 
 A modular digital-twin stack for monitoring plant health. Physical sensors (DHT22, BH1750, STEMMA soil moisture, camera) feed a Raspberry Pi collector that publishes telemetry to Kafka. A Flask-based database service persists data into SQLite or InfluxDB, while the web dashboard streams live updates over Socket.IO. Supporting modules cover AI model management, utilities, setup automation, and hardware/software experiments.
 
+
+# Table of Contents
+
+1. [Key Capabilities](#key-capabilities)  
+2. [System Architecture](#system-architecture)  
+   - [Hardware Architecture](#hardware-architecture)  
+   - [Circuit Documentation](#circuit-documentation)  
+   - [Wiring Details](#wiring-details)  
+   - [Physical Twin](#physical-twin)  
+3. [Repository Layout](#repository-layout)  
+4. [Technology Stack](#technology-stack)  
+5. [Prerequisites](#prerequisites)  
+6. [Installation & Environment Profiles](#installation--environment-profiles)  
+7. [Configuration](#configuration)  
+8. [Running the Stack](#running-the-stack)  
+   - [Kafka Topics](#kafka-topics)  
+   - [Database Service](#database-service)  
+   - [Collector](#collector)  
+   - [Web Dashboard](#web-dashboard)  
+   - [Controller](#controller)  
+   - [AI / Analytics](#ai--analytics)  
+9. [Scripts & Hands-On Utilities](#scripts--hands-on-utilities)  
+10. [Testing & Quality](#testing--quality)  
+11. [Development Notes & Extensibility](#development-notes--extensibility)  
+12. [TODO](#todo)  
+
 ---
 
 ## Key Capabilities
