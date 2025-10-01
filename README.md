@@ -23,7 +23,7 @@ A modular digital-twin stack for monitoring plant health. Physical sensors (DHT2
 ## Hardware architecture
 
 
-![Circuit Architecture diagram](./notes/circuit_image.svg) 
+![Circuit Architecture diagram](./notes/circuit_image.png) 
 <!--Please include the following link, which help us continue to improve and support the embed, making it a valuable tool for your audience.--> <p style= "margin-top: 5px;" >Edit this project interactively in <a href="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f" target = "_blank">Cirkit Designer</a>.</p>
 
 ### **Circuit Documentation**
