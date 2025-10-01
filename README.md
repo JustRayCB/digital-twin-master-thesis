@@ -242,7 +242,7 @@ Activate the virtual environment with `poetry shell` or `make venv`.
 
 Central settings live in `dt/utils/config.py` (StrEnum):
 
-- `KAFKA_URL`: Kafka bootstrap servers (default `91.86.62.242:9092`; override for local clusters).
+- `KAFKA_URL`: Kafka bootstrap servers (default `localhost:9092`; override for local clusters).
 - `INFLUX_*`: URL, token, org, bucket for InfluxDB. Tokens in source are placeholders; supply your own secrets via environment variables or a secure config and modify the enum accordingly.
 - `FLASK_*_URL`: Base URLs consumed by cross-service clients (`DatabaseApiClient`, web dashboard).
 - `MODELS_DIR`: Registry storage path (default `../data/models/`).
@@ -326,7 +326,7 @@ Grant execute permission where necessary (`chmod +x scripts/setup_kafka.sh`).
 
 ## TODO
 
-- Replace sensitive defaults in `dt/utils/config.py` with secure configuration management.
+✅ Replace sensitive defaults in `dt/utils/config.py` with secure configuration management
 - Add an SQL managed database for non-time-series data (sensor registry, action history, alerts, ...).
 - Configure the Downsampling task in InfluxDB for long-term data retention.
 - Implement the data processing pipeline (consuming raw topics, enriching, publishing processed).
