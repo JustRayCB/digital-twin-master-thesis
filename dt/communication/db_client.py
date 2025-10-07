@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
-from dt.utils import Config, SensorData, SensorDescriptor, get_logger
-from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
+from dt.communication.dataclasses import DBIdQuery, DBTimestampQuery, SensorData, SensorDescriptor
+from dt.utils import Config, get_logger
 
 
 class DatabaseApiClient:

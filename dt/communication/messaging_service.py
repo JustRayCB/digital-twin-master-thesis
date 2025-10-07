@@ -7,7 +7,8 @@ from abc import ABC, abstractmethod
 from kafka import KafkaConsumer, KafkaProducer
 from typing_extensions import Callable, override
 
-from dt.utils import SensorData, get_logger
+from dt.communication.dataclasses import SensorData
+from dt.utils import get_logger
 
 
 class MessagingService(ABC):

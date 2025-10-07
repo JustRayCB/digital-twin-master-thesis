@@ -1,7 +1,7 @@
 import pytest
 
 from dt.communication import Topics
-from dt.utils.dataclasses import DBTimestampQuery, SensorData, SensorDescriptor
+from dt.communication.dataclasses import DBTimestampQuery, SensorData, SensorDescriptor
 
 
 def test_sensor_data_serialization_roundtrip():

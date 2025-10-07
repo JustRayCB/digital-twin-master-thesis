@@ -6,8 +6,8 @@ import influxdb_client
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
+from dt.communication.dataclasses import SensorData
 from dt.communication.topics import Topics
-from dt.utils.dataclasses import SensorData
 
 token = "TWqFtTMaU8eO_Zu2TnN_BBGlkdzghfB2dyB9qwO4R6x7hRzLMx1LcPkjCJ-mxTtiwPRFsO2JRvk6qvgOuZ_KVw=="
 org = "dt-ulb"

@@ -9,10 +9,9 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import (DatabaseApiClient, KafkaService,
-                              MessagingService, Topics)
-from dt.utils import Config, SensorData, get_logger
-from dt.utils.dataclasses import DBTimestampQuery
+from dt.communication import DatabaseApiClient, KafkaService, MessagingService, Topics
+from dt.communication.dataclasses import DBTimestampQuery, SensorData
+from dt.utils import Config, get_logger
 
 app = Flask(__name__)
 CORS(app)

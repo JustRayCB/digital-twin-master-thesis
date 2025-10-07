@@ -4,8 +4,7 @@ from abc import ABC, abstractmethod
 import board
 
 from dt.communication import Topics
-from dt.utils import SensorData
-from dt.utils.dataclasses import SensorDescriptor
+from dt.communication.dataclasses import SensorData, SensorDescriptor
 from dt.utils.logger import get_logger
 
 

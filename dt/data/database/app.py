@@ -4,10 +4,10 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from dt.communication import MessagingService, Topics
+from dt.communication.dataclasses import DBIdQuery, DBTimestampQuery, SensorData, SensorDescriptor
 from dt.communication.messaging_service import KafkaService
-from dt.data.database import InfluxDBStorage, SQLStorage, Storage
-from dt.utils import Config, SensorData, SensorDescriptor, get_logger
-from dt.utils.dataclasses import DBIdQuery, DBTimestampQuery
+from dt.data.database import InfluxDBStorage, Storage
+from dt.utils import Config, get_logger
 
 app = Flask(__name__)
 CORS(app)
