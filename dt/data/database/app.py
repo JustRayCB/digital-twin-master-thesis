@@ -93,8 +93,8 @@ def get_data_by_timeframe():
 
     data: list[SensorData] = storage.get_data_by_timeframe(
         data_type=request_data.data_type,
-        from_timestamp=request_data.since,
-        to_timestamp=request_data.until,
+        since=request_data.since,
+        until=request_data.until,
     )
     shrank_data = [d.shrink_data() for d in data]
     logger.info(f"Lenght of data: {len(data)}")

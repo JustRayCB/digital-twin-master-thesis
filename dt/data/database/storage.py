@@ -37,7 +37,7 @@ class Storage(ABC):
 
     @abstractmethod
     def get_data_by_timeframe(
-        self, data_type: str, from_timestamp: float, to_timestamp: float
+        self, data_type: str, since: float, until: float
     ) -> list[SensorData]:
         """Get sensor data within a time range"""
         pass
@@ -181,7 +181,7 @@ class SQLStorage(Storage):
 
     @override
     def get_data_by_timeframe(
-        self, data_type: str, from_timestamp: float, to_timestamp: float
+        self, data_type: str, since: float, until: float
     ) -> list[SensorData]:
         """Get the data from a specific timestamp to the current time
 
@@ -189,9 +189,9 @@ class SQLStorage(Storage):
         ----------
         data_type : str
             The type of data to retrieve
-        from_timestamp : float
+        since: float
             The timestamp from which to retrieve the data
-        to_timestamp : float
+        until: float
             The timestamp to which to retrieve the data
 
         Returns
@@ -205,7 +205,7 @@ class SQLStorage(Storage):
                 cursor = self.conn.cursor()
                 cursor.execute(
                     "SELECT * FROM sensors_data WHERE data_type = ? AND timestamp >= ? AND timestamp <= ?",
-                    (data_type, from_timestamp, to_timestamp),
+                    (data_type, since, until),
                 )
                 datas = cursor.fetchall()
                 return [
@@ -448,16 +448,16 @@ class InfluxDBStorage(Storage):
 
     @override
     def get_data_by_timeframe(
-        self, data_type: str, from_timestamp: float, to_timestamp: float
+        self, data_type: str, since: float, until: float
     ) -> list[SensorData]:
         """Get sensor data within a specific time range"""
         with self.db_lock:
             try:
                 # Convert timestamps to RFC3339 format for Flux
-                from_time = datetime.fromtimestamp(from_timestamp, tz=timezone.utc).strftime(
+                from_time = datetime.fromtimestamp(since, tz=timezone.utc).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
-                to_time = datetime.fromtimestamp(to_timestamp, tz=timezone.utc).strftime(
+                to_time = datetime.fromtimestamp(until, tz=timezone.utc).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
 

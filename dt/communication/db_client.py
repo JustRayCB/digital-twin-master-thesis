@@ -70,8 +70,8 @@ class DatabaseApiClient:
         time_frame : DBTimestampQuery
             The time frame for the data query:
                 - data_type: str
-                - from_timestamp: float
-                - to_timestamp: float
+                - since: float
+                - until: float
 
         Returns
         -------

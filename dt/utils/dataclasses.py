@@ -140,9 +140,9 @@ class DBTimestampQuery(JsonSerializable):
 
     Attributes
     ----------
-    from_timestamp : The start timestamp of the query.
-    to_timestamp : The end timestamp of the query.
     data_type : The type of data to query.
+    since: The start timestamp of the query.
+    until: The end timestamp of the query.
     """
 
     data_type: str
