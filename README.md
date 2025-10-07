@@ -205,11 +205,11 @@ A modular digital-twin stack for monitoring plant health. Physical sensors (DHT2
 | Path | Description |
 | --- | --- |
 | `dt/collector/` | GPIO/I²C sensor abstractions, mocks, and the `SensorManager` publishing to Kafka. |
-| `dt/communication/` | Messaging clients (Kafka, MQTT) and REST API client for the database service. |
+| `dt/communication/` | Messaging clients (Kafka, MQTT) and REST API client for the database service and shared dataclasses. |
 | `dt/data/database/` | Flask API for data persistence plus `SQLStorage` (SQLite) and `InfluxDBStorage`. |
 | `dt/webapp/` | Flask + Socket.IO dashboard, Plotly front-end assets, templates, and real-time store. |
 | `dt/ai/` | Model base class, metadata, registry, and filesystem storage backend (future analytics). |
-| `dt/utils/` | Shared dataclasses, config enum, logging setup, correlation IDs, and exceptions. |
+| `dt/utils/` | Config enum, logging setup, correlation IDs, and exceptions. |
 | `scripts/` | Provisioning scripts (`setup.sh`, `setup_kafka.sh`, `setup_influxdb.sh`), Kafka topic manager, and hands-on hardware/software experiments. |
 | `tests/` | Pytest suite validating core dataclasses (serialization, helpers, validation). |
 | `Makefile` | Convenience targets for installing poetry profiles, running services, tests, and maintenance. |
@@ -328,7 +328,7 @@ Grant execute permission where necessary (`chmod +x scripts/setup_kafka.sh`).
 
 ## Testing & Quality
 
-- Run `make test` or `poetry run pytest` (tests reside in `tests/utils/test_dataclasses.py`).
+- Run `make test` or `poetry run pytest` (tests reside in `tests/communication/test_dataclasses.py`).
 - Lint/type-check (if `dev` extras installed):
   - `poetry run ruff check .`
   - `poetry run mypy dt`
@@ -339,7 +339,7 @@ Grant execute permission where necessary (`chmod +x scripts/setup_kafka.sh`).
 
 ## Development Notes & Extensibility
 
-- All shared payloads use `dt.utils.dataclasses`:
+- All shared payloads use `dt.communication.dataclasses`:
   - `SensorData` enforces type conversion, JSON round-trips, `data_type` convenience.
   - `SensorDescriptor`, `DBTimestampQuery`, `DBIdQuery`, `ActionCommand` ensure consistent serialization.
 - Topics are centralised in `dt/communication/topics.py`; prefer `.processed` topics until raw channel consumers exist.
