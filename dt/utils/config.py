@@ -24,3 +24,7 @@ class Config(StrEnum):
     FLASK_AI_URL = os.getenv("FLASK_AI_URL", "http://localhost:5002/")  # AI service URL
 
     MODELS_DIR = os.getenv("MODELS_DIR", "models/")  # Directory to save/load models
+
+    PREPROCESSING_CONFIG_PATH = os.getenv(
+        "PREPROCESSING_CONFIG_PATH", "dt/utils/preprocessing_config.yml"
+    )  # Path to preprocessing config file

@@ -1,0 +1,45 @@
+defaults:
+  windows: # window size definitions for rolling calculations
+    small_sec: 60
+    medium_sec: 300
+    big_sec: 1000
+  scoring:
+    weights: # Data quality scoring weights (must sum to 1.0)
+      range_ok: 0.4
+      roc_ok:   0.4
+      stuck_ok: 0.2
+
+sensors:
+  dht22.temperature:
+    units: "°C"
+    range: { min: -40, max: 80 }
+    accuracy: 0.5 # +-0.5°C
+    roc:   { max_per_minute: 1.0 } # Maximum rate of change per minute, in this case it is 1 degree Celsius per minute
+    stuck: { max_flat_seconds: 300 } # 5 minutes
+  dht22.humidity:
+    units: "%"
+    range: { min: 0, max: 100 }
+    accuracy: 2.0 # +-2%
+    roc:   { max_per_minute: 5.0 }
+    stuck: { max_flat_seconds: 300 }
+  bh1750.lux:
+    units: "lux"
+    range: { min: 1, max: 65535 }
+    accuracy: 13107 # +-20% (13107 is 20% of 65535)
+    roc:
+      profiles: # different rate of change profiles for different environments
+        indoor:  { max_per_minute: 100 }
+        outdoor: { max_per_minute: 1000 }
+      active_profile: indoor
+    stuck: { max_flat_seconds: 180 } 
+  stemma.soil_moisture:
+    units: "%"
+    range: { min: 0, max: 2000 } # Need to be calibrated to 0-100%
+    accuracy: 40 # +-2% (40 is 2% of 2000)
+    roc:
+      profiles:
+        normal: { max_per_minute: 5 }
+        irrigation: { max_per_minute: 50 }
+      active_profile: normal
+    stuck: { max_flat_seconds: 600 } # 10 minutes
+
