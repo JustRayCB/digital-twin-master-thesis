@@ -172,3 +172,8 @@ cython_debug/
 .prettierrc
 connections.json
 path/to/HDFS/dir
+report
+docs/briefs/roadmap.md
+AGENTS.md
+Roadmap — Digital Twin For Plant Health Monitoring.pdf
+poetry.lock
