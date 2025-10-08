@@ -1,3 +1,8 @@
+> Topics: raw.sensor.*, proc.sensor.*, alerts.*, actions.*, control.events.*, audit.*  
+> IDs: correlation_id propagated end-to-end  
+> Storage: Influx ‘events’ + Relational Action/Audit (SQLite→Postgres)  
+> Testing: unit+integration (Kafka/Influx in containers), CI gates
+
 # Design Patterns, Coding Standards
 
 ## Architecture & Design Patterns
