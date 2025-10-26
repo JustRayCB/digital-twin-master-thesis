@@ -7,6 +7,28 @@ from dt.utils.logger import get_logger
 
 
 class MockMoistureSensor(Sensor):
+    """A mock soil moisture sensor for testing and development.
+
+    This class simulates the behavior of a soil moisture sensor by generating
+    a realistic pattern of data. The pattern consists of a sudden increase
+    in moisture (simulating watering) followed by a gradual, exponential
+    decrease as the soil dries out. Random noise is added to make the
+    readings appear more realistic.
+
+    This allows for testing of the data processing and visualization
+    components without requiring a physical sensor.
+
+    Parameters
+    ----------
+    name : str
+        The name of the sensor.
+    read_interval : int
+        The interval in seconds at which the sensor should be read.
+    nb_readings : int
+        The total number of mock readings to generate before the cycle
+        repeats.
+    """
+
     def __init__(
         self,
         name: str,
@@ -26,13 +48,12 @@ class MockMoistureSensor(Sensor):
         self._generate_readings()
 
     def _generate_readings(self) -> None:
-        """
-        Generate realistic readings for the soil moisture sensor.
+        """Generate a series of realistic soil moisture readings.
 
-        The pattern follows:
-        1. A sudden increase in moisture level (plant is watered)
-        2. Gradual, natural decrease in moisture level (soil drying over time)
-        3. Add realistic noise for sensor imperfection.
+        The generated pattern simulates a plant being watered, resulting in a
+        high moisture level, followed by an exponential decay as the soil
+        dries over time. Realistic noise is added to simulate sensor
+        imperfections.
         """
         # We can assume that the soil moisture level will decrease over time
         # as the plant absorbs water from the soil.
@@ -77,10 +98,3 @@ class MockMoistureSensor(Sensor):
         self.current_reading += 1
         self.logger.debug(f"Read sensor value: {reading}")
         return reading
-
-    @override
-    def process_data(self, raw_data: float) -> float:
-        # Given the raw data in the range [200, 2000], we can normalize it to [0, 100]
-        processed_data = (raw_data - self.min_value) / (self.max_value - self.min_value) * 100
-        self.logger.debug(f"Processed data: {processed_data} from raw data: {raw_data}")
-        return processed_data

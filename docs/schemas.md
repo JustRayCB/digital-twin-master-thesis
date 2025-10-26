@@ -100,8 +100,8 @@ No wire shape of its own; it’s inherited by all schemas below.
 
 * `Topics.list_topics()` returns all enum values **except** `SENSORS_DATA` (and the raw prefix constant), so iteration yields concrete topics for production use.
 * `Topics.short_name` returns the trailing segment (e.g., `dt.sensors.soil_moisture → soil_moisture`).
-* `Topics.raw` derives a raw-ingest topic as `dt.sensors.<short_name>.raw` (e.g., `dt.sensors.temperature.raw`).
-* `Topics.processed` derives a validated stream as `dt.sensors.<short_name>.processed`.
+* `Topics.raw` derives a raw-ingest topic as `dt.sensors.raw.<short_name>` (e.g., `dt.sensors.raw.temperature`).
+* `Topics.processed` derives a validated stream as `dt.sensors.processed.<short_name>`.
 * `Topics.from_short_name(name)` maps a short name to its enum member (case-insensitive via `.upper()`).
 
 **Examples**
@@ -109,8 +109,8 @@ No wire shape of its own; it’s inherited by all schemas below.
 ```text
 Topics.SOIL_MOISTURE.value      == "dt.sensors.soil_moisture"
 Topics.SOIL_MOISTURE.short_name == "soil_moisture"
-Topics.SOIL_MOISTURE.raw        == "dt.sensors.soil_moisture.raw"
-Topics.SOIL_MOISTURE.processed  == "dt.sensors.soil_moisture.processed"
+Topics.SOIL_MOISTURE.raw        == "dt.sensors.raw.soil_moisture"
+Topics.SOIL_MOISTURE.processed  == "dt.sensors.processed.soil_moisture"
 ```
 
 ---

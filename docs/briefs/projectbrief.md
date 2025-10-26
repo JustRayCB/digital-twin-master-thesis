@@ -57,7 +57,7 @@ being adaptable for more complex future use cases.
 ## Architecture (v1)
 - **Producers**: Raspberry Pi 4B + sensors (DHT22, BH1750, soil moisture, camera)
 - **Backbone**: Kafka topics
-  - `dt.sensor.*.raw`, `dt.sensor.*.proc`, `dt.alerts.*`, `dt.actions.*`,  `dt.audit.*`
+  - `dt.sensor.raw.*`, `dt.sensor.processed.*`, `dt.alerts.*`, `dt.actions.*`,  `dt.audit.*`
 - **Processing**: Spark Structured Streaming jobs for validation, calibration, alerts
 - **Storage**:
   - **InfluxDB** for TS data (+ downsampling 1m/5m/1h)

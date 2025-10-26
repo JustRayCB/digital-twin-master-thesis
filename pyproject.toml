@@ -18,6 +18,7 @@ dependencies = [
     "kafka-python (>=2.1.5,<3.0.0)",
     "dotenv (>=0.9.9,<0.10.0)",
     "pyyaml (>=6.0.3,<7.0.0)",
+    "numpy (>=2.3.4,<3.0.0)",
 ]
 
 # Dev tools
@@ -31,6 +32,7 @@ debugpy = "^1.8.12"
 pytest = ">=8.4.2,<9.0.0"
 ruff = "^0.13.2"
 mypy = "^1.18.2"
+pyupgrade = "^3.21.0"
 
 
 # Spark kept out of default installs

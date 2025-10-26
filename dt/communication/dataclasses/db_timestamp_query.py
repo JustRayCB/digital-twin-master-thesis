@@ -1,18 +1,23 @@
 from dataclasses import dataclass
 
 from dt.communication.dataclasses.serializable import JsonSerializable
-from dt.communication.topics import Topics
 
 
 @dataclass
 class DBTimestampQuery(JsonSerializable):
-    """Represents a query to the database to get the data from a specific timestamp.
+    """Represents a query to retrieve data within a specific time range.
+
+    This dataclass defines the structure for a query that fetches data of a
+    specific type from the database within a given timestamp range.
 
     Attributes
     ----------
-    data_type : The type of data to query.
-    since: The start timestamp of the query.
-    until: The end timestamp of the query.
+    data_type : str
+        The type of data to query (e.g., "temperature", "humidity").
+    since : float
+        The start of the time range as a Unix timestamp.
+    until : float
+        The end of the time range as a Unix timestamp.
     """
 
     data_type: str
@@ -25,8 +30,11 @@ class DBTimestampQuery(JsonSerializable):
         self.until = float(self.until)
 
     def js_to_py_timestamp(self):
-        """
-        Converts the timestamp from JavaScript format to Python format
+        """Convert timestamps from JavaScript (milliseconds) to Python (seconds).
+
+        This method modifies the `since` and `until` attributes in-place,
+        dividing them by 1000 to convert from milliseconds to seconds. This
+        is necessary when receiving timestamps from a JavaScript client.
         """
         # Convert the timestamp from milliseconds to seconds
         self.since = self.since / 1000

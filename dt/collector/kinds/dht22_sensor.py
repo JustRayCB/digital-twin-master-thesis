@@ -1,4 +1,6 @@
 # dht22_singleton.py
+from typing import Optional
+
 import adafruit_dht
 import board
 
@@ -6,34 +8,50 @@ from dt.utils.logger import get_logger
 
 
 class DHT22Singleton:
-    """
-    Singleton class for DHT22 temperature/humidity sensor.
-    Ensures only a single instance of the sensor is created across the application.
+    """Singleton for the DHT22 temperature and humidity sensor.
+
+    This class ensures that only one instance of the DHT22 sensor is created
+    for a given pin, preventing multiple initializations of the same hardware
+    device, which can lead to errors.
+
+    NOTE: If Later, the reading of temperature and humidity is multithreaded,
+    additional synchronization mechanisms (like threading locks) may be needed
+    to ensure thread safety.
+
+    Attributes
+    ----------
+    _instance : The singleton instance of this class.
+    _sensor : The underlying DHT22 sensor object from the adafruit library.
+    _pin : The GPIO pin to which the sensor is connected.
     """
 
-    _instance = None
-    _sensor = None
-    _pin = None
+    _instance: Optional["DHT22Singleton"] = None
+    _sensor: adafruit_dht.DHT22 | None = None
+    _pin: board.pin | None = None
 
     @classmethod
     def get_instance(cls, pin=None):
-        """
-        Returns the singleton instance of the DHT22 sensor.
+        """Get the singleton instance of the DHT22 sensor.
+
+        On the first call, this method initializes the DHT22 sensor on the
+        specified pin. Subsequent calls will return the existing instance
+        without re-initializing it.
 
         Parameters
         ----------
         pin : board.Pin, optional
-            The GPIO pin the sensor is connected to. Required on first call.
+            The GPIO pin to which the sensor is connected. This is required
+            on the first call to initialize the sensor.
 
         Returns
         -------
         adafruit_dht.DHT22
-            The DHT22 sensor instance
+            The singleton instance of the DHT22 sensor.
 
         Raises
         ------
         ValueError
-            If pin is not provided on first initialization
+            If the `pin` is not provided on the first initialization.
         """
         logger = get_logger("DHT22Singleton")
 
@@ -52,5 +70,12 @@ class DHT22Singleton:
 
     @classmethod
     def get_pin(cls):
-        """Returns the pin used by the sensor"""
+        """Get the GPIO pin used by the singleton sensor instance.
+
+        Returns
+        -------
+        Optional[board.Pin]
+            The GPIO pin to which the sensor is connected, or None if the
+            singleton has not yet been initialized.
+        """
         return cls._pin

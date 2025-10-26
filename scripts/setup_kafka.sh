@@ -1,6 +1,21 @@
 #!/bin/bash
 
-PUBLIC_IP=$(curl -4 ifconfig.me)
+# This script automates the installation and configuration of a single-node
+# Apache Kafka cluster running in KRaft mode on a Debian-based system.
+# It handles dependency installation, user creation, Kafka download,
+# configuration, and setting up a systemd service for management.
+
+set -e # Exit immediately if a command exits with a non-zero status.
+
+# --- Get Network Information ---
+# Fetches the public and local IP addresses, which are used to configure
+# Kafka's advertised listeners for both internal and external access.
+echo "Fetching network information..."
+PUBLIC_IP=$(curl -4s ifconfig.me)
+if [ -z "$PUBLIC_IP" ]; then
+    echo "Could not determine public IP address. Exiting."
+    exit 1
+fi
 echo "Your public IP address is: $PUBLIC_IP"
 LOCAL_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n 1)
 
@@ -13,6 +28,7 @@ KAFKA_DOWNLOAD_URL="https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/${KAF
 JAVA_PACKAGE="default-jdk"
 DEPENDENCIES="net-tools jq netcat-traditional"
 DATA_DIR="/var/kafka-logs"
+KAFKA_USER="kafka"
 
 # Update and install Java
 echo "Updating system and installing Dependencies (Java, net-tools, jq)..."
@@ -33,27 +49,20 @@ if ! command -v wget &>/dev/null; then
   sudo apt-get install -y wget
 fi
 
-# Check if Kafka directory already exists
-if [ -d "$KAFKA_DIR" ]; then
-  echo "Kafka directory already exists. Please remove it or choose a different directory."
-  exit 1
+# --- Setup Kafka User and Directories ---
+echo "Setting up Kafka user and directories..."
+if id "$KAFKA_USER" &>/dev/null; then
+    echo "User '$KAFKA_USER' already exists."
+else
+    sudo useradd -r -d $KAFKA_DIR -s /bin/false $KAFKA_USER
+    echo "Created user '$KAFKA_USER'."
 fi
 
-# Create Kafka directory
-echo "Creating Kafka directory..."
-sudo mkdir -p $KAFKA_DIR
-
-echo "Creating Data directories..."
-sudo mkdir -p $DATA_DIR
-
-echo "Creating kafka user"
-sudo useradd -r -d /opt/kafka -s /bin/false kafka
-sudo chown -R kafka:kafka $KAFKA_DIR
-sudo chown -R kafka:kafka $DATA_DIR
-sudo chmod -R 755 $KAFKA_DIR
-sudo chmod -R 755 $DATA_DIR
-# Add your user to the kafka group
-sudo usermod -aG kafka $USER
+sudo mkdir -p $KAFKA_DIR $DATA_DIR
+sudo chown -R $KAFKA_USER:$KAFKA_USER $KAFKA_DIR $DATA_DIR
+sudo chmod -R 755 $KAFKA_DIR $DATA_DIR
+# Add the current user to the kafka group to allow management
+sudo usermod -aG $KAFKA_USER $USER
 
 # Download Kafka
 echo "Downloading Kafka version $KAFKA_VERSION..."
@@ -65,6 +74,7 @@ sudo tar -xzf /tmp/$KAFKA_TARBALL -C $KAFKA_DIR --strip-components 1
 rm /tmp/$KAFKA_TARBALL
 
 # Create kraft directory if it doesn't exist
+echo "Configuring Kafka for KRaft mode..."
 sudo mkdir -p $KAFKA_DIR/config/kraft
 
 # Generate a cluster ID
@@ -92,7 +102,7 @@ inter.broker.listener.name=PLAINTEXT
 # Log directory
 log.dirs=$DATA_DIR
 
-# Other broker settings
+# Default Topic configurations
 num.partitions=1
 default.replication.factor=1
 offsets.topic.replication.factor=1
@@ -110,10 +120,11 @@ EOF
 
 # Format the storage directory
 echo "Formatting Kafka storage directory..."
-sudo $KAFKA_DIR/bin/kafka-storage.sh format -t $CLUSTER_ID -c $KAFKA_DIR/config/kraft/server.properties
+sudo -u $KAFKA_USER $KAFKA_DIR/bin/kafka-storage.sh format -t $CLUSTER_ID -c $KAFKA_DIR/config/kraft/server.properties
+
 
 # Create systemd service files for Kafka
-echo "Setting up Kafka service (KRaft mode)..."
+echo "Setting up Kafka systemd service..."
 sudo tee /etc/systemd/system/kafka-kraft.service >/dev/null <<EOT
 [Unit]
 Description=Apache Kafka in KRaft Mode
@@ -122,8 +133,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=kafka
-Group=kafka
+User=$KAFKA_USER
+Group=$KAFKA_USER
 Environment="KAFKA_HEAP_OPTS=-Xmx512M -Xms512M"
 ExecStart=${KAFKA_DIR}/bin/kafka-server-start.sh ${KAFKA_DIR}/config/kraft/server.properties
 ExecStop=${KAFKA_DIR}/bin/kafka-server-stop.sh

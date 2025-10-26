@@ -1,6 +1,7 @@
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Sensor
+from dt.communication.topics import Topics
 
 
 class CameraSensor(Sensor):
@@ -12,10 +13,12 @@ class CameraSensor(Sensor):
     def unit(self) -> str:
         return "image"  # Camera sensor returns an image ??
 
+    @property
     @override
-    def read_sensor(self) -> float:
-        pass
+    def topic(self) -> str:
+        return Topics.CAMERA_IMAGE
 
     @override
-    def process_data(self, raw_data: float) -> float:
-        pass
+    def read_sensor(self) -> float:
+        # TODO: Implement camera sensor reading logic
+        raise NotImplementedError("Camera sensor read not implemented yet")

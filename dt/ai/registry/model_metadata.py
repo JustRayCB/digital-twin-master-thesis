@@ -1,7 +1,7 @@
 import datetime
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Dict
+from typing import Any
 
 
 class ModelType(StrEnum):
@@ -29,11 +29,11 @@ class ModelMetadata:
     created_by: str = "system"
     updated_at: datetime.datetime = datetime.datetime.now()
     stage: ModelStage = ModelStage.DEVELOPMENT
-    metrics: Dict[str, float] = {}  # Performance metrics
-    parameters: Dict[str, Any] = {}  # Weights, hyperparameters, state, etc...
+    metrics: dict[str, float] = {}  # Performance metrics
+    parameters: dict[str, Any] = {}  # Weights, hyperparameters, state, etc...
     sensor_type: str = "basic_sensor"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert metadata to dictionary for serialization."""
         return {
             "name": self.name,
@@ -50,7 +50,7 @@ class ModelMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "ModelMetadata":
+    def from_dict(cls, data: dict) -> "ModelMetadata":
         """Create ModelMetadata from dictionary."""
         return cls(
             name=data["name"],

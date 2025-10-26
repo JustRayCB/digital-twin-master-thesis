@@ -16,12 +16,28 @@ sensors:
     accuracy: 0.5 # +-0.5°C
     roc:   { max_per_minute: 1.0 } # Maximum rate of change per minute, in this case it is 1 degree Celsius per minute
     stuck: { max_flat_seconds: 300 } # 5 minutes
+    imputation:
+      strategy: window_average
+      # 2 min sampling → 3-sample window ≈ 6 minutes
+      window_seconds: 360
+      min_samples: 2
+      # retained for schema consistency; not used by window_average
+      max_gap_seconds: 480
+      decay_seconds: 0
   dht22.humidity:
     units: "%"
     range: { min: 0, max: 100 }
     accuracy: 2.0 # +-2%
     roc:   { max_per_minute: 5.0 }
     stuck: { max_flat_seconds: 300 }
+    imputation:
+      strategy: window_average
+      # 2 min sampling → 3-sample window = 6 minutes
+      window_seconds: 360
+      min_samples: 2
+      # retained for schema consistency; not used by window_average
+      max_gap_seconds: 480
+      decay_seconds: 0
   bh1750.lux:
     units: "lux"
     range: { min: 1, max: 65535 }
@@ -32,6 +48,14 @@ sensors:
         outdoor: { max_per_minute: 1000 }
       active_profile: indoor
     stuck: { max_flat_seconds: 180 } 
+    imputation:
+      strategy: window_average
+      # 1 min sampling → 3-sample window = 3 minutes
+      window_seconds: 180
+      min_samples: 3
+      # retained for schema consistency; not used by window_average
+      max_gap_seconds: 240
+      decay_seconds: 0
   stemma.soil_moisture:
     units: "%"
     range: { min: 0, max: 2000 } # Need to be calibrated to 0-100%
@@ -42,4 +66,10 @@ sensors:
         irrigation: { max_per_minute: 50 }
       active_profile: normal
     stuck: { max_flat_seconds: 600 } # 10 minutes
-
+    imputation:
+      strategy: forward_fill_with_decay
+      # 2 min sampling → accept up to ~5 intervals before baseline fallback
+      max_gap_seconds: 600
+      # decay window for gentle fallback if baseline provided in future
+      decay_seconds: 300
+      baseline: null

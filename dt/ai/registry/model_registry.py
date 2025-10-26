@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dt.ai.models.base_model import BaseModel
 from dt.ai.registry.storage import FileSystemStorage, RegistryStorage
@@ -16,7 +16,7 @@ class ModelRegistry:
     - Model metadata and performance tracking
     """
 
-    def __init__(self, storage: Optional[RegistryStorage] = None):
+    def __init__(self, storage: RegistryStorage | None = None):
         """
         Initialize the model registry.
 
@@ -24,7 +24,7 @@ class ModelRegistry:
             storage: Storage backend for the registry
         """
         self.storage = storage or FileSystemStorage()
-        self.active_models: Dict[str, BaseModel] = {}  # Active models by name
+        self.active_models: dict[str, BaseModel] = {}  # Active models by name
 
         self.logger = get_logger(__name__)
 
@@ -51,7 +51,7 @@ class ModelRegistry:
         self.logger.info(f"Registered model {model.name} with ID {model.model_id}")
         return True
 
-    def load_model(self, model_name: str, version: Optional[float] = None) -> Optional[BaseModel]:
+    def load_model(self, model_name: str, version: float | None = None) -> BaseModel | None:
         """
         Load a model from storage by ID.
 
@@ -77,8 +77,8 @@ class ModelRegistry:
         return model
 
     def get_model_info(
-        self, model_name: str, version: Optional[float] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, model_name: str, version: float | None = None
+    ) -> dict[str, Any] | None:
         """
         Get model metadata without loading the full model.
 
@@ -90,7 +90,7 @@ class ModelRegistry:
         """
         return self.storage.get_model_info(model_name, version)
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         """
         List all models in the registry, optionally filtered by topic.
 
@@ -101,7 +101,7 @@ class ModelRegistry:
 
         return models
 
-    def delete_model(self, model_name: str, version: Optional[float] = None) -> bool:
+    def delete_model(self, model_name: str, version: float | None = None) -> bool:
         """
         Delete a model from the registry.
 

@@ -278,6 +278,11 @@ Central settings live in `dt/utils/config.py` (StrEnum)  exposed as environment 
 - `INFLUX_*`: URL, token, org, bucket for InfluxDB. Tokens in source are placeholders; supply your own secrets via environment variables or a secure config.
 - `FLASK_*_URL`: Base URLs consumed by cross-service clients (`DatabaseApiClient`, web dashboard, ...).
 - `MODELS_DIR`: Registry storage path (default `../data/models/`).
+- `PREPROCESSING_CONFIG_PATH`: YAML file describing sensor validation rules (default `dt/utils/preprocessing_config.yml`).
+- `PREPROCESSING_CHECKPOINT_DIR`: Filesystem path where the Spark preprocessing job stores its streaming checkpoints (default `./spark-checkpoints/preprocessing`).
+- `SPARK_APP_NAME`: Application name used for the preprocessing Spark session (default `dt-preprocessing-app`).
+- `SPARK_LOG_LEVEL`: Spark log verbosity for the preprocessing job (default `WARN`).
+- `STARTING_OFFSETS`: Kafka starting offsets for the streaming query (`earliest` or `latest`, default `latest`).
 
 Keep credentials out of version control in production by using the `.env` file, which is ignored by git.
 
@@ -289,15 +294,7 @@ Keep credentials out of version control in production by using the `.env` file, 
    - Use `scripts/kafka_manager.py setup` logic (or manually run `KafkaManager.setup_kafka()`) to create raw/processed sensor topics and supporting channels (alerts, commands).
    - Sensor topics follow `dt.sensors.<sensor>`, with `.raw` / `.processed` variants provided by `Topics`.
 
-2. **Database service**  
-   - `make run-database` → runs `dt/data/database/app.py`.
-   - Subscribes to processed topics, persists payloads, and exposes REST endpoints:
-     - `POST /bind_sensor` → register sensors (`SensorDescriptor`).
-     - `POST /data/timestamp` → query by time range (`DBTimestampQuery`).
-     - `POST /data/id` → fetch recent records by sensor ID (`DBIdQuery`).
-   - Default storage backend is InfluxDB for time-series data. Later will be added SQL.
-
-3. **Collector**  
+2. **Collector**  
    - `make run-collector` → runs `dt/collector/main.py`.
    - `SensorManager` composes sensor instances (Soil moisture, temperature, humidity, light, camera placeholder). Each sensor:
      - Implements `read_sensor`.
@@ -305,15 +302,31 @@ Keep credentials out of version control in production by using the `.env` file, 
      - Publishes `SensorData` with correlation IDs, units, timestamps.
    - Binding to the database via `DatabaseApiClient.bind_sensor` exists but is commented while hardware pin mapping is in flux.
 
-4. **Web dashboard**  
+3. **Preprocessing pipeline**  
+   - `make run-preprocessing` → runs `dt/data/preprocess/main.py`.
+   - Consumes raw Kafka topics (`dt.sensors.raw.*`), loads rules from `PREPROCESSING_CONFIG_PATH`, and writes cleaned payloads to processed topics.
+   - Checkpointed micro-batch state is stored under `PREPROCESSING_CHECKPOINT_DIR`; set this to a durable path in production.
+   - Requires the Spark extras (`poetry install --with spark`) and a reachable Kafka broker (`KAFKA_URL`).
+   - Ensure `dt/utils/preprocessing_config.yml` lists each active sensor and that the database service exposes matching descriptors so the pipeline can resolve validation rules.
+   - Processed payloads include `flags`, `dq_score`, `imputed`, and optional `raw_value`; confirm downstream consumers expect these fields.
+
+4. **Database service**  
+   - `make run-database` → runs `dt/data/database/app.py`.
+   - Subscribes to processed topics, persists payloads, and exposes REST endpoints:
+     - `POST /bind_sensor` → register sensors (`SensorDescriptor`).
+     - `POST /data/timestamp` → query by time range (`DBTimestampQuery`).
+     - `POST /data/id` → fetch recent records by sensor ID (`DBIdQuery`).
+   - Default storage backend is InfluxDB for time-series data. Later will be added SQL.
+
+5. **Web dashboard**  
    - `make run-dashboard` → runs `dt/webapp/app.py`.
    - Sets up a Kafka consumer (`webapp_consumer_group`) and relays events to Socket.IO namespaces (`temperature`, `humidity`, `soil_moisture`, `light_intensity`, `camera_image`).
    - Front-end (`dt/webapp/static/js`) maintains a central store, displays live charts via Plotly, and merges historical data fetched from the database.
 
-5. **Controller**  
+6. **Controller**  
    - Placeholder scaffolding for actuator management under `dt/controller/`. Base classes (`kinds/base_actuator.py`, etc.) are ready for future devices (fan, pump, light, relay). 
 
-6. **AI / Analytics**  
+7. **AI / Analytics**  
     - `dt/ai` provides a foundational framework for integrating AI and analytics models. It includes a `BaseModel` class, a `ModelRegistry` for managing model lifecycles, and a `FileSystemStorage` backend. While no specific models are implemented yet, the structure is in place for developing and registering online, offline, and rule-based models.
 
 ---

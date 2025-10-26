@@ -13,6 +13,9 @@
 ---
 
 ## ✅ Done
+- Preprocessing validators for range, rate-of-change, and stuck detection covered by deterministic Spark tests.
+- Data-quality scoring, imputation strategies (forward fill, window averaging, linear extrapolation guardrails), and smoothing hook integrated into the streaming pipeline.
+- Structured streaming job publishes processed payloads with Kafka sink wiring and topic remapping utilities.
 - Architecture operational end-to-end (Kafka → Preprocessing → InfluxDB → Flask).  
 - Sensor drivers functional: DHT22, BH1750, soil moisture.  
 - Dataclass schema (`SensorData`) finalized and versioning ready.  
@@ -27,9 +30,9 @@
 
 | Task                            | Description                                                                                  | Status         |
 | ------------------------------- | -------------------------------------------------------------------------------------------- | -------------- |
-| **Sensor Data Validation**     | Check ranges, RoC, stuck values and outliers; tag invalid data (DQ score).                  | 🔄 In progress |
+| **Sensor Data Validation**     | Check ranges, RoC, stuck values and outliers; tag invalid data (DQ score).                  | ✅ Done         |
 | **Calibration & Normalization** | Build calibration tables (dry/saturated soil baselines, per-sensor normalization to [0–1]).  | ⏳ To do        |
-| **Missing Data Handling**       | Implement forward-fill and interpolation for short gaps; flag longer outages.                | ⏳ To do        |
+| **Missing Data Handling**       | Implement forward-fill and interpolation for short gaps; flag longer outages.                | ✅ Done         |
 | **Alert Engine (v1)**           | Create rule-based system for threshold breaches with persistence window and cooldown.        | ⏳ To do        |
 | **Audit & Action Store**        | Design SQLAlchemy models for `actions`, `alerts`, `configs`, `jobs`; add Alembic migrations. | ⏳ To do        |
 | **Config Registry v0**          | Save and version user thresholds/schedules with rollback.                                    | ⏳ To do        |
@@ -61,5 +64,5 @@
 ---
 
 ## 🧾 Summary
-System runs live end-to-end; preprocessing under construction.  
+System runs live end-to-end; preprocessing streaming job validating, imputing, and publishing processed payloads through Kafka.  
 Target: production-quality validation and alerting by **Dec 19, 2025**.

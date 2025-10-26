@@ -39,9 +39,9 @@
 
 ## 🧩 Near-Term Tasks (This Sprint)
 - [x] Define and implement sensor event schema
-- [ ] Sensor data validation pipelines/rules (range, RoC, stuck or flatline, DQ scoring)
-- [ ] Implement missing data handling (FFILL + capped interpolation) when readings are missing or dropped
-- [ ] Noise filtering, integrate EWMA smoothing and optional Kalman filter  
+- [x] Sensor data validation pipelines/rules (range, RoC, stuck or flatline, DQ scoring)
+- [x] Implement missing data handling (forward fill, window averaging, linear extrapolation guardrails)
+- [ ] Noise filtering (EWMA smoothing available; Kalman filter evaluation pending)  
 - [ ] Finalize calibration tables and normalization logic  
 - [ ] Rollups and retention policy for InfluxDB
 - [ ] Setup of a non-TS database (Postgres) for audit logs and alert/action tracking
@@ -55,6 +55,15 @@
 
 ## 🧠 Changes Since Last Update
 - Created Sensor validation config file (`dt/utils/preprocessing_config.yml`)
+- Assigned imputation tuned to sampling rates:
+  - DHT22 (2 min): window_average over 6 minutes (min 2 samples)
+  - BH1750 (1 min): window_average over 3 minutes (min 3 samples)
+  - Soil moisture (2 min): forward fill with decay; max gap 10 minutes
+- Added smoothing strategy hook with pass-through default and EWMA option for post-imputation filters
+- Introduced per-strategy imputation configs with new linear extrapolation option and typed loader
+- Structured streaming job under `dt/data/preprocess/` now reads `dt.sensor.raw.*`, applies validators, imputation, smoothing, and publishes to `.proc` topics.
+- Processed payloads include validation flags, data-quality scores, imputation markers, and optional `raw_value` for auditability.
+- `SparkStateProvider` mediates tuple-backed `SensorState` so validation, imputation, and smoothing layers share consistent history windows.
 
 ---
 

@@ -1,13 +1,21 @@
+/**
+ * @class
+ * @classdesc An enumeration-like class for data types used in the application.
+ * This provides a centralized and consistent way to refer to different types of sensor data and system events.
+ */
 export class DataType {
     static TEMPERATURE = new DataType('temperature')
     static HUMIDITY = new DataType('humidity')
     static SOIL_MOISTURE = new DataType('soil_moisture')
     static LIGHT = new DataType('light_intensity')
-    static TIME = new DataType('time') // Will not be present in ALL as we only use it to update the latest time in the UI
+    static TIME = new DataType('time') // Used only to update the latest time in the UI. 
     static ALERTS = new DataType('alerts')
     static HEALTH_STATUS = new DataType('health_status')
 
-    // Keep track of all values to iterate through them
+    /**
+     * @type {DataType[]}
+     * @description A list of all sensor-related data types, used for iteration.
+     */
     static SENSORS = [
         DataType.TEMPERATURE,
         DataType.HUMIDITY,
@@ -15,35 +23,46 @@ export class DataType {
         DataType.LIGHT,
     ]
 
+    /**
+     * @param {string} name - The name of the data type.
+     */
     constructor(name) {
         this.name = name
     }
 
+    /**
+     * @returns {string} The string representation of the data type's name.
+     */
     toString() {
         return this.name
     }
 }
 
+
 /**
- * @class
- * @classdesc Centralize data store for the application that will receive data from the backend
- *              then send notification to listener to update the correct components
+ * @class PlantDataStore
+ * @classdesc Centralized data store for the application. It manages real-time and historical data,
+ * communicates with the backend via Socket.IO, and notifies subscribed components of data changes.
  */
 class PlantDataStore {
     constructor() {
         // Initialize maps using DataType objects as keys
         console.log('Initializing PlantDataStore')
+        /** @type {Map<DataType, Array<Object>>} */
         this.realtimeData = new Map()
+        /** @type {Map<DataType, Array<Object>>} */
         this.historicalData = new Map()
+        /** @type {Map<DataType|string, Array<function>>} */
         this.listeners = new Map()
 
-        // Initialize data and listeners for each DataType
+        // Initialize data and listeners for each Sensor DataType
         DataType.SENSORS.forEach((dataType) => {
             this.realtimeData.set(dataType, [])
             this.historicalData.set(dataType, [])
             this.listeners.set(dataType, [])
         })
 
+        // Initialize listeners for non-sensor data types
         this.listeners.set(DataType.TIME, [])
         this.listeners.set('connection_status', [])
 
@@ -62,7 +81,11 @@ class PlantDataStore {
         this.initSocketConnection()
     }
 
-    /** Initialize connection with Socket to receive sensors data and update components */
+
+    /**
+     * Initializes the Socket.IO connection and sets up event listeners for real-time data updates.
+     * This includes listeners for sensor data, connection status, alerts, and health status.
+     */
     initSocketConnection() {
         DataType.SENSORS.forEach((dataType) => {
             const listeningField = `${dataType}`
@@ -102,8 +125,9 @@ class PlantDataStore {
     }
 
     /**
-     * @param {DataType} dataType - The enum value representing the data type
-     * @param {Object} data - Value of the data we just received
+     * Updates the real-time data for a given data type and notifies listeners.
+     * @param {DataType} dataType - The enum value representing the data type.
+     * @param {Object} data - The new data point received from the backend (e.g., { value: 23, time: 167... }).
      */
     updateData(dataType, data) {
         console.log(`Received data: ${data} for datatype: ${dataType}`)
@@ -115,6 +139,12 @@ class PlantDataStore {
         this.notifyListeners(DataType.TIME, { time: data.time })
     }
 
+
+    /**
+     * Fetches historical data for all sensor types within a given time range.
+     * @param {number} timeRangeStart - The start of the time range as a Unix timestamp (in milliseconds).
+     * @param {number} timeRangeEnd - The end of the time range as a Unix timestamp (in milliseconds).
+     */
     async fetchHistoricalData(timeRangeStart, timeRangeEnd) {
         console.log(`Fetching historical data from ${timeRangeStart} to ${timeRangeEnd}`)
 
@@ -145,6 +175,10 @@ class PlantDataStore {
         this.mergeHistoricalAndRealTimeData()
     }
 
+    /**
+     * Merges the fetched historical data with the new real-time data that has arrived since
+     * the historical fetch began. Notifies listeners with the complete, merged data set.
+     */
     mergeHistoricalAndRealTimeData() {
         DataType.SENSORS.forEach((dataType) => {
             const historicalData = this.historicalData.get(dataType)
@@ -171,8 +205,9 @@ class PlantDataStore {
     }
 
     /**
-     * @param {DataType} dataType - The enum value representing the data type
-     * @param {Object} data - Value of the data we just received
+     * Notifies all registered listeners for a specific data type.
+     * @param {DataType|string} dataType - The data type for which to notify listeners.
+     * @param {Object} data - The data to pass to the listener callbacks.
      */
     notifyListeners(dataType, data) {
         const listeners = this.listeners.get(dataType)
@@ -187,9 +222,11 @@ class PlantDataStore {
         }
     }
 
+
     /**
-     * @param {DataType|string} dataType - The enum value representing the data type
-     * @param {function} callback - Function we need to call to notify the listener
+     * Subscribes a callback function to a specific data type.
+     * @param {DataType|string} dataType - The data type to subscribe to.
+     * @param {function} callback - The callback function to execute when new data is available.
      */
     subscribe(dataType, callback) {
         if (!this.listeners.has(dataType)) {
@@ -201,14 +238,16 @@ class PlantDataStore {
         listeners.push(callback)
     }
 
+
     /**
-     * @param {DataType} dataType - The enum value representing the data type
-     * @returns {Object|null} The current data for the specified type
+     * Retrieves the current real-time data for a specified data type.
+     * @param {DataType} dataType - The enum value representing the data type.
+     * @returns {Array<Object>|undefined} The current real-time data for the specified type.
      */
     getData(dataType) {
         return this.realtimeData.get(dataType)
     }
 }
 
-// Export an instance
+// Export a singleton instance of the data store.
 export const plantStore = new PlantDataStore()

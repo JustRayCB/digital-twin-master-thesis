@@ -1,16 +1,34 @@
-import sys
+"""Main Flask application for the web dashboard.
 
-sys.dont_write_bytecode = True
+This application serves the main dashboard for the digital twin project.
+It has the following key responsibilities:
+
+1.  Web Interface: Renders the main `dashboard.html` template, which
+    provides the user interface for monitoring and controlling the digital
+    twin.
+
+2.  Real-time Updates: Sets up a Flask-SocketIO server to push real-time
+    sensor data to connected web clients.
+
+3.  Messaging Bridge: Initializes a Kafka client that subscribes to
+    processed sensor data topics. When a message is received, it is
+    broadcast to the appropriate SocketIO room, allowing for live updates
+    on the dashboard.
+
+4.  API Endpoints: Provides API endpoints for the frontend to fetch
+    historical data from the database service.
+"""
+
 import uuid
 from datetime import datetime
 
-import requests
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import DatabaseApiClient, KafkaService, MessagingService, Topics
-from dt.communication.dataclasses import DBTimestampQuery, SensorData
+from dt.communication import (DatabaseApiClient, KafkaService,
+                              MessagingService, Topics)
+from dt.communication.dataclasses import DBTimestampQuery, RawSensorData
 from dt.utils import Config, get_logger
 
 app = Flask(__name__)
@@ -57,51 +75,55 @@ dashboard_data = {
 
 @app.route("/")
 def dashboard():
+    """Render the main dashboard page.
+
+    This route serves the dashboard.html template, passing in the
+    dashboard_data dictionary to populate the initial state of the UI.
+
+    Returns
+    -------
+    str
+        The rendered HTML for the dashboard page.
+    """
     return render_template("dashboard.html", data=dashboard_data)
 
 
 @app.route("/api/simulate", methods=["POST"])
 def start_simulation():
+    """API endpoint to start a simulation.
+
+    .. warning::
+        This is a placeholder endpoint and is not yet implemented.
+
+    Returns
+    -------
+    dict
+        A JSON response indicating the status of the operation.
+    """
     simulation_parameters = request.json
     logger.info(f"Starting simulation with parameters: {simulation_parameters}")
 
-    temperature = simulation_parameters.get("temperature")
-    humidity = simulation_parameters.get("humidity")
-    soil_moisture = simulation_parameters.get("light")
+    temperature = simulation_parameters.get("temperature")  # noqa: F841
+    humidity = simulation_parameters.get("humidity")  # noqa: F841
+    soil_moisture = simulation_parameters.get("light")  # noqa: F841
 
     return {"status": "success"}
 
 
 @app.route("/api/data/timestamp", methods=["POST"])
 def get_data_by_timeframe():
-    """API endpoint to get the data from the database from a specific timestamp to the current time.
+    """API endpoint to get historical data within a specific time range.
+
+    This endpoint acts as a proxy to the database service. It receives a
+    `DBTimestampQuery` from the client, converts the JavaScript timestamps
+    to Python format, and then calls the database service to retrieve the
+    data.
 
     Returns
     -------
-    JSON
-        A JSON object with the data from the database.
-
-    """
-
-    """
-    request_data = request.get_json()
-    if not DBTimestampQuery.validate_json(request_data):
-        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
-        return jsonify({"error": "Invalid JSON data"}), 400
-    # Convert the JSON data to a DBTimestampQuery object
-    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
-    db_query.js_to_py_timestamp()
-    request_data = db_query.to_json()
-    db_url = "http://localhost:5001/data/timestamp"
-    print(f"Request data: {request_data}")
-    response = requests.post(db_url, json=request_data)
-    if response.status_code == 200:
-        data = response.json()
-        logger.info(f"Data from timestamp: {data}")
-        return jsonify(data)
-    else:
-        logger.error(f"Error getting data from timestamp: {response.text}")
-        return jsonify({"error": "Error getting data from timestamp"}), 500
+    flask.Response
+        A JSON response containing the requested historical data, or an
+        error message.
     """
 
     request_data = request.get_json()
@@ -109,17 +131,13 @@ def get_data_by_timeframe():
         logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
         return jsonify({"error": "Invalid JSON data"}), 400
     # Convert the JSON data to a DBTimestampQuery object
-    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
-    db_query.js_to_py_timestamp()  # Convert the timestamp from JavaScript format to Python format
+    query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
+    query.js_to_py_timestamp()  # Convert the timestamp from JavaScript format to Python format
 
     db_client = DatabaseApiClient()
-    data = db_client.get_data_by_timeframe(db_query)
+    data = db_client.get_data_by_timeframe(query)
 
-    logger.info(f"Getting data by timefreame for {db_query}")
-
-    # if not data:
-    #     logger.error(f"Error getting data from timestamp: {data}")
-    #     return jsonify({"error": "Error getting data from timestamp"}), 500
+    logger.info(f"Getting data by timefreame for {query}")
 
     return jsonify(data)
 
@@ -127,6 +145,12 @@ def get_data_by_timeframe():
 # Handle client connection
 @socketio.on("connect")
 def connect():
+    """Handle a new client connection to the SocketIO server.
+
+    This function is called when a new client establishes a connection. It
+    logs the connection and emits the current connection status to the
+    client.
+    """
     global connection_status
     logger.info(f"Client connected: {request.sid}")  # pyright: ignore[]
     socketio.emit("connection_status", {"connected": connection_status})
@@ -135,24 +159,56 @@ def connect():
 # Handle client disconnection
 @socketio.on("disconnect")
 def disconnect():
+    """Handle a client disconnection from the SocketIO server.
+
+    This function is called when a client disconnects. It logs the
+    disconnection event.
+    """
     logger.info(f"Client disconnected: {request.sid}")  # pyright: ignore[]
 
 
 # Handle message from SensorManager and forward to web client via socketio
 def forward_to_socketio(topic: Topics):
-    def callback(payload: SensorData):
-        value = payload.value
-        time = payload.timestamp
-        # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
-        socketio_topic = topic.short_name  # Get the last part of the topic (sensor's data)
-        logger.info(f"Received message from broker: {value} at {time}")
+    """Create a callback function to forward Kafka messages to SocketIO.
+
+    This factory function returns a callback that can be used with the Kafka
+    consumer. The returned callback takes a RawSensorData payload, converts
+    its timestamp to JavaScript format, and emits it to the appropriate
+    SocketIO room (determined by the topic's short name).
+
+    Parameters
+    ----------
+    topic : Topics
+        The topic for which the callback is being created.
+
+    Returns
+    -------
+    Callable[[SensorData], None]
+        The callback function.
+    """
+
+    def callback(payload: RawSensorData):
+        socketio_topic = topic.short_name
+        logger.info(f"Received message from broker: {payload.value} at {payload.timestamp}")
         payload.py_to_js_timestamp()
         socketio.emit(socketio_topic, payload.shrink_data())
 
     return callback
 
 
-def setup_bridge():
+def setup_bridge() -> MessagingService:
+    """Set up the messaging bridge from Kafka to SocketIO.
+
+    This function initializes a Kafka client, connects to the broker, and
+    subscribes to all processed sensor data topics. For each topic, it sets
+    up a callback using `forward_to_socketio` to relay the messages to the
+    web clients.
+
+    Returns
+    -------
+    MessagingService
+        The initialized and connected messaging service client.
+    """
     global connection_status
     # Generate a unique client ID to prevent conflicts
     unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
@@ -161,28 +217,19 @@ def setup_bridge():
     )
     if not msg_client.connect():
         logger.error("Failed to connect to Messaging Service's broker")
-        return
+        raise ConnectionError("Failed to connect to messaging broker")
     connection_status = True
 
-    # Subscribe to topics
-    msg_client.subscribe(Topics.SOIL_MOISTURE.processed, forward_to_socketio(Topics.SOIL_MOISTURE))
-    msg_client.subscribe(Topics.TEMPERATURE.processed, forward_to_socketio(Topics.TEMPERATURE))
-    msg_client.subscribe(Topics.HUMIDITY.processed, forward_to_socketio(Topics.HUMIDITY))
-    msg_client.subscribe(
-        Topics.LIGHT_INTENSITY.processed, forward_to_socketio(Topics.LIGHT_INTENSITY)
-    )
-    msg_client.subscribe(Topics.CAMERA_IMAGE.processed, forward_to_socketio(Topics.CAMERA_IMAGE))
-
+    for topic in Topics.list_sensor_topics():
+        msg_client.subscribe(topic.processed, forward_to_socketio(topic))
     # Return the client so it doesn't go out of scope
     return msg_client
 
 
 if __name__ == "__main__":
-    # TODO: Make queries to the database to get the latest data for the dashboard of data from a specific time to now
-
-    # Only setup bridge in the child process when using debug mode
     import os
 
+    # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     debug_mode = True
 

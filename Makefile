@@ -7,10 +7,11 @@ WEB ?= dt/webapp/app.py
 COLLECTOR ?= dt/collector/main.py
 CONTROLLER ?= dt/controller/app.py
 DB ?= dt/data/database/app.py
+PREPROCESS ?= dt/data/preprocess/main.py
 
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
-				run-dashboard run-collector run-controller run-database \
+				run-dashboard run-collector run-controller run-database run-preprocessing \
 				test venv \
 				clean-env clean-venv clean-pyc \
 				update-deps check-deps
@@ -32,6 +33,7 @@ help:
 	@echo "  make run-collector				-> sensor polling loop"
 	@echo "  make run-collector				-> actuator/controller app"
 	@echo "  make run-database				-> database (TS and RDB) app (SQLite/InfluxDB)"
+	@echo "  make run-preprocessing			-> Spark preprocessing pipeline"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test					-> run tests with pytest"
@@ -86,6 +88,9 @@ run-controller:
 
 run-database:
 	$(PY) $(DB)
+
+run-preprocessing:
+	$(PY) $(PREPROCESS)
 
 # -------------------------
 # Quality (optional groups: dev)

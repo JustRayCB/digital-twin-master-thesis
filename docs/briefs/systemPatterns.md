@@ -32,6 +32,13 @@ system follows a **pipeline pattern** where each stage transforms or handles
 data and passes it along. This makes the workflow easier to manage and test in
 pieces.
 
+Within preprocessing, a dedicated **StateProvider abstraction** shields the validation,
+imputation, and smoothing layers from Spark internals. `SparkStateProvider` translates
+`GroupState` payloads into the typed `SensorState` dataclass so that historical context,
+flatline markers, and rolling windows stay consistent in both streaming code and unit
+tests. This keeps the pipeline deterministic and swappable should state storage move
+outside Spark.
+
 The codebase heavily utilizes **Object-Oriented Programming (OOP)** principles
 within each module. Classes and objects represent key abstractions (e.g., a
 SensorManager class for the data collector, or a KafkaService in the communication module).
@@ -81,6 +88,14 @@ goals of scalability and flexibility. As the project progresses, patterns for
 control loops and continuous ML integration will further enrich the system's
 design, ensuring that even as complexity grows, the system remains organized
 and understandable.
+
+## Data Contracts & Messaging Expectations
+
+Processed sensor payloads extend the raw dataclass with validation flags keyed by
+`ValidationFlag`, a 0‒1 data-quality score derived from configured weights, an `imputed`
+boolean, and the optional `raw_value` field that preserves the original reading when
+imputation or smoothing alters the value emitted to Kafka. 
+Correlation IDs remain mandatory for traceability.
 
 ## Coding Standards & Practices
 

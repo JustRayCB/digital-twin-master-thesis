@@ -25,6 +25,20 @@ class Config(StrEnum):
 
     MODELS_DIR = os.getenv("MODELS_DIR", "models/")  # Directory to save/load models
 
+    # SPARK CONFIGURATION
     PREPROCESSING_CONFIG_PATH = os.getenv(
         "PREPROCESSING_CONFIG_PATH", "dt/utils/preprocessing_config.yml"
     )  # Path to preprocessing config file
+
+    PREPROCESSING_CHECKPOINT_DIR = os.getenv(
+        "PREPROCESSING_CHECKPOINT_DIR", "./spark-checkpoints/preprocessing"
+    )  # Default checkpoint directory for the preprocessing job
+
+    MAX_STATE_HISTORY_LENGTH = os.getenv(
+        "MAX_STATE_HISTORY_LENGTH", "256"
+    )  # Max length of state history
+    SPARK_LOG_LEVEL = os.getenv("SPARK_LOG_LEVEL", "WARN")  # Spark log level
+    SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "dt-preprocessing-app")  # Spark application name
+    SPARK_STARTING_OFFSETS = os.getenv(
+        "STARTING_OFFSETS", "latest"
+    )  # Kafka starting offsets for streaming

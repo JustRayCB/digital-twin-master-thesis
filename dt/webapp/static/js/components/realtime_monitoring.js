@@ -1,6 +1,17 @@
-import { DataType, plantStore } from '../store.js'
+/**
+ * @file Manages the real-time monitoring charts on the dashboard.
+ * This module uses the Plotly.js library to create and update charts for
+ * temperature, humidity, soil moisture, and light intensity. It subscribes
+ * to the central data store to receive both real-time and historical data.
+ */ 
+ import { DataType, plantStore } from '../store.js'
 
-// Chart configuration constants
+
+/**
+ * @const {Object} CHART_CONFIG
+ * @description A configuration object that defines the properties for each chart,
+ * such as the DOM element ID, title, y-axis title, and line color.
+ */
 const CHART_CONFIG = {
     [DataType.TEMPERATURE]: {
         elementId: 'temp-chart',
@@ -30,6 +41,11 @@ const CHART_CONFIG = {
     },
 }
 
+/**
+ * Initializes the real-time monitoring component.
+ * This function creates the initial empty plots, subscribes to data updates from the
+ * `plantStore`, and sets up event listeners for the time period radio buttons.
+ */
 export function initRealTimeMonitoring() {
     console.log('Initializing real-time monitoring charts...')
 
@@ -47,7 +63,14 @@ export function initRealTimeMonitoring() {
     const max_points = 10 // Max number of points to keep on the chart
     let currentTimePeriod = '24h' // Default time period
 
-    // Create a reusable subscription handler
+    /**
+     * Creates a subscription handler function for a specific chart.
+     * The returned handler can process both historical data (which replaces the chart's data)
+     * and real-time data (which extends the chart's traces).
+     * @param {DataType} dataType - The data type for which to create the handler.
+     * @param {HTMLElement} chartElement - The DOM element of the chart.
+     * @returns {function} A handler function that takes data and updates the chart.
+     */
     const createSubscriptionHandler = (dataType, chartElement) => {
         return (data) => {
             if (data.type === 'historical') {
@@ -78,25 +101,15 @@ export function initRealTimeMonitoring() {
         }
     }
 
-    // Subscribe to all data types
-    plantStore.subscribe(
-        DataType.TEMPERATURE,
-        createSubscriptionHandler(DataType.TEMPERATURE, charts[DataType.TEMPERATURE])
-    )
-    plantStore.subscribe(
-        DataType.HUMIDITY,
-        createSubscriptionHandler(DataType.HUMIDITY, charts[DataType.HUMIDITY])
-    )
-    plantStore.subscribe(
-        DataType.SOIL_MOISTURE,
-        createSubscriptionHandler(DataType.SOIL_MOISTURE, charts[DataType.SOIL_MOISTURE])
-    )
-    plantStore.subscribe(
-        DataType.LIGHT,
-        createSubscriptionHandler(DataType.LIGHT, charts[DataType.LIGHT])
-    )
+    // Subscribe each chart to its corresponding data type in the store.
+    for (const dataType of DataType.SENSORS) {
+        plantStore.subscribe(
+            dataType,
+            createSubscriptionHandler(dataType, charts[dataType])
+        )
+    }
 
-    // Add a listener to radio buttons that change the time range
+    // Add event listeners to the time period radio buttons.
     const radioButtons = document.querySelectorAll('input[name="data-period"]')
     for (const button of radioButtons) {
         button.addEventListener('change', (event) => {
@@ -125,6 +138,14 @@ function initPlots() {
     })
 }
 
+
+/**
+ * Creates a single Plotly chart in a given DOM element.
+ * @param {Object} config - The configuration object for the chart from `CHART_CONFIG`.
+ * @param {Array<Date>} [xValues=[]] - The initial x-axis values (timestamps).
+ * @param {Array<number>} [yValues=[]] - The initial y-axis values (sensor readings).
+ * @param {string} [timePeriod='default'] - The initial time period to set the axis format.
+ */
 function initPlot(config, xValues = [], yValues = [], timePeriod = 'default') {
     const element = document.getElementById(config.elementId)
 
@@ -155,9 +176,9 @@ function initPlot(config, xValues = [], yValues = [], timePeriod = 'default') {
 }
 
 /**
- * Determine the appropriate time format for the x-axis based on the selected time period
- * @param {string} timePeriod - The selected time period (1h, 24h, 7d, 30d)
- * @returns {Object} - Plotly xaxis configuration
+ * Determines the appropriate time format for the x-axis based on the selected time period.
+ * @param {string} timePeriod - The selected time period ('1h', '24h', '7d', '30d').
+ * @returns {Object} A Plotly x-axis configuration object.
  */
 function getTimeFormat(timePeriod) {
     switch (timePeriod) {
@@ -198,11 +219,11 @@ function getTimeFormat(timePeriod) {
     }
 }
 
+
 /**
- * Get the start date based on the selected time period.
- * This function calculates the start date based on the current time and the selected time period.
- * @param {string} timePeriod - The time period for which to get the start date
- * @returns {Array} - An array containing the start date and end date timestamps
+ * Calculates the start and end timestamps for a given time period string.
+ * @param {string} timePeriod - The time period ('1h', '24h', '7d', '30d').
+ * @returns {Array<number>} An array containing the start and end timestamps in milliseconds.
  */
 function getRange(timePeriod) {
     const now = new Date()
@@ -229,14 +250,14 @@ function getRange(timePeriod) {
 }
 
 /**
- * Get chart configuration for the specified data type
- * @param {string} dataType - The data type to get configuration for
- * @returns {Object} - The chart configuration
+ * Retrieves the chart configuration for a specific data type.
+ * @param {DataType} dataType - The data type to get the configuration for.
+ * @returns {Object} The chart configuration object.
  */
 function getChartConfigForDataType(dataType) {
     return (
         CHART_CONFIG[dataType] || {
-            title: dataType,
+            title: { text: 'Unknown' },
             yAxisTitle: 'Value',
             lineColor: '#17BECF',
         }
@@ -244,16 +265,16 @@ function getChartConfigForDataType(dataType) {
 }
 
 /**
- * Get all chart configurations
- * @returns {Array} - Array of chart configurations
+ * Gets all chart configurations from the `CHART_CONFIG` constant.
+ * @returns {Array <Object>} An array of all chart configuration objects.
  */
 function getChartConfigs() {
     return Object.values(CHART_CONFIG)
 }
 
 /**
- * Update the plot ranges based on the selected time period
- * @param {Array} range - An array containing start and end timestamps
+ * Triggers an update of the plot ranges by fetching historical data for the new range.
+ * @param {Array<number>} range - An array containing the start and end timestamps.
  */
 function updatePlotRanges(range) {
     const [startTime, endTime] = range

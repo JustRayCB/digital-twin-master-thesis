@@ -1,24 +1,20 @@
-import sys
+from time import sleep
 
 import board
 
-sys.dont_write_bytecode = True
-
-
-from time import sleep
-
-from dt.collector import (
-    HumiditySensor,
-    LightSensor,
-    MockMoistureSensor,
-    SensorManager,
-    SoilMoistureSensor,
-    TemperatureSensor,
-)
+from dt.collector import (HumiditySensor, LightSensor, SensorManager,
+                          SoilMoistureSensor, TemperatureSensor)
 from dt.utils import get_logger
 
 
 def main():
+    """Initializes and runs the sensor data collector.
+
+    This function sets up the sensor manager, adds all the required sensors
+    (soil moisture, temperature, humidity, and light), and then enters an
+    infinite loop to continuously read data from them. The loop can be
+    exited with a keyboard interrupt (Ctrl+C).
+    """
     logger = get_logger(__name__)
     logger.info("Starting main")
 
@@ -43,7 +39,7 @@ def main():
     sensor_manager.add_sensor(humidity_sensor)
     sensor_manager.add_sensor(light_sensor)
 
-    wait = input("Press Enter to start data collector module ...")
+    input("Press Enter to start data collector module ...")
 
     try:
         while True:

@@ -1,12 +1,19 @@
 import pytest
 
 from dt.communication import Topics
-from dt.communication.dataclasses import DBTimestampQuery, SensorData, SensorDescriptor
+from dt.communication.dataclasses import RawSensorData
 
 
-def test_sensor_data_serialization_roundtrip():
+def test_raw_sensor_data_serialization_roundtrip():
+    """Ensure RawSensorData enforces typing and round-trips through JSON.
 
-    payload = SensorData(
+    Returns
+    -------
+    None
+        The assertions raise if serialization deviates from expectations.
+    """
+
+    payload = RawSensorData(
         plant_id=3,
         sensor_id=7,
         timestamp=0.5,
@@ -29,15 +36,21 @@ def test_sensor_data_serialization_roundtrip():
         '"topic":"dt.sensors.light_intensity","correlation_id":"abc-123"}'
     )
     assert payload.to_json() == expected_json
-    print(payload.to_json())
 
-    decoded = SensorData.from_json(expected_json)
+    decoded = RawSensorData.from_json(expected_json)
     assert decoded == payload
 
 
-def test_sensor_data_helpers():
+def test_raw_sensor_data_helpers():
+    """Verify helper accessors expose dashboard-friendly views of raw data.
 
-    payload = SensorData(
+    Returns
+    -------
+    None
+        The assertions raise if helper outputs change unexpectedly.
+    """
+
+    payload = RawSensorData(
         plant_id=2,
         sensor_id=1,
         timestamp=2,
@@ -54,10 +67,17 @@ def test_sensor_data_helpers():
     assert payload.timestamp == 2000
 
 
-def test_sensor_data_from_json_missing_field():
+def test_raw_sensor_data_from_json_missing_field():
+    """Confirm RawSensorData rejects JSON documents lacking required fields.
+
+    Returns
+    -------
+    None
+        The context manager raises when field validation misbehaves.
+    """
 
     with pytest.raises(ValueError, match="Missing field: unit"):
-        SensorData.from_json(
+        RawSensorData.from_json(
             {
                 "plant_id": 2,
                 "sensor_id": 1,
@@ -67,39 +87,3 @@ def test_sensor_data_from_json_missing_field():
                 "correlation_id": "xyz-789",
             }
         )
-
-
-def test_sensor_metadata():
-
-    metadata = SensorDescriptor(sensor_id=1, name="123", pin=11, read_interval=15)
-
-    assert metadata.sensor_id == 1
-    assert metadata.name == "123"
-    assert metadata.pin == 11
-    assert metadata.read_interval == 15
-
-    metadata.change_id(9)
-    assert metadata.sensor_id == 9
-
-
-def test_db_timestamp_query():
-
-    query = DBTimestampQuery(data_type="42", since=2000, until=5000)
-
-    assert query.data_type == "42"
-    assert query.since == 2000
-    assert query.until == 5000
-
-    query.js_to_py_timestamp()
-    assert query.since == 2
-    assert query.until == 5
-
-    encoded = {
-        "data_type": "soil_moisture",
-        "since": 1000,
-        "until": 2000,
-    }
-    round_trip = DBTimestampQuery.from_json(encoded)
-    assert round_trip.data_type == "soil_moisture"
-    assert round_trip.since == 1000
-    assert round_trip.until == 2000

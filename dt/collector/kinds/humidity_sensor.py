@@ -1,19 +1,31 @@
-import adafruit_dht
-import board
 from typing_extensions import override
 
-from dt.collector.kinds.base_sensor import Sensor
+from dt.collector.kinds.base_sensor import Pin, Sensor
 from dt.collector.kinds.dht22_sensor import DHT22Singleton
 from dt.communication import Topics
 
 
 class HumiditySensor(Sensor):
-    """DHT22 Temperature/Humidity sensor."""
+    """Represents a humidity sensor, specifically using a DHT22 sensor.
 
-    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
+    This class interfaces with a DHT22 sensor to read humidity data. It
+    utilizes the `DHT22Singleton` to ensure that there is only one instance
+    of the sensor object, even if both temperature and humidity are read
+    from the same physical device.
+
+    Parameters
+    ----------
+    name : str
+        The name of the sensor.
+    read_interval : int
+        The interval in seconds at which the sensor should be read.
+    pin : board.Pin
+        The GPIO pin to which the DHT22 sensor is connected.
+    """
+
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "%"
-        # self._sensor = adafruit_dht.DHT22(self.pin)  # DHT11 or DHT22
         self._sensor = DHT22Singleton.get_instance(self.pin)
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
@@ -42,4 +54,4 @@ class HumiditySensor(Sensor):
 
     @override
     def process_data(self, raw_data: float) -> float:
-        return raw_data if raw_data != None else -1
+        return raw_data if raw_data is not None else -1

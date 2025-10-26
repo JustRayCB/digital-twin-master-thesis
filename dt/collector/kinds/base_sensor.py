@@ -4,25 +4,48 @@ from abc import ABC, abstractmethod
 import board
 
 from dt.communication import Topics
-from dt.communication.dataclasses import SensorData, SensorDescriptor
+from dt.communication.dataclasses import RawSensorData, SensorDescriptor
 from dt.utils.logger import get_logger
+
+Pin = int
 
 
 class Sensor(ABC):
-    """Abstract class that represent a sensor and all basic methods that a sensor should have.
+    """Abstract base class for all sensors.
+
+    This class defines the common interface and functionality for all sensors
+    in the system. It includes methods for reading data, checking if a new
+    reading is needed, and converting the sensor's metadata to a dataclass.
+    Subclasses must implement the `unit`, `topic`, `read_sensor` methods.
+
+    Parameters
+    ----------
+    name : str
+        The name of the sensor.
+    read_interval : int
+        The interval in seconds at which the sensor should be read.
+    pin : board.Pin
+        The GPIO pin to which the sensor is connected.
 
     Attributes
     ----------
+    sensor_id : int
+        The unique ID assigned to the sensor by the database. Initialized to -1.
     name : str
-        Name of the sensor.
-    pin : Pin
-        Pin where the sensor is connected.
+        The name of the sensor.
+    pin : board.Pin
+        The GPIO pin where the sensor is connected.
     read_interval : int
-        Interval in seconds that the sensor should be read.
-
+        The interval in seconds between sensor readings.
+    last_data : float
+        The last processed data value read from the sensor.
+    last_read_time : float
+        The timestamp of the last sensor reading.
+    logger : logging.Logger
+        The logger for this sensor instance.
     """
 
-    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.name: str = name
         self.pin: board.Pin = pin
@@ -37,104 +60,101 @@ class Sensor(ABC):
     @property
     @abstractmethod  # Use this decorator to ensure not to forget to change the unit  of each sensor
     def unit(self) -> str:
-        """
+        """Get the unit of measurement for the sensor.
+
+        This is an abstract property that must be implemented by subclasses.
+
         Returns
         -------
         str
-            The unit of measurement of the sensor.
-
+            The unit of measurement (e.g., "Celsius", "%").
         """
         raise NotImplementedError(f"Property unit not implemented for {self.name}")
 
     @property
     @abstractmethod
     def topic(self) -> Topics:
-        """
+        """Get the messaging topic for the sensor's data.
+
+        This is an abstract property that must be implemented by subclasses.
+
         Returns
         -------
-        str
+        Topics
             The topic where the sensor data should be published.
-
         """
         raise NotImplementedError(f"Property topic not implemented for {self.name}")
 
     def needs_data(self, time) -> bool:
-        """Check if the sensor needs to be read.
+        """Check if the sensor needs to be read based on the read interval.
+
+        Parameters
+        ----------
+        current_time : float
+            The current time as a Unix timestamp.
 
         Returns
         -------
         bool
-            True if the sensor needs to be read, False otherwise.
-
+            True if the time since the last reading is greater than or
+            equal to the read interval, False otherwise.
         """
         return (
             time - self.last_read_time >= self.read_interval if self.last_read_time != -1 else True
         )
 
-    def read(self) -> SensorData:
-        """Reads the sensor
+    def read(self) -> RawSensorData:
+        """Read data from the sensor and return it as a RawSensorData object.
+
+        This method reads the raw data from the sensor, processes it, updates
+        the last read time and data, and returns a `SensorData` object
+        containing the processed value and metadata.
 
         Returns
         -------
-        dict[str, any]
-            Data read with all the metadata (name, timestamp, value, raw_value, unit)
-
+        RawSensorData
+            A dataclass object containing the sensor data and metadata.
         """
         current_time = time.time()
         raw_value = self.read_sensor()
-        processed_value = self.process_data(raw_value)
 
-        self.last_data = processed_value
+        self.last_data = raw_value
         self.last_read_time = current_time
 
         # assert self.id != -1, "Sensor ID not set"
 
-        data = SensorData(
+        data = RawSensorData(
+            plant_id=-1,  # TODO: To be set by the collector
             sensor_id=self.sensor_id,
             timestamp=current_time,
-            value=processed_value,
+            value=raw_value,
             unit=self.unit,
             topic=self.topic,
+            correlation_id="abc-123",  # TODO: Add correlation ID (UUID)
         )
 
         return data
 
     @abstractmethod
     def read_sensor(self) -> float:
-        """Read the sensor and return the raw value.
+        """Read the raw value from the sensor.
+
+        This is an abstract method that must be implemented by subclasses.
 
         Returns
         -------
         float
-            The raw value of the sensor.
-
+            The raw value read from the sensor.
         """
         raise NotImplementedError(f"Method read_sensor not implemented for {self.name}")
 
-    @abstractmethod
-    def process_data(self, raw_data: float) -> float:
-        """Process the raw data from the sensor to ensure that it is in the correct format.
-
-        Parameters
-        ----------
-        raw_data : float
-            The raw data from the sensor.
-
-        Returns
-        -------
-        float
-            The processed data.
-        """
-        raise NotImplementedError(f"Method process_data not implemented for {self.name}")
-
     def to_dataclass(self) -> SensorDescriptor:
-        """Convert the sensor to a dataclass.
+        """Convert the sensor's metadata to a SensorDescriptor dataclass.
 
         Returns
         -------
-        SensorDataClass
-            The sensor as a dataclass.
-
+        SensorDescriptor
+            A dataclass object containing the sensor's metadata.
         """
         try:
             pin_id = int(str(self.pin))

@@ -1,17 +1,22 @@
 from dataclasses import dataclass
 
 from dt.communication.dataclasses.serializable import JsonSerializable
-from dt.communication.topics import Topics
 
 
 @dataclass
 class DBIdQuery(JsonSerializable):
-    """Represents a query to the database to get the data from a specific sensor id.
+    """Represents a query to retrieve data for a specific sensor ID.
+
+    This dataclass defines the structure for a query that fetches a limited
+    number of recent data points for a given sensor from the database.
 
     Attributes
     ----------
-    sensor_id : The id of the sensor.
-    limit : The maximum number of data points to return.
+    sensor_id : int
+        The unique identifier of the sensor for which to retrieve data. Must be
+        greater than 0.
+    limit : int
+        The maximum number of data points to return. Must be greater than 0.
     """
 
     sensor_id: int
