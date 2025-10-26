@@ -27,18 +27,38 @@ Requirements & Challenges: Several core requirements and design challenges were
 identified for the digital twin system. These set the criteria that the
 solution must meet:
 
-- Real-Time Data Collection: The system must collect and process sensor data in real time to enable timely interventions. This ensures no significant lag between physical changes and the digital twin's response (e.g. adjusting irrigation immediately if soil moisture drops).
-- Reliability of Data: The fidelity of decisions made by the twin depends on reliable data collection. Sensor drift, failures, or calibration issues should be detected and handled, so that inaccurate readings don't lead to misleading insights. The system needs mechanisms for validating sensor inputs and handling faulty or noisy data (ensuring robust decision-making despite imperfect hardware).
-- Modular Design: The architecture should be modular and extensible. Each functionality (data collection, preprocessing, storage, analytics, etc.) should be a separate component, allowing easy integration of new sensors or algorithms without a major redesign. This separation of concerns facilitates maintenance and future growth. The modules communicate through well-defined interfaces, making it possible to upgrade or replace parts of the system independently.
-- Scalability: The solution should remain scalable as it grows. If more sensors are added or data volume increases, the system must handle the load without degrading real-time performance. The design should support horizontal scaling and possibly transition to more powerful infrastructure (e.g. cloud or distributed services) when needed, given that the prototype runs on a Raspberry Pi but may migrate to cloud servers in the future.
+- Real-Time Data Collection: The system must collect and process sensor data in
+  real time to enable timely interventions. This ensures no significant lag
+  between physical changes and the digital twin's response (e.g. adjusting
+  irrigation immediately if soil moisture drops).
+- Reliability of Data: The fidelity of decisions made by the twin depends on
+  reliable data collection. Sensor drift, failures, or calibration issues should
+  be detected and handled, so that inaccurate readings don't lead to misleading
+  insights. The system needs mechanisms for validating sensor inputs and handling
+  faulty or noisy data (ensuring robust decision-making despite imperfect
+  hardware).
+- Modular Design: The architecture should be modular and extensible. Each
+  functionality (data collection, preprocessing, storage, analytics, etc.) should
+  be a separate component, allowing easy integration of new sensors or algorithms
+  without a major redesign. This separation of concerns facilitates maintenance
+  and future growth. The modules communicate through well-defined interfaces,
+  making it possible to upgrade or replace parts of the system independently.
+- Scalability: The solution should remain scalable as it grows. If more sensors
+  are added or data volume increases, the system must handle the load without
+  degrading real-time performance. The design should support horizontal scaling
+  and possibly transition to more powerful infrastructure (e.g. cloud or
+  distributed services) when needed, given that the prototype runs on a Raspberry
+  Pi but may migrate to cloud servers in the future.
 
-By meeting these requirements, the digital twin will form a solid foundation that addresses immediate needs (monitoring a single plant with feedback) while being adaptable for more complex future use cases.
+By meeting these requirements, the digital twin will form a solid foundation
+that addresses immediate needs (monitoring a single plant with feedback) while
+being adaptable for more complex future use cases.
 
 ## Architecture (v1)
 - **Producers**: Raspberry Pi 4B + sensors (DHT22, BH1750, soil moisture, camera)
 - **Backbone**: Kafka topics
-  - `dt.sensor.*.raw`, `dt.sensor.*.proc`, `dt.alerts.*`, `dt.actions.*`, `dt.control.events.*`, `dt.audit.*`
-- **Processing**: Spark Structured Streaming jobs for validation, calibration, rollups, alerts
+  - `dt.sensor.*.raw`, `dt.sensor.*.proc`, `dt.alerts.*`, `dt.actions.*`,  `dt.audit.*`
+- **Processing**: Spark Structured Streaming jobs for validation, calibration, alerts
 - **Storage**:
   - **InfluxDB** for TS data (+ downsampling 1m/5m/1h)
   - **Relational Action & Audit Store** (SQLite→PostgreSQL) for non-TS events

@@ -9,15 +9,13 @@ sensors include an **Adafruit STEMMA Soil Sensor** (capacitive moisture sensor
 with temperature sensing) communicating via I²C, a **DHT22** digital sensor for
 ambient temperature and humidity (GPIO interface), a **BH1750** ambient light
 sensor (I²C, range 1-65,535 lux), and a **Raspberry Pi Camera Module** for
-capturing images of the plant. These specific sensors were chosen for their
-accuracy, compatibility with the Pi's GPIO/I2C interfaces, and
-cost-effectiveness. They provide the essential data points defined by the
-project: soil moisture, air temperature, humidity, light intensity, and visual
-cues of plant health (via images). The hardware setup also includes actuators
-(planned for later phases) like a water pump, lights, and a fan, which will be
-used in the feedback control loop once implemented (Phase P2). Power management
-and wiring for these actuators are considered, but in the current focus their
-integration is minimal.
+capturing images of the plant. These specific sensors were chosen compatibility
+with the Pi's GPIO/I2C interfaces, and cost-effectiveness. They provide the
+essential data points defined by the project: soil moisture, air temperature,
+humidity, light intensity, and visual cues of plant health (via images). The
+hardware setup also includes actuators (planned for later phases) like a water
+pump, lights, heater resistor and a fan, which will be used in the feedback
+control loop once implemented (Phase P2). 
 
 ## Software Stack
 
@@ -92,7 +90,7 @@ module/process under a top-level package dt/. For example:
   learning tasks. In the current prototype, this might simply log data or perform
   basic anomaly detection. In later phases it will host predictive models (e.g.,
   a moisture forecast, a health classifier) and manage a **model registry** for
-  versioning ML models. It exposes REST endpoints to deliver predictions or
+  versioning ML models. It will expose REST endpoints to deliver predictions or
   analytics results to other components. 
 - The **Web Dashboard** module (dt/webapp/app.py) is a Flask application that
   serves the user interface. It subscribes to the Kafka processed-data topic (via
@@ -101,7 +99,7 @@ module/process under a top-level package dt/. For example:
   results or historical data for visualization. The dashboard displays real-time
   sensor readings, recent alerts, and system status, and in future will allow
   user controls (like triggering manual actuator overrides or uploading new model
-  configurations).
+  configurations) and plant state visualization.
 
 Communication between these components is largely asynchronous and
 event-driven, thanks to Kafka. For instance, the Data Collector doesn't need to
