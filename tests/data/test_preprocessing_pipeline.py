@@ -19,7 +19,7 @@ from dt.communication.topics import Topics
 from dt.data.preprocess import pipeline as preprocess_main
 from dt.data.preprocess import validators
 from dt.data.preprocess.dq import compute_dq_score
-from dt.data.preprocess.imputers import build_strategy
+from dt.data.preprocess.imputers import build_imputation_strategy
 from dt.data.preprocess.pipeline import build_preprocessing_stream
 from dt.data.preprocess.state import FlatlineRecord, StateProvider
 
@@ -169,7 +169,7 @@ def run_pipeline(
     input_dir = tmp_path / f"stream_input_{uuid4().hex}"
     input_dir.mkdir(parents=True, exist_ok=True)
 
-    (
+    raw_df = (
         spark.createDataFrame(events, RawSensorData.get_spark_schema())
         .write.mode("overwrite")
         .format("parquet")
@@ -254,6 +254,37 @@ def test_range_violation_triggers_imputation(
     assert processed[-1].flags[ValidationFlag.STUCK] is False
     assert processed[-1].dq_score == 0.5
     assert processed[-1].raw_value == 45.0
+
+
+def test_range_violation_without_history_emits_dropped_record(
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+) -> None:
+    """Ensure out-of-range values without history surface as dropped events."""
+
+    config_path = write_config(tmp_path, base_config)
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        make_event(
+            plant_id=1,
+            sensor_id=101,
+            timestamp=base_time.timestamp(),
+            value=45.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="drop-1",
+        ),
+    ]
+
+    processed = run_pipeline(spark_session, tmp_path, config_path, events)
+
+    assert len(processed) == 1
+    record = processed[0]
+    assert record.value == 45.0
+    assert record.raw_value == 45.0
+    assert record.flags[ValidationFlag.RANGE] is True
+    assert record.flags[ValidationFlag.VALID] is False
+    assert record.imputed is False
+    assert record.dq_score == 0.0
 
 
 def test_rate_of_change_violation_triggers_imputation(
@@ -368,8 +399,9 @@ def test_violation_without_history_does_not_impute(
     record = processed[0]
     assert record.imputed is False
     assert record.flags[ValidationFlag.RANGE] is True
-    assert record.dq_score == 0.5
-    assert record.raw_value is None
+    assert record.flags[ValidationFlag.VALID] is False
+    assert record.dq_score == 0.0
+    assert record.raw_value == 60.0
 
 
 def test_valid_reading_passes_through(
@@ -410,7 +442,7 @@ def test_valid_reading_passes_through(
     assert result.flags[ValidationFlag.STUCK] is False
     assert result.flags[ValidationFlag.VALID] is True
     assert result.dq_score == 1.0
-    assert result.raw_value is None
+    assert result.raw_value == 22.0
 
 
 def test_sensor_registry_configures_lookup(
@@ -448,7 +480,7 @@ def test_sensor_registry_configures_lookup(
     assert len(processed) == 1
     assert processed[0].sensor_id == 909
     assert processed[0].value == 23.0
-    assert processed[0].raw_value is None
+    assert processed[0].raw_value == 23.0
     assert processed[0].dq_score == 1.0
 
 
@@ -715,7 +747,7 @@ def test_imputation_decay_applies_for_moderate_gap() -> None:
             baseline=18.0,
         ),
     )
-    strategy = build_strategy(sensor_config=sensor_config)
+    strategy = build_imputation_strategy(sensor_config=sensor_config)
     state = _ImputationState()
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
     last_valid = RawSensorData(
@@ -758,7 +790,7 @@ def test_imputation_returns_baseline_beyond_max_gap() -> None:
             baseline=17.5,
         ),
     )
-    strategy = build_strategy(sensor_config=sensor_config)
+    strategy = build_imputation_strategy(sensor_config=sensor_config)
     state = _ImputationState()
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
     last_valid = RawSensorData(

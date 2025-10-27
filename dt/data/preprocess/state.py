@@ -11,6 +11,16 @@ from dt.utils.config import Config
 class StateProvider(ABC):
     """Interface describing state management for preprocessing validators."""
 
+    def __init__(self, max_history_length: int) -> None:
+        """Initialise the state provider.
+
+        Parameters
+        ----------
+        max_history_length : int
+            Maximum number of historical readings to retain for each sensor.
+        """
+        self.max_history_length = max_history_length
+
     @abstractmethod
     def get_last_valid(self, sensor_id: int) -> RawSensorData | None:
         """Return the most recent accepted reading for the given sensor.
@@ -92,7 +102,12 @@ class StateProvider(ABC):
 class SparkStateProvider(StateProvider):
     """State adapter backed by Spark Structured Streaming GroupState."""
 
-    def __init__(self, group_state: GroupState, sensor_id: int) -> None:
+    def __init__(
+        self,
+        group_state: GroupState,
+        sensor_id: int,
+        max_history_length: int = int(Config.MAX_STATE_HISTORY_LENGTH),
+    ) -> None:
         """Initialise the provider with an existing Spark GroupState object.
 
         Parameters
@@ -101,7 +116,11 @@ class SparkStateProvider(StateProvider):
             Stateful context provided by Spark while processing a sensor group.
         sensor_id : int
             Sensor identifier used for logging and debugging (unused in logic).
+        max_history_length : int
+            Maximum number of historical readings to retain for each sensor,
+            by default int(Config.MAX_STATE_HISTORY_LENGTH)
         """
+        super().__init__(max_history_length=max_history_length)
         self._group_state: GroupState = group_state
         payload: tuple | None = None
         if group_state.exists:
@@ -140,7 +159,7 @@ class SparkStateProvider(StateProvider):
         reading : RawSensorData
             Reading to mark as accepted.
         """
-        self._state.update(reading, int(Config.MAX_STATE_HISTORY_LENGTH))
+        self._state.update(reading, self.max_history_length)
         self._sync()
 
     def record_flatline(self, sensor_id: int, value: float, timestamp: float) -> None:

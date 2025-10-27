@@ -15,11 +15,13 @@ from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
 from dt.data.preprocess import validators
 from dt.data.preprocess.dq import compute_dq_score
-from dt.data.preprocess.imputers import ImputationStrategy, build_strategy
+from dt.data.preprocess.imputers import (ImputationStrategy,
+                                         build_imputation_strategy)
 from dt.data.preprocess.smoothing import (SmoothingStrategy,
                                           build_smoothing_strategy)
 from dt.data.preprocess.state import SparkStateProvider, StateProvider
 from dt.utils import get_logger
+from dt.utils.exceptions.drop_reading import DropReadingException
 
 logger = get_logger(__name__)
 
@@ -33,6 +35,17 @@ FlagStatus = dict[ValidationFlag, bool]
 
 STATE_TIMEOUT_SECONDS = 30 * 60
 WATERMARK_INTERVAL = "30 minutes"
+
+# Caches for imputation and smoothing strategies to avoid redundant instantiation every Microbatch
+# WARNING: These are global variables shared across Spark executors!
+#           If the strategy implementations maintain internal state (wich currently don't as entirely dependent on StateProvider),
+#           this may lead to unexpected behavior.
+#           If we would happen to need per-executor stateful strategies in the future, we should move these caches
+#           into the SparkStateProvider.
+# NOTE: If the Strategy is changed during runtime (e.g. config update), the old instance will remain in the cache.
+#       This can be mitigated by restarting the Spark job after config changes.
+_global_imputation_cache: dict[str, ImputationStrategy] = {}
+_global_smoothing_cache: dict[str, SmoothingStrategy] = {}
 
 
 def _load_sensor_registry(rules: SensorValidationConfig) -> dict[int, str]:
@@ -136,11 +149,11 @@ def _get_imputation(
     ImputationStrategy
         Strategy instance ready to compute imputed values.
     """
-    strategy = cache.get(sensor_key)
-    if strategy is None:
-        strategy = build_strategy(sensor_config)
-        cache[sensor_key] = strategy
-    return strategy
+    imputation = cache.get(sensor_key)
+    if imputation is None:
+        imputation = build_imputation_strategy(sensor_config)
+        cache[sensor_key] = imputation
+    return imputation
 
 
 def _get_smoothing(
@@ -197,6 +210,10 @@ def _run_validations(
     is_range_ok, range_flag = validators.check_range(reading=reading, rule=sensor_config.range)
     if not is_range_ok:
         flags[range_flag] = True
+        logger.info(
+            f"Range validation failed for sensor_id={reading.sensor_id} "
+            f"value={reading.value} range_check={sensor_config.range} ",
+        )
         return flags
 
     previous_valid = state_provider.get_last_valid(reading.sensor_id)
@@ -207,6 +224,10 @@ def _run_validations(
     )
     if not is_roc_ok:
         flags[roc_flag] = True
+        logger.info(
+            f"Rate-of-change validation failed for sensor_id={reading.sensor_id} "
+            f"value={reading.value} last_valid={previous_valid} roc_check={sensor_config.roc} ",
+        )
         return flags
 
     history = list(
@@ -224,6 +245,10 @@ def _run_validations(
     )
     if not is_stuck_ok:
         flags[stuck_flag] = True
+        logger.info(
+            f"Stuck-value validation failed for sensor_id={reading.sensor_id} "
+            f"value={reading.value} stuck_check={sensor_config.stuck} ",
+        )
         state_provider.record_flatline(
             sensor_id=reading.sensor_id,
             value=float(reading.value),
@@ -236,7 +261,7 @@ def _run_validations(
 def _compute_output_value(
     reading: RawSensorData,
     flags: FlagStatus,
-    strategy: ImputationStrategy,
+    imputation: ImputationStrategy,
     smoothing: SmoothingStrategy,
     state_provider: StateProvider,
 ) -> tuple[float, bool, bool]:
@@ -248,7 +273,7 @@ def _compute_output_value(
         Current raw sensor reading.
     flags : dict[ValidationFlag, bool]
         Validation results for the reading.
-    strategy : ImputationStrategy
+    imputation: ImputationStrategy
         Imputation strategy selected for the sensor.
     smoothing : SmoothingStrategy
         Smoothing strategy selected for the sensor.
@@ -266,7 +291,7 @@ def _compute_output_value(
     imputed = False
 
     if violation:
-        imputed_value = strategy.compute(
+        imputed_value = imputation.compute(
             sensor_id=reading.sensor_id,
             reading=reading,
             state=state_provider,
@@ -274,6 +299,11 @@ def _compute_output_value(
         if imputed_value is not None:
             value = float(imputed_value)
             imputed = True
+        else:
+            raise DropReadingException(
+                f"Imputation failed for sensor_id={reading.sensor_id} "
+                f"at timestamp={reading.timestamp}; dropping reading."
+            )
 
     smoothed_value = smoothing.apply(
         sensor_id=reading.sensor_id,
@@ -329,24 +359,14 @@ def _build_processed_record(
     dict[str, object]
         Dictionary matching :data:`PROCESSED_EVENT_SCHEMA`.
     """
-    raw_value: float | None = None
-    original_value = float(reading.value)
-    if imputed or value != original_value:
-        raw_value = original_value
-
-    return {
-        "plant_id": reading.plant_id,
-        "sensor_id": reading.sensor_id,
-        "timestamp": float(reading.timestamp),
-        "value": float(value),
-        "unit": reading.unit,
-        "topic": reading.topic.value,
-        "correlation_id": reading.correlation_id,
-        "flags": {flag.value: bool(status) for flag, status in flags.items()},
-        "dq_score": float(dq_score),
-        "imputed": bool(imputed),
-        "raw_value": raw_value,
-    }
+    processed_data = ProcessedSensorData.from_raw_sensor_data(
+        raw_data=reading,
+        proc_value=value,
+        flags=flags,
+        dq_score=dq_score,
+        imputed=imputed,
+    )
+    return processed_data.to_dict()
 
 
 def _collect_readings(pdf_iter: Iterator[pd.DataFrame]) -> list[RawSensorData]:
@@ -440,8 +460,6 @@ def _process_readings(
     if not sorted_readings:
         return [], None
 
-    strategy_cache: dict[str, ImputationStrategy] = {}
-    smoothing_cache: dict[str, SmoothingStrategy] = {}
     records: list[ProcessedRecord] = []
     latest_timestamp: float | None = None
 
@@ -484,8 +502,8 @@ def _process_readings(
                 f"last_valid_ts={previous_valid.timestamp} correlation_id={reading.correlation_id}",
             )
 
-        strategy = _get_imputation(strategy_cache, sensor_key, sensor_config)
-        smoothing = _get_smoothing(smoothing_cache, sensor_key, sensor_config)
+        strategy = _get_imputation(_global_imputation_cache, sensor_key, sensor_config)
+        smoothing = _get_smoothing(_global_smoothing_cache, sensor_key, sensor_config)
 
         flags.update(
             _run_validations(
@@ -496,13 +514,31 @@ def _process_readings(
         )
 
         # Compute final value after imputation (if needed) and smoothing
-        value, imputed, violation = _compute_output_value(
-            reading=reading,
-            flags=flags,
-            strategy=strategy,
-            smoothing=smoothing,
-            state_provider=state_provider,
-        )
+        try:
+            value, imputed, violation = _compute_output_value(
+                reading=reading,
+                flags=flags,
+                imputation=strategy,
+                smoothing=smoothing,
+                state_provider=state_provider,
+            )
+        except DropReadingException as exc:
+            logger.warning(str(exc))
+            # We set the reading as invalid and assign a DQ score of 0.0
+            flags[ValidationFlag.VALID] = False
+            dq_score = 0.0
+            records.append(
+                _build_processed_record(
+                    reading=reading,
+                    value=float(reading.value),
+                    flags=flags,
+                    dq_score=dq_score,
+                    imputed=False,
+                )
+            )
+            base_ts = latest_timestamp if latest_timestamp is not None else float(reading.timestamp)
+            latest_timestamp = max(base_ts, float(reading.timestamp))
+            continue
 
         if not violation and not late_event:
             # We persist only valid readings, not the one we imputed or smoothed

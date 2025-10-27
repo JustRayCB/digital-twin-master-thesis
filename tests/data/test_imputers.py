@@ -11,7 +11,7 @@ from dt.communication.topics import Topics
 from dt.data.preprocess.imputers import (ForwardFillWithDecay,
                                          LinearExtrapolationImputation,
                                          WindowAverageImputation,
-                                         build_strategy)
+                                         build_imputation_strategy)
 from dt.data.preprocess.state import FlatlineRecord, StateProvider
 
 
@@ -181,7 +181,7 @@ def test_build_strategy_rejects_unknown_strategy_name() -> None:
     )
 
     with pytest.raises(ValueError):
-        build_strategy(sensor_config=sensor_config)
+        build_imputation_strategy(sensor_config=sensor_config)
 
 
 def test_build_strategy_uses_default_when_missing_config() -> None:
@@ -194,7 +194,7 @@ def test_build_strategy_uses_default_when_missing_config() -> None:
         imputation=None,
     )
 
-    strategy = build_strategy(sensor_config=sensor_config)
+    strategy = build_imputation_strategy(sensor_config=sensor_config)
     assert isinstance(strategy, ForwardFillWithDecay)
 
 
@@ -212,7 +212,7 @@ def test_build_strategy_selects_window_average_strategy() -> None:
         ),
     )
 
-    strategy = build_strategy(sensor_config=sensor_config)
+    strategy = build_imputation_strategy(sensor_config=sensor_config)
 
     assert isinstance(strategy, WindowAverageImputation)
 
@@ -269,7 +269,7 @@ def test_build_strategy_selects_linear_interpolation() -> None:
         imputation=LinearExtrapolationImputationConfig(window_seconds=180, max_gap_seconds=300),
     )
 
-    strategy = build_strategy(sensor_config=sensor_config)
+    strategy = build_imputation_strategy(sensor_config=sensor_config)
 
     assert isinstance(strategy, LinearExtrapolationImputation)
 

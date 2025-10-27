@@ -38,9 +38,7 @@ class ImputationStrategy(ABC):
         return self._config
 
     @abstractmethod
-    def compute(
-        self, sensor_id: int, reading: RawSensorData, state: StateProvider
-    ) -> float | None:
+    def compute(self, sensor_id: int, reading: RawSensorData, state: StateProvider) -> float | None:
         """Return an imputed value for the provided reading.
 
         Parameters
@@ -72,9 +70,7 @@ class ForwardFillWithDecay(ImputationStrategy):
     def config(self) -> ForwardFillImputationConfig:
         return cast(ForwardFillImputationConfig, super().config)
 
-    def compute(
-        self, sensor_id: int, reading: RawSensorData, state: StateProvider
-    ) -> float | None:
+    def compute(self, sensor_id: int, reading: RawSensorData, state: StateProvider) -> float | None:
         """Forward-fill using exponential decay toward a configured baseline.
 
         Parameters
@@ -127,9 +123,7 @@ class WindowAverageImputation(ImputationStrategy):
     def config(self) -> WindowAverageImputationConfig:
         return cast(WindowAverageImputationConfig, super().config)
 
-    def compute(
-        self, sensor_id: int, reading: RawSensorData, state: StateProvider
-    ) -> float | None:
+    def compute(self, sensor_id: int, reading: RawSensorData, state: StateProvider) -> float | None:
         """Compute the mean of recent valid readings inside a sliding window.
 
         Parameters
@@ -187,9 +181,7 @@ class LinearExtrapolationImputation(ImputationStrategy):
     def config(self) -> LinearExtrapolationImputationConfig:
         return cast(LinearExtrapolationImputationConfig, super().config)
 
-    def compute(
-        self, sensor_id: int, reading: RawSensorData, state: StateProvider
-    ) -> float | None:
+    def compute(self, sensor_id: int, reading: RawSensorData, state: StateProvider) -> float | None:
         """Extrapolate the recent trend to infer the expected reading value.
 
         Parameters
@@ -239,7 +231,7 @@ class LinearExtrapolationImputation(ImputationStrategy):
         return float(previous.value) + slope * gap_seconds
 
 
-def build_strategy(sensor_config: SensorConfig) -> ImputationStrategy:
+def build_imputation_strategy(sensor_config: SensorConfig) -> ImputationStrategy:
     """Instantiate the imputation strategy configured for a sensor.
 
     Parameters

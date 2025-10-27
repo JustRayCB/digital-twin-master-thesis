@@ -110,3 +110,46 @@ class ProcessedSensorData(RawSensorData):
             imputed=getattr(row, "imputed"),
             raw_value=getattr(row, "raw_value", None),
         )
+
+    @classmethod
+    def from_raw_sensor_data(
+        cls,
+        raw_data: RawSensorData,
+        proc_value: float,
+        flags: dict[ValidationFlag, bool],
+        dq_score: float,
+        imputed: bool,
+    ) -> "ProcessedSensorData":
+        """Create a ProcessedSensorData instance from a RawSensorData instance.
+
+        Parameters
+        ----------
+        raw_data : RawSensorData
+            The raw sensor data instance to base the processed data on.
+        proc_value : float
+            The processed value to be stored in the processed data.
+        flags : Dict[ValidationFlag, bool]
+            A dictionary of flags indicating the results of various data quality checks.
+        dq_score : float
+            A score representing the overall data quality after processing.
+        imputed : bool
+            A boolean indicating whether the value was imputed during processing.
+
+        Returns
+        -------
+        ProcessedSensorData
+            A new instance of ProcessedSensorData with the provided attributes.
+        """
+        return ProcessedSensorData(
+            plant_id=raw_data.plant_id,
+            sensor_id=raw_data.sensor_id,
+            timestamp=raw_data.timestamp,
+            value=proc_value,
+            unit=raw_data.unit,
+            topic=raw_data.topic,
+            correlation_id=raw_data.correlation_id,
+            flags=flags,
+            dq_score=dq_score,
+            imputed=imputed,
+            raw_value=raw_data.value,
+        )
