@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from dt.communication.dataclasses.preprocessing_config import (
+from dt.data.preprocess.configuration.preprocessing_config import (
     EWMASmoothingConfig,
     SensorValidationConfig,
 )

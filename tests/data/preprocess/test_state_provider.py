@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pyspark.sql.streaming.state import GroupState
 
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
-from dt.communication.dataclasses.state import FlatlineRecord, SensorState
+from dt.data.preprocess.state import FlatlineRecord, SensorState
 from dt.communication.topics import Topics
 from dt.data.preprocess.state import SparkStateProvider, StateProvider
 

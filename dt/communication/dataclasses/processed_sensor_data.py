@@ -46,12 +46,24 @@ class ProcessedSensorData(RawSensorData):
         A boolean indicating whether the value was imputed during processing.
     raw_value : float, optional
         Original sensor reading when imputation or smoothing altered the output value.
+    calibrated_value : float, optional
+        Sensor reading after calibration but before imputation or smoothing.
+    normalized_value : float, optional
+        Calibrated reading scaled into the normalization range.
+    calibration_profile_id : str, optional
+        Identifier of the calibration profile applied when producing the reading.
+    normalization_profile_id : str, optional
+        Identifier of the normalization profile used for scaling.
     """
 
     flags: dict[ValidationFlag, bool]
     dq_score: float
     imputed: bool
     raw_value: float | None = None
+    calibrated_value: float | None = None
+    normalized_value: float | None = None
+    calibration_profile_id: str | None = None
+    normalization_profile_id: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -63,6 +75,14 @@ class ProcessedSensorData(RawSensorData):
         self.imputed = bool(self.imputed)
         if self.raw_value is not None:
             self.raw_value = float(self.raw_value)
+        if self.calibrated_value is not None:
+            self.calibrated_value = float(self.calibrated_value)
+        if self.normalized_value is not None:
+            self.normalized_value = float(self.normalized_value)
+        if self.calibration_profile_id is not None:
+            self.calibration_profile_id = str(self.calibration_profile_id)
+        if self.normalization_profile_id is not None:
+            self.normalization_profile_id = str(self.normalization_profile_id)
 
     @staticmethod
     def get_spark_schema():
@@ -89,6 +109,10 @@ class ProcessedSensorData(RawSensorData):
                 StructField("dq_score", DoubleType(), nullable=False),
                 StructField("imputed", BooleanType(), nullable=False),
                 StructField("raw_value", DoubleType(), nullable=True),
+                StructField("calibrated_value", DoubleType(), nullable=True),
+                StructField("normalized_value", DoubleType(), nullable=True),
+                StructField("calibration_profile_id", StringType(), nullable=True),
+                StructField("normalization_profile_id", StringType(), nullable=True),
             ]
         )
         return processed_sensor_schema
@@ -109,6 +133,10 @@ class ProcessedSensorData(RawSensorData):
             dq_score=getattr(row, "dq_score"),
             imputed=getattr(row, "imputed"),
             raw_value=getattr(row, "raw_value", None),
+            calibrated_value=getattr(row, "calibrated_value", None),
+            normalized_value=getattr(row, "normalized_value", None),
+            calibration_profile_id=getattr(row, "calibration_profile_id", None),
+            normalization_profile_id=getattr(row, "normalization_profile_id", None),
         )
 
     @classmethod
@@ -119,6 +147,10 @@ class ProcessedSensorData(RawSensorData):
         flags: dict[ValidationFlag, bool],
         dq_score: float,
         imputed: bool,
+        calibrated_value: float | None = None,
+        normalized_value: float | None = None,
+        calibration_profile_id: str | None = None,
+        normalization_profile_id: str | None = None,
     ) -> "ProcessedSensorData":
         """Create a ProcessedSensorData instance from a RawSensorData instance.
 
@@ -152,4 +184,8 @@ class ProcessedSensorData(RawSensorData):
             dq_score=dq_score,
             imputed=imputed,
             raw_value=raw_data.value,
+            calibrated_value=calibrated_value,
+            normalized_value=normalized_value,
+            calibration_profile_id=calibration_profile_id,
+            normalization_profile_id=normalization_profile_id,
         )

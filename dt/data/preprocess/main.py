@@ -1,12 +1,11 @@
-
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from dt.communication.dataclasses.processed_sensor_data import \
-    ProcessedSensorData
+from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
-from dt.data.preprocess.pipeline import build_preprocessing_stream
+from dt.data.preprocess.configuration.manager import ConfigurationManager
+from dt.data.preprocess.spark_adapter import SparkStreamingAdapter
 from dt.utils import Config, get_logger
 
 logger = get_logger(__name__)
@@ -88,21 +87,21 @@ def main() -> None:
     checkpoint_dir = Config.PREPROCESSING_CHECKPOINT_DIR
     kafka_bootstrap = Config.KAFKA_URL
 
-    logger.info("Starting preprocessing pipeline.")
+    logger.info("Starting preprocessing pipeline (modular architecture).")
     spark = _build_spark_session()
 
     try:
+        config_manager = ConfigurationManager(config_path)
+        adapter = SparkStreamingAdapter(config_manager)
+
         raw_events = _read_raw_events(
             spark,
             kafka_bootstrap=kafka_bootstrap,
             topic_pattern=RAW_TOPIC_PATTERN,
             starting_offsets=Config.SPARK_STARTING_OFFSETS,
         )
-        processed_stream = build_preprocessing_stream(
-            spark_session=spark,
-            raw_events=raw_events,
-            config_path=config_path,
-        )
+
+        processed_stream = adapter.build_preprocessing_stream(spark, raw_events)
         kafka_ready = _prepare_kafka_sink(processed_stream, _build_topic_map())
         query = (
             kafka_ready.writeStream.format("kafka")

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dt.communication.dataclasses.preprocessing_config import (
+from dt.data.preprocess.configuration.preprocessing_config import (
     ForwardFillImputationConfig, LinearExtrapolationImputationConfig,
     SensorConfig, WindowAverageImputationConfig)
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData

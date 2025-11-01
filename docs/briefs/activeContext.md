@@ -41,13 +41,16 @@
 - [x] Define and implement sensor event schema
 - [x] Sensor data validation pipelines/rules (range, RoC, stuck or flatline, DQ scoring)
 - [x] Implement missing data handling (forward fill, window averaging, linear extrapolation guardrails)
-- [ ] Noise filtering (EWMA smoothing available; Kalman filter evaluation pending)  
-- [ ] Finalize calibration tables and normalization logic  
+- [ ] **ACTIVE: Refactor monolithic pipeline.py into modular architecture** (feature/pipeline-refactoring → feature/calibration-normalization-pipeline)
+  - Chain of Responsibility pattern with 5 processors (Calibration → Validation → Imputation → Smoothing → Normalization)
+  - See docs/plans/pipeline_refactoring_implementation_plan.md for full plan
+- [ ] Noise filtering (EWMA smoothing available; Kalman filter evaluation pending)
+- [ ] Finalize calibration tables and normalization logic (Spark end-to-end pytest harness in place; wire remaining streaming stages)
 - [ ] Rollups and retention policy for InfluxDB
 - [ ] Setup of a non-TS database (Postgres) for audit logs and alert/action tracking
-- [ ] Implement alert rules engine (thresholds, persistence, cooldown)  
-- [ ] Finalize action/audit log schemas and migrations  
-- [ ] Create API endpoints `/logs`, `/alerts`, `/actions`, `/configs`  
+- [ ] Implement alert rules engine (thresholds, persistence, cooldown)
+- [ ] Finalize action/audit log schemas and migrations
+- [ ] Create API endpoints `/logs`, `/alerts`, `/actions`, `/configs`
 - [ ] Create a Minimal UI for logs and alerts to expose to users
 - [ ] Run QA: synthetic replays, dropouts, noisy to see how the system copes and compute DQ score metrics  
 
@@ -64,6 +67,8 @@
 - Structured streaming job under `dt/data/preprocess/` now reads `dt.sensor.raw.*`, applies validators, imputation, smoothing, and publishes to `.proc` topics.
 - Processed payloads include validation flags, data-quality scores, imputation markers, and optional `raw_value` for auditability.
 - `SparkStateProvider` mediates tuple-backed `SensorState` so validation, imputation, and smoothing layers share consistent history windows.
+- Added end-to-end calibration/normalization pytest harness validating profile lookups and processed payload fields.
+- **2025-10-30**: Started pipeline refactoring (feature/pipeline-refactoring branch) to break monolithic pipeline.py (942 lines) into modular Chain of Responsibility architecture for better readability, testability, and extensibility.
 
 ---
 

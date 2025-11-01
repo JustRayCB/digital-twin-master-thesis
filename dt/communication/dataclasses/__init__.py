@@ -6,5 +6,3 @@ from .processed_sensor_data import ProcessedSensorData as ProcessedSensorData
 from .raw_sensor_data import RawSensorData as RawSensorData
 from .sensor import SensorDescriptor as SensorDescriptor
 from .serializable import JsonSerializable as JsonSerializable
-from .state import FlatlineRecord as FlatlineRecord
-from .state import SensorState as SensorState

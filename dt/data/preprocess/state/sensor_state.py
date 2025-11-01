@@ -1,6 +1,6 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Optional
-from collections.abc import Sequence
 
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 
@@ -53,7 +53,7 @@ class FlatlineRecord:
         return (float(self.value), float(self.timestamp))
 
     @classmethod
-    def from_tuple(cls, values: Sequence[float] | None) -> Optional["FlatlineRecord"]:
+    def from_tuple(cls, values: tuple[float, float] | None) -> FlatlineRecord | None:
         """Hydrate a record from a tuple payload."""
         if not values:
             return None

@@ -6,6 +6,60 @@
 ## ⚠️ Issues / Decisions Needed
 - <bullet, who/when>
 
+# Progress — Week of 2025-10-28
+**Branch:** feature/pipeline-refactoring
+**Phase:** P1 (Preprocessing & Data Quality)
+
+---
+
+## ✅ Done
+
+### Preprocessing Pipeline Refactoring
+
+**Date**: 2025-10-31
+**Branch**: feature/pipeline-refactoring
+
+Refactored the monolithic `pipeline.py` (942 lines) into a modular, extensible
+architecture using Chain of Responsibility pattern.
+
+**Changes:**
+- Created `dt/data/preprocess/pipeline/` package with modular components
+- Implemented five processor classes (Calibration, Validation, Imputation, Smoothing, Normalization)
+- Added `ConfigurationManager` for centralized config and strategy management
+- Added `ProcessingPipeline` chain executor
+- Added `PipelineBuilder` factory for pipeline construction
+- Created `SparkStreamingAdapter` to isolate Spark concerns
+- Updated `main.py` to use new modular pipeline
+- Added comprehensive unit tests for all components
+- Added end-to-end integration test
+- Removed legacy monolithic pipeline implementation
+
+**Benefits:**
+- Better readability: Clear separation of concerns
+- Better testability: Components tested independently without Spark
+- Better extensibility: Easy to add new processing steps
+- Better maintainability: No global state, encapsulated caching
+
+**Test coverage**: A lot of new pipeline package
+
+---
+
+## 🔜 Next
+
+| Task                            | Description                                                                                  | Status         |
+| ------------------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| **Alert Engine (v1)**           | Create rule-based system for threshold breaches with persistence window and cooldown.        | ⏳ To do        |
+| **Audit & Action Store**        | Design SQLAlchemy models for `actions`, `alerts`, `configs`, `jobs`; add Alembic migrations. | ⏳ To do        |
+| **Config Registry v0**          | Save and version user thresholds/schedules with rollback.                                    | ⏳ To do        |
+| **REST API Extensions**         | Add `/alerts`, `/actions`, `/configs` endpoints and simple HTML tables in Flask.             | ⏳ To do        |
+
+---
+
+## ⚠️ Issues / Risks
+- None flagged this week
+
+---
+
 # Progress — Week of 2025-10-08
 **Branch:** preprocessing-module  
 **Phase:** P1 (Preprocessing & Data Quality)
@@ -23,6 +77,7 @@
 - Kafka topics (`dt.sensors.*`) live and tested.  
 - Flask dashboard streaming confirmed.  
 - Docs & Setup: Poetry environment cleaned, Make targets added, Pi install tested.  
+- Spark end-to-end calibration/normalization pytest harness verifies catalog defaults and overrides.
 
 ---
 

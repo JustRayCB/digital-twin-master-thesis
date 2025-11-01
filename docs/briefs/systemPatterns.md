@@ -94,8 +94,75 @@ and understandable.
 Processed sensor payloads extend the raw dataclass with validation flags keyed by
 `ValidationFlag`, a 0‒1 data-quality score derived from configured weights, an `imputed`
 boolean, and the optional `raw_value` field that preserves the original reading when
-imputation or smoothing alters the value emitted to Kafka. 
-Correlation IDs remain mandatory for traceability.
+imputation or smoothing alters the value emitted to Kafka. The calibration / normalization
+pass also attaches the immediate post-calibration reading (`calibrated_value`), the scaled
+reading (`normalized_value`), and the profile identifiers applied
+(`calibration_profile_id`, `normalization_profile_id`) so downstream consumers can audit
+which profile produced each value. Correlation IDs remain mandatory for traceability.
+
+Calibration and normalization strategies are resolved through the config-driven
+`ProfileConfiguration` loader and `CalibrationCatalog`. Defaults are keyed by sensor type,
+with per-device overrides inheriting any unspecified parameters. Strategies are typed:
+calibration currently supports identity, affine, and piecewise lookup transforms, while
+normalization supports identity and min-max scaling (with optional clipping). The Spark
+pipeline hydrates these strategies per sensor, applies calibration before validation /
+imputation, and normalizes the post-validation signal so processed payloads expose raw,
+calibrated, and normalized views side-by-side.
+
+## Preprocessing Pipeline Architecture
+
+The preprocessing module (`dt/data/preprocess`) uses a **Chain of Responsibility**
+pattern to process sensor data through multiple stages. This modular design supports
+the project requirement for extensibility and maintainability.
+
+### Pipeline Structure
+
+The pipeline processes readings through five stages:
+
+1. **Calibration**: Apply sensor-specific calibration transformations
+2. **Validation**: Check range, rate-of-change, and stuck values
+3. **Imputation**: Replace invalid values using configured strategies
+4. **Smoothing**: Apply noise reduction filters (EWMA, pass-through)
+5. **Normalization**: Scale values to standard range [0, 1]
+
+Each stage is implemented as a `BaseProcessor` subclass that receives a
+`ProcessingContext`, performs its operation, and returns the updated context.
+
+### Key Components
+
+- **ProcessingContext**: Mutable dataclass carrying all state through the pipeline
+- **BaseProcessor**: Abstract interface enforcing the processor contract
+- **ProcessingPipeline**: Chain executor running processors in sequence
+- **ConfigurationManager**: Centralized config loading and strategy caching
+- **PipelineBuilder**: Factory for creating configured pipelines
+- **SparkStreamingAdapter**: Isolates Spark-specific concerns from business logic
+
+### Extensibility
+
+Adding a new processing step requires:
+
+1. Create a class inheriting from `BaseProcessor`
+2. Implement the `process(context)` method
+3. Add the processor to `PipelineBuilder`
+
+Example:
+
+```python
+class AnomalyDetectionProcessor(BaseProcessor):
+    def process(self, context: ProcessingContext) -> ProcessingContext:
+        # Detect anomalies in context.smoothed_value
+        context.is_anomaly = self._detect(context.smoothed_value)
+        return context
+
+# In PipelineBuilder:
+pipeline.add_processor(AnomalyDetectionProcessor())
+```
+
+### Testing Strategy
+
+- **Unit tests**: Each processor tested independently with mocks
+- **Integration tests**: Full pipeline tested with real strategies
+- **Spark isolation**: Business logic is Spark-agnostic and testable without SparkSession
 
 ## Coding Standards & Practices
 

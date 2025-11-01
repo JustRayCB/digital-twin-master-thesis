@@ -73,3 +73,84 @@ sensors:
       # decay window for gentle fallback if baseline provided in future
       decay_seconds: 300
       baseline: null
+
+calibration_profiles:
+  defaults:
+    dht22.temperature:
+      profile_id: calibration.dht22.temperature.default
+      strategy: affine
+      parameters:
+        scale: 1.0
+        offset: 0.0
+    dht22.humidity:
+      profile_id: calibration.dht22.humidity.default
+      strategy: affine
+      parameters:
+        scale: 1.0
+        offset: 0.0
+    bh1750.lux:
+      profile_id: calibration.bh1750.lux.default
+      strategy: identity
+      parameters: {}
+    stemma.soil_moisture:
+      profile_id: calibration.stemma.soil_moisture.default
+      strategy: affine
+      parameters:
+        scale: 0.05
+        offset: 0.0
+  overrides:
+    sensors.greenhouse.dht22.001.temperature:
+      sensor_type: dht22.temperature
+      profile_id: calibration.dht22.temperature.greenhouse-001
+      parameters:
+        offset: -0.2
+    sensors.greenhouse.stemma.001.moisture:
+      sensor_type: stemma.soil_moisture
+      profile_id: calibration.stemma.soil_moisture.greenhouse-001
+      parameters:
+        scale: 0.047
+
+normalization_profiles:
+  defaults:
+    dht22.temperature:
+      profile_id: normalization.dht22.temperature.default
+      strategy: min_max
+      parameters:
+        input_min: -40.0
+        input_max: 80.0
+        output_min: 0.0
+        output_max: 1.0
+        clip: true
+    dht22.humidity:
+      profile_id: normalization.dht22.humidity.default
+      strategy: min_max
+      parameters:
+        input_min: 0.0
+        input_max: 100.0
+        output_min: 0.0
+        output_max: 1.0
+        clip: true
+    bh1750.lux:
+      profile_id: normalization.bh1750.lux.default
+      strategy: min_max
+      parameters:
+        input_min: 0.0
+        input_max: 65535.0
+        output_min: 0.0
+        output_max: 1.0
+        clip: true
+    stemma.soil_moisture:
+      profile_id: normalization.stemma.soil_moisture.default
+      strategy: min_max
+      parameters:
+        input_min: 0.0
+        input_max: 2000.0
+        output_min: 0.0
+        output_max: 1.0
+        clip: true
+  overrides:
+    sensors.greenhouse.bh1750.001:
+      sensor_type: bh1750.lux
+      profile_id: normalization.bh1750.lux.greenhouse-001
+      parameters:
+        input_max: 20000.0

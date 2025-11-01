@@ -1,26 +1,12 @@
 import json
 from datetime import datetime, timezone
 
-import pytest
 from pyspark.sql import SparkSession
 
 from dt.communication.dataclasses.processed_sensor_data import (
     ProcessedSensorData, ValidationFlag)
 from dt.communication.topics import Topics
 from dt.data.preprocess import main as preprocess_main
-
-
-@pytest.fixture(scope="module")
-def spark_session() -> SparkSession:
-    session = (
-        SparkSession.builder.master("local[*]")
-        .appName("preprocessing-main-tests")
-        .config("spark.driver.bindAddress", "127.0.0.1")
-        .getOrCreate()
-    )
-    session.sparkContext.setLogLevel("ERROR")
-    yield session
-    session.stop()
 
 
 def test_prepare_kafka_sink_routes_to_processed_topic(spark_session: SparkSession) -> None:
@@ -45,7 +31,11 @@ def test_prepare_kafka_sink_routes_to_processed_topic(spark_session: SparkSessio
                 flags,
                 0.95,
                 False,
-                None,
+                24.0,
+                23.5,
+                0.7,
+                "calibration.test.profile",
+                "normalization.test.profile",
             )
         ],
         schema=schema,
@@ -66,3 +56,8 @@ def test_prepare_kafka_sink_routes_to_processed_topic(spark_session: SparkSessio
     assert payload["plant_id"] == 1
     assert payload["sensor_id"] == 101
     assert payload["value"] == 23.5
+    assert payload["raw_value"] == 24.0
+    assert payload["calibrated_value"] == 23.5
+    assert payload["normalized_value"] == 0.7
+    assert payload["calibration_profile_id"] == "calibration.test.profile"
+    assert payload["normalization_profile_id"] == "normalization.test.profile"

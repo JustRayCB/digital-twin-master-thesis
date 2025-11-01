@@ -1,4 +1,4 @@
-from dt.communication.dataclasses.preprocessing_config import SensorValidationConfig
+from dt.data.preprocess.configuration.preprocessing_config import SensorValidationConfig
 from dt.utils.config import Config
 
 # Load configuration from default path

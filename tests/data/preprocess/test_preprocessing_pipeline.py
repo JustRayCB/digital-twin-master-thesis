@@ -2,6 +2,7 @@ import copy
 import math
 import shutil
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -9,33 +10,21 @@ import pytest
 import yaml
 from pyspark.sql import DataFrame, Row, SparkSession
 
-from dt.communication.dataclasses import ProcessedSensorData
-from dt.communication.dataclasses.preprocessing_config import (
+from dt.data.preprocess.configuration.preprocessing_config import (
     ForwardFillImputationConfig, RangeConfig, RocConfig, SensorConfig,
     StuckConfig)
-from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
+from dt.communication.dataclasses.processed_sensor_data import ValidationFlag, ProcessedSensorData
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
-from dt.data.preprocess import pipeline as preprocess_main
 from dt.data.preprocess import validators
 from dt.data.preprocess.dq import compute_dq_score
 from dt.data.preprocess.imputers import build_imputation_strategy
-from dt.data.preprocess.pipeline import build_preprocessing_stream
+from dt.data.preprocess.configuration.manager import ConfigurationManager
+from dt.data.preprocess.spark_adapter import SparkStreamingAdapter
 from dt.data.preprocess.state import FlatlineRecord, StateProvider
 
-
-@pytest.fixture(scope="module")
-def spark_session():
-    """Create a Spark session for integration-style streaming tests."""
-    session = (
-        SparkSession.builder.master("local[*]")
-        .appName("preprocessing-pipeline-tests")
-        .config("spark.driver.bindAddress", "127.0.0.1")
-        .getOrCreate()
-    )
-    session.sparkContext.setLogLevel("ERROR")
-    yield session
-    session.stop()
+DEFAULT_CALIBRATION_ID = "calibration.greenhouse.temperature.default"
+DEFAULT_NORMALIZATION_ID = "normalization.greenhouse.temperature.default"
 
 
 @pytest.fixture
@@ -66,19 +55,41 @@ def base_config() -> dict[str, Any]:
                 "stuck": {"max_flat_seconds": 120},
             }
         },
+        "calibration_profiles": {
+            "defaults": {
+                "greenhouse.temperature": {
+                    "profile_id": "calibration.greenhouse.temperature.default",
+                    "strategy": "identity",
+                    "parameters": {},
+                }
+            },
+            "overrides": {},
+        },
+        "normalization_profiles": {
+            "defaults": {
+                "greenhouse.temperature": {
+                    "profile_id": "normalization.greenhouse.temperature.default",
+                    "strategy": "identity",
+                    "parameters": {},
+                }
+            },
+            "overrides": {},
+        },
     }
 
 
-@pytest.fixture(autouse=True)
-def stub_sensor_registry(monkeypatch) -> None:
-    """Avoid network calls when the pipeline tries to fetch sensor descriptors."""
+def set_sensor_registry(mock_db_client, mapping: dict[int, str]) -> None:
+    """Configure DatabaseApiClient mock to return the provided sensor registry.
 
-    mapping = {sid: "greenhouse.temperature" for sid in (101, 202, 303, 404)}
-    monkeypatch.setattr(
-        preprocess_main,
-        "_load_sensor_registry",
-        lambda rules, _mapping=mapping: dict(_mapping),
-    )
+    Parameters
+    ----------
+    mock_db_client : Mock
+        Mocked DatabaseApiClient fixture.
+    mapping : dict[int, str]
+        Mapping from sensor IDs to configuration keys.
+    """
+    descriptors = [SimpleNamespace(sensor_id=sid, name=name) for sid, name in mapping.items()]
+    mock_db_client.return_value.list_sensors.return_value = descriptors
 
 
 def write_config(tmp_path, config) -> str:
@@ -181,10 +192,11 @@ def run_pipeline(
         .load(str(input_dir))
     )
 
-    # 2. Build processing plan
-    processed_stream: DataFrame = build_preprocessing_stream(
-        spark_session=spark, raw_events=raw_stream, config_path=config_path
-    )
+    # 2. Build processing plan using new modular pipeline
+    config_manager = ConfigurationManager(config_path)
+    adapter = SparkStreamingAdapter(config_manager)
+    processed_stream: DataFrame = adapter.build_preprocessing_stream(spark, raw_stream)
+
     # 3. Start query with memory sink so we can inspect results
     query_name = f"processed_{uuid4().hex}"
     checkpoint = tmp_path / f"chk_{uuid4().hex}"
@@ -210,7 +222,7 @@ def run_pipeline(
 
 
 def test_range_violation_triggers_imputation(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Ensure an out-of-range reading is imputed and flagged accordingly.
 
@@ -222,7 +234,10 @@ def test_range_violation_triggers_imputation(
         Default preprocessing configuration for validator thresholds.
     tmp_path : pathlib.Path
         Temporary directory where the test-specific config file is written.
+    mock_db_client : Mock
+        Mocked database client to avoid network calls.
     """
+    set_sensor_registry(mock_db_client, {101: "greenhouse.temperature"})
     config_path = write_config(tmp_path, base_config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -254,13 +269,18 @@ def test_range_violation_triggers_imputation(
     assert processed[-1].flags[ValidationFlag.STUCK] is False
     assert processed[-1].dq_score == 0.5
     assert processed[-1].raw_value == 45.0
+    assert processed[-1].calibrated_value == 45.0
+    assert processed[-1].normalized_value == 21.0
+    assert processed[-1].calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert processed[-1].normalization_profile_id == DEFAULT_NORMALIZATION_ID
 
 
 def test_range_violation_without_history_emits_dropped_record(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Ensure out-of-range values without history surface as dropped events."""
 
+    set_sensor_registry(mock_db_client, {101: "greenhouse.temperature"})
     config_path = write_config(tmp_path, base_config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -285,10 +305,14 @@ def test_range_violation_without_history_emits_dropped_record(
     assert record.flags[ValidationFlag.VALID] is False
     assert record.imputed is False
     assert record.dq_score == 0.0
+    assert record.calibrated_value == 45.0
+    assert record.normalized_value is None  # normalization cannot proceed
+    assert record.calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert record.normalization_profile_id == ""
 
 
 def test_rate_of_change_violation_triggers_imputation(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Verify excessive rate-of-change triggers violation flags and imputation.
 
@@ -300,7 +324,10 @@ def test_rate_of_change_violation_triggers_imputation(
         Baseline preprocessing configuration before ROC overrides.
     tmp_path : pathlib.Path
         Temporary directory storing the per-test YAML configuration.
+    mock_db_client : Mock
+        Mocked database client to avoid network calls.
     """
+    set_sensor_registry(mock_db_client, {202: "greenhouse.temperature"})
     config = copy.deepcopy(base_config)
     config["sensors"]["greenhouse.temperature"]["roc"] = {"max_per_minute": 1.0}
     config_path = write_config(tmp_path, config)
@@ -334,10 +361,14 @@ def test_rate_of_change_violation_triggers_imputation(
     assert processed[-1].flags[ValidationFlag.STUCK] is False
     assert processed[-1].dq_score == 0.7
     assert processed[-1].raw_value == 25.5
+    assert processed[-1].calibrated_value == 25.5
+    assert processed[-1].normalized_value == 20.0
+    assert processed[-1].calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert processed[-1].normalization_profile_id == DEFAULT_NORMALIZATION_ID
 
 
 def test_stuck_detection_flags_flatline(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Confirm flatlined readings beyond the window raise stuck flags and impute.
 
@@ -349,7 +380,10 @@ def test_stuck_detection_flags_flatline(
         Baseline preprocessing configuration before stuck overrides.
     tmp_path : pathlib.Path
         Temporary directory storing the test-specific configuration YAML.
+    mock_db_client : Mock
+        Mocked database client to avoid network calls.
     """
+    set_sensor_registry(mock_db_client, {303: "greenhouse.temperature"})
     config = copy.deepcopy(base_config)
     config["sensors"]["greenhouse.temperature"]["stuck"] = {"max_flat_seconds": 30}
     config_path = write_config(tmp_path, config)
@@ -373,13 +407,18 @@ def test_stuck_detection_flags_flatline(
     assert processed[-1].value == 19.0
     assert processed[-1].dq_score == 0.8
     assert processed[-1].raw_value == 19.0
+    assert processed[-1].calibrated_value == 19.0
+    assert processed[-1].normalized_value == 19.0
+    assert processed[-1].calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert processed[-1].normalization_profile_id == DEFAULT_NORMALIZATION_ID
 
 
 def test_violation_without_history_does_not_impute(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Range violation without history should still surface a violation without imputation."""
 
+    set_sensor_registry(mock_db_client, {101: "greenhouse.temperature"})
     config_path = write_config(tmp_path, base_config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -402,10 +441,14 @@ def test_violation_without_history_does_not_impute(
     assert record.flags[ValidationFlag.VALID] is False
     assert record.dq_score == 0.0
     assert record.raw_value == 60.0
+    assert record.calibrated_value == 60.0
+    assert record.normalized_value is None  # normalization cannot proceed
+    assert record.calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert record.normalization_profile_id == ""
 
 
 def test_valid_reading_passes_through(
-    spark_session: SparkSession, base_config: dict[str, Any], tmp_path
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
 ) -> None:
     """Check that a well-behaved reading passes untouched with full score.
 
@@ -417,7 +460,10 @@ def test_valid_reading_passes_through(
         Default preprocessing configuration used without overrides.
     tmp_path : pathlib.Path
         Temporary directory for the configuration YAML written by the test.
+    mock_db_client : Mock
+        Mocked database client to avoid network calls.
     """
+    set_sensor_registry(mock_db_client, {404: "greenhouse.temperature"})
     config_path = write_config(tmp_path, base_config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -443,24 +489,154 @@ def test_valid_reading_passes_through(
     assert result.flags[ValidationFlag.VALID] is True
     assert result.dq_score == 1.0
     assert result.raw_value == 22.0
+    assert result.calibrated_value == 22.0
+    assert result.normalized_value == 22.0
+    assert result.calibration_profile_id == DEFAULT_CALIBRATION_ID
+    assert result.normalization_profile_id == DEFAULT_NORMALIZATION_ID
+
+
+def test_calibration_adjusts_processed_value(
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
+) -> None:
+    """Calibration stage should shift the processed output while preserving raw_value."""
+
+    set_sensor_registry(mock_db_client, {404: "greenhouse.temperature"})
+    config = copy.deepcopy(base_config)
+    config["calibration_profiles"]["defaults"]["greenhouse.temperature"] = {
+        "profile_id": "calibration.greenhouse.temperature.offset",
+        "strategy": "affine",
+        "parameters": {"scale": 1.0, "offset": -1.5},
+    }
+    config_path = write_config(tmp_path, config)
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        make_event(
+            plant_id=2,
+            sensor_id=404,
+            timestamp=base_time.timestamp(),
+            value=22.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="calib-1",
+        )
+    ]
+
+    processed = run_pipeline(spark_session, tmp_path, config_path, events)
+    assert len(processed) == 1
+    result = processed[0]
+    assert result.imputed is False
+    assert result.value == 20.5
+    assert result.raw_value == 22.0
+    assert result.calibrated_value == 20.5
+    assert result.normalized_value == 20.5
+    assert result.calibration_profile_id == "calibration.greenhouse.temperature.offset"
+    assert result.normalization_profile_id == DEFAULT_NORMALIZATION_ID
+    assert result.flags[ValidationFlag.RANGE] is False
+    assert result.flags[ValidationFlag.VALID] is True
+    assert result.dq_score == 1.0
+
+
+def test_calibration_runs_before_range_validation(
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
+) -> None:
+    """Out-of-range raw values pass validation when calibration brings them into bounds."""
+
+    set_sensor_registry(mock_db_client, {202: "greenhouse.temperature"})
+    config = copy.deepcopy(base_config)
+    config["calibration_profiles"]["defaults"]["greenhouse.temperature"] = {
+        "profile_id": "calibration.greenhouse.temperature.offset",
+        "strategy": "affine",
+        "parameters": {"scale": 1.0, "offset": -2.0},
+    }
+    config_path = write_config(tmp_path, config)
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        make_event(
+            plant_id=3,
+            sensor_id=202,
+            timestamp=base_time.timestamp(),
+            value=31.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="calib-2",
+        )
+    ]
+
+    processed = run_pipeline(spark_session, tmp_path, config_path, events)
+    assert len(processed) == 1
+    result = processed[0]
+    assert result.imputed is False
+    assert result.value == 29.0
+    assert result.raw_value == 31.0
+    assert result.calibrated_value == 29.0
+    assert result.normalized_value == 29.0
+    assert result.calibration_profile_id == "calibration.greenhouse.temperature.offset"
+    assert result.normalization_profile_id == DEFAULT_NORMALIZATION_ID
+    assert result.flags[ValidationFlag.RANGE] is False
+    assert result.flags[ValidationFlag.VALID] is True
+    assert result.dq_score == 1.0
+
+
+def test_calibration_override_applies_via_registry_key(
+    spark_session: SparkSession, base_config: dict[str, Any], tmp_path, mock_db_client
+) -> None:
+    """Per-device override configured via registry key must affect pipeline output."""
+
+    override_key = "sensors.greenhouse.temperature.404"
+
+    config = copy.deepcopy(base_config)
+    base_sensor_config = copy.deepcopy(config["sensors"]["greenhouse.temperature"])
+    config["sensors"][override_key] = base_sensor_config
+    config["calibration_profiles"]["overrides"][override_key] = {
+        "sensor_type": "greenhouse.temperature",
+        "profile_id": "calibration.greenhouse.temperature.override-404",
+        "strategy": "affine",
+        "parameters": {"scale": 1.0, "offset": -2.5},
+    }
+
+    config_path = write_config(tmp_path, config)
+    set_sensor_registry(mock_db_client, {404: override_key})
+
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        make_event(
+            plant_id=4,
+            sensor_id=404,
+            timestamp=base_time.timestamp(),
+            value=24.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="calib-override",
+        )
+    ]
+
+    processed = run_pipeline(spark_session, tmp_path, config_path, events)
+    assert len(processed) == 1
+    record = processed[0]
+    assert record.imputed is False
+    assert record.value == 21.5
+    assert record.raw_value == 24.0
+    assert record.calibrated_value == 21.5
+    assert record.normalized_value == 21.5
+    assert record.calibration_profile_id == "calibration.greenhouse.temperature.override-404"
+    assert record.normalization_profile_id == DEFAULT_NORMALIZATION_ID
+    assert record.flags[ValidationFlag.RANGE] is False
+    assert record.flags[ValidationFlag.VALID] is True
+    assert record.dq_score == 1.0
 
 
 def test_sensor_registry_configures_lookup(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
-    monkeypatch,
+    mock_db_client,
 ) -> None:
     """Database-backed registry should align sensor IDs with config entries."""
 
     config = copy.deepcopy(base_config)
     payload = config["sensors"].pop("greenhouse.temperature")
     config["sensors"]["plant.alpha"] = payload
-    monkeypatch.setattr(
-        preprocess_main,
-        "_load_sensor_registry",
-        lambda rules: {909: "plant.alpha"},
-    )
+    set_sensor_registry(mock_db_client, {909: "plant.alpha"})
     config_path = write_config(tmp_path, config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -482,17 +658,21 @@ def test_sensor_registry_configures_lookup(
     assert processed[0].value == 23.0
     assert processed[0].raw_value == 23.0
     assert processed[0].dq_score == 1.0
+    assert processed[0].calibrated_value == 23.0
+    assert processed[0].normalized_value == 23.0
+    assert processed[0].calibration_profile_id == "calibration.identity.plant.alpha"
+    assert processed[0].normalization_profile_id == "normalization.identity.plant.alpha"
 
 
 def test_unknown_sensor_is_skipped(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
-    monkeypatch,
+    mock_db_client,
 ) -> None:
     """Pipeline should emit quarantine record instead of crashing on unknown sensors."""
 
-    monkeypatch.setattr(preprocess_main, "_load_sensor_registry", lambda rules: {})
+    set_sensor_registry(mock_db_client, {})
     config_path = write_config(tmp_path, base_config)
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [

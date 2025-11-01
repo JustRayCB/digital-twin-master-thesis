@@ -1,7 +1,7 @@
 
 import pytest
 
-from dt.communication.dataclasses.preprocessing_config import (
+from dt.data.preprocess.configuration.preprocessing_config import (
     EWMASmoothingConfig, PassThroughSmoothingConfig, SensorConfig)
 from dt.data.preprocess.smoothing import (EWMASmoothing, PassThroughSmoothing,
                                           build_smoothing_strategy)
