@@ -6,6 +6,70 @@
 ## ⚠️ Issues / Decisions Needed
 - <bullet, who/when>
 
+# Progress — Week of 2025-11-03
+**Branch:** feature/alert-engine
+**Phase:** P1 (Preprocessing & Data Quality)
+
+---
+
+## ✅ Done
+
+### Alert Engine Service Implementation
+
+**Date**: 2025-11-03
+**Branch**: feature/alert-engine
+
+Implemented a standalone alert engine service providing centralized alert management with
+rule-based evaluation, state tracking, and REST API for programmatic integration.
+
+**Changes:**
+- Created `dt/alerts/` package with modular architecture:
+  - `config/`: YAML rule loader with validation (alert_rule.py, manager.py)
+  - `state/`: In-memory registry with persistence counters, cooldown timers, and acknowledgments (registry.py, models.py)
+  - `engine/`: Rule evaluator supporting 4 condition types, and Kafka publisher (evaluator.py, publisher.py)
+  - `service.py`: Kafka consumer subscribing to all processed sensor topics
+  - `api.py`: Flask REST API with 5 endpoints (submit, acknowledge, clear, list active, list rules)
+  - `app.py`: Application factory with dependency injection
+- Implemented TDD throughout with 122 tests passing (8 test files):
+  - Unit tests for config loader, evaluator, registry, publisher, API
+  - Integration tests for service consumer behavior
+  - End-to-end tests validating full alert lifecycle
+- Alert rules configured via `dt/utils/alert_rules.yml` with 6 example rules
+- Supports threshold, range, DQ score, and validation flag conditions
+- Persistence mechanism prevents alerts until N consecutive violations occur
+- Cooldown timers prevent alert fatigue by suppressing repeated alerts
+- REST API enables external submissions from AI/control modules
+- Publishes canonical `AlertEvent` messages to `dt.alerts` Kafka topic
+- In-memory state maintains alert history, acknowledgments, and timestamps
+
+**Benefits:**
+- Centralized alert authority prevents duplicate/conflicting alerts
+- Configurable persistence and cooldown prevent alert fatigue
+- REST API enables integration with AI, control, and UI modules
+- Kafka publishing provides audit trail and downstream consumption
+- Full test coverage ensures reliability
+
+**Test coverage**: 122 tests across all components
+
+---
+
+## 🔜 Next
+
+| Task                            | Description                                                                                  | Status         |
+| ------------------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| **Audit & Action Store**        | Design SQLAlchemy models for `actions`, `alerts`, `configs`, `jobs`; add Alembic migrations. | ⏳ To do        |
+| **Config Registry v0**          | Save and version user thresholds/schedules with rollback.                                    | ⏳ To do        |
+| **REST API Extensions**         | Add `/logs`, `/actions`, `/configs` endpoints and simple HTML tables in Flask.             | ⏳ To do        |
+| **Alert UI Integration**        | Wire alert service into dashboard for real-time alert display and acknowledgment.            | ⏳ To do        |
+
+---
+
+## ⚠️ Issues / Risks
+- Alert state is in-memory only; service restart clears active alerts (document limitation, add persistence layer in future)
+- No database persistence yet for alert history (planned for audit store phase)
+
+---
+
 # Progress — Week of 2025-10-28
 **Branch:** feature/pipeline-refactoring
 **Phase:** P1 (Preprocessing & Data Quality)

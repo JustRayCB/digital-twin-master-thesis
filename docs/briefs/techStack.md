@@ -71,27 +71,37 @@ installed and configured on the Pi. The project provides setup scripts
 The application follows a **microservices-inspired architecture**, breaking the
 system into distinct components (services) that communicate through Kafka
 events and REST APIs. Each major function of the digital twin is a separate
-module/process under a top-level package dt/. For example: 
+module/process under a top-level package dt/. For example:
 - The **Data Collector** module (dt/main.py) reads sensor inputs in real-time and
   immediately publishes raw data to Kafka. This service runs on the Raspberry Pi
   (since it directly accesses GPIO and I2C hardware) and uses CircuitPython
-  libraries to interface with sensors. 
+  libraries to interface with sensors.
 - The **Data Preprocessing** module (dt/data/preprocess/main.py) subscribes to
   the raw data stream from Kafka, performs cleaning and preprocessing (described
   in Active Context below), and then publishes **processed** sensor data back to
   another Kafka topic for downstream consumers. This module is implemented with
-  PySpark to leverage structured streaming for data handling. 
+  PySpark to leverage structured streaming for data handling.
 - The **Data Storage** service
   (dt/data/database/app.py) consumes the processed data and stores it into
   InfluxDB in near real-time. It also provides a REST API for querying historical
   data (so that other services or the web dashboard can request data without
-  speaking directly to the database). 
+  speaking directly to the database).
+- The **Alert Engine** service (dt/alerts/app.py) provides centralized alert
+  management and rule evaluation. It subscribes to processed sensor data topics via
+  Kafka, evaluates configured alert rules (thresholds, ranges, data quality checks),
+  and maintains in-memory alert state with persistence counters and cooldown timers.
+  The service exposes a Flask REST API (port 5003) for programmatic alert submission,
+  acknowledgment, and clearing, enabling other modules (AI, control, UI) to integrate
+  with the alerting system. All alert lifecycle events (CREATED, UPDATED, ACKNOWLEDGED,
+  CLEARED) are published back to the `dt.alerts` Kafka topic for downstream consumption
+  by the dashboard, audit logger, and notification workers. Alert rules are configured
+  via YAML (`dt/utils/alert_rules.yml`) and loaded at startup.
 - The **AI/Analytics** service (dt/ai/app.py) is responsible for machine
   learning tasks. In the current prototype, this might simply log data or perform
   basic anomaly detection. In later phases it will host predictive models (e.g.,
   a moisture forecast, a health classifier) and manage a **model registry** for
   versioning ML models. It will expose REST endpoints to deliver predictions or
-  analytics results to other components. 
+  analytics results to other components.
 - The **Web Dashboard** module (dt/webapp/app.py) is a Flask application that
   serves the user interface. It subscribes to the Kafka processed-data topic (via
   a WebSocket or Socket.IO connection) to get live updates and also calls the

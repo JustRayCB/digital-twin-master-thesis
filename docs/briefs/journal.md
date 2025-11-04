@@ -93,13 +93,45 @@
 - **Tradeoffs**: Added more classes (was 1 file, now 10+ files in `dt/data/preprocess/pipeline/`), but each is focused and testable. Initial learning curve for understanding chain pattern, but clearer once grasped. More files to navigate but better separation of concerns.
 - **Future considerations**: Could explore hot-reload for config changes.
 - MEM-DRIFT: docs/briefs/systemPatterns.md updated with preprocessing pipeline architecture section.
-## 2025-11-01 — Preprocessing package reorg
+## 2025-10-31 — Preprocessing package reorg
 - Context: Configuration dataclasses and strategy helpers lived under `dt/communication` or flat modules, making the preprocessing boundary messy.
 - Decision: Move sensor/config dataclasses and profile loaders into `dt/data/preprocess/configuration`, split validators/imputers/smoothing/dq into packages, isolate normalization strategies away from calibration, lift processors into a dedicated `processors/` namespace, and host state models/providers under `dt/data/preprocess/state/`.
 - Result: Preprocessing module now groups configuration, processors, and strategies by concern; imports updated and unit suites green (Spark-dependent tests noted for follow-up).
 - MEM-DRIFT: Still need to audit `docs/briefs/systemPatterns.md` for any lingering references to the old module layout in the next documentation pass.
-## 2025-11-03 — Legacy pipeline removal
+## 2025-10-31 — Legacy pipeline removal
 - Context: Modular preprocessing pipeline has been stable through calibration/normalization work; legacy `pipeline_legacy.py` was kept only as a fallback.
 - Decision: Drop the deprecated legacy module to avoid dual-maintenance and prevent accidental reuse.
 - Result: Deleted `dt/data/preprocess/pipeline_legacy.py`, scrubbed documentation references, and retained the modular `SparkStreamingAdapter` flow as the single source of truth.
 - MEM-DRIFT: docs/briefs/progress.md updated; no other drift observed.
+## 2025-11-01 — Alert engine service introduction
+- Context: Preprocessing delivers validated, calibrated, and normalized sensor data via `dt.sensors.processed.*` topics. Alerting logic is currently absent; multiple modules would duplicate threshold checks without a central authority.
+- Decision: Introduce a dedicated `dt.alerts` service that (1) subscribes to processed sensor topics and evaluates configured rules, (2) exposes REST endpoints for programmatic alert submission, acknowledgment, clearing, and listing, (3) maintains in-memory alert state (deduplication, persistence counters, cooldown timers, acknowledgment flags), and (4) publishes canonical `AlertEvent` payloads to `dt.alerts.*` for downstream consumers (dashboard, audit log, notification workers).
+- Approach: Follow TDD implementation plan in `docs/plans/alert_engine_implementation_plan.md` across 12 phases, building config layer (YAML rules + loader), rule evaluator (threshold/range/dq/flag conditions), in-memory registry (lifecycle tracking), REST API (Flask blueprint), Kafka publisher (MessagingService wrapper), Kafka consumer (processed topics → evaluator), and application wiring (create_app factory).
+- Goal: Deliver MVP alert engine with rule-based evaluation, manual submissions, persistence/cooldown logic, and Kafka publishing; defer database persistence (document hook points only).
+- MEM-DRIFT: none detected; existing `AlertEvent` dataclass and processed payload contracts align with plan.
+## 2025-11-02 — Alert rule manager & payload context
+- Context: While wiring the alert engine configuration, validation logic in the YAML loader started to duplicate enum coercion and required-field checks already implied by the dataclasses. The evaluation helper also mirrored `ProcessedSensorData` structure manually.
+- Decision: Move `from_dict`/`override` logic into `AlertRule` and `AlertCondition`, expose an `AlertRuleManager` that delegates parsing to those helpers, and default the rules file to `dt/utils/alert_rules.yml`. Simplify the processed payload adapter by relying on `dataclasses.asdict(processed)` plus the topic short name instead of custom field extraction.
+- Result: Configuration parsing is centralized with the dataclasses, override behaviour is reusable in tests and runtime, and the evaluation adapter stays aligned with `ProcessedSensorData` without manual field lists. Updated implementation plan and documentation to reference the manager and the new config path.
+- MEM-DRIFT: docs/plans/alert_engine_implementation_plan.md updated; no additional drift noted.
+## 2025-11-03 — Alert engine service design
+- **Context**: Need centralized alert management to prevent duplicate/conflicting alerts from multiple modules (AI, control, preprocessing). Alert fatigue is a real concern - operators need meaningful alerts, not notification spam.
+- **Hypothesis**: An event-driven alert service consuming processed sensor data and maintaining authoritative alert state will provide consistent alerting across the system. Persistence counters and cooldown timers can prevent alert fatigue without losing signal.
+- **Design decisions**:
+  1. **Alert ID Strategy**: Rule-based alerts use `{rule_id}:{source}` format for deterministic deduplication across sensor streams. External submissions (AI, control) provide custom IDs for tracking. This ensures each alert condition has exactly one active alert per source.
+  2. **Persistence Mechanism**: Require N consecutive violations before creating alert (configurable per rule). Prevents transient spikes from generating alerts. Counter resets if condition clears, ensuring we only alert on sustained problems.
+  3. **Cooldown Timers**: After alert fires, suppress repeated alerts for configurable cooldown period (default 300s). Once cooldown expires, alert can fire again if condition persists. Acknowledgments don't prevent future alerts - they're informational state only.
+  4. **In-Memory State**: Registry maintains alert state in memory for fast lookups and updates. Trade-off: state lost on restart, but gain simplicity and speed for MVP. Database persistence layer planned for audit/action store phase.
+  5. **Lifecycle Events**: Publish all state transitions (CREATED, UPDATED, ACKNOWLEDGED, CLEARED) to Kafka for audit trail and downstream consumption. SUPPRESSED and IGNORED events not published to reduce noise.
+  6. **REST API Design**: Separate endpoints for submission (POST /alerts/submit), acknowledgment (POST /alerts/<id>/acknowledge with actor), clearing (POST /alerts/<id>/clear), and listing (GET /alerts/active, GET /alert-rules). API accepts external submissions from AI/control modules, enabling them to raise alerts without duplicating logic.
+  7. **Configuration Format**: YAML-based rules with typed validation (severity, condition types, evaluation stages). Support 4 condition types for MVP: threshold (with operators), range (min/max bounds), dq_score, validation_flag. Easy to extend with new condition types later.
+- **Result**: Implemented `dt.alerts` package with 122 passing tests. Full TDD approach: rule loader, evaluator, registry, publisher, API, consumer service, and integration tests. Service successfully evaluates rules against processed sensor streams and maintains alert state with persistence/cooldown logic.
+- **Trade-offs**:
+  - In-memory state means restart clears alerts (acceptable for MVP; persistence layer planned)
+  - Cooldown applies per alert_id, not globally - could still get alert fatigue if many different rules trigger (acceptable; operators can adjust rule sensitivity)
+- **Future considerations**:
+  - Add database persistence layer for alert history and recovery after restart
+  - Consider time-windowed aggregations (e.g., "3 violations in 10 minutes" vs "3 consecutive violations")
+  - Add notification workers consuming dt.alerts topic (email, SMS, push notifications)
+  - Wire alert service into dashboard UI for real-time display and acknowledgment
+- MEM-DRIFT: none

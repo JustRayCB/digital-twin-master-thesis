@@ -8,10 +8,11 @@ COLLECTOR ?= dt/collector/main.py
 CONTROLLER ?= dt/controller/app.py
 DB ?= dt/data/database/app.py
 PREPROCESS ?= dt/data/preprocess/main.py
+ALERTS ?= dt/alerts/app.py
 
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
-				run-dashboard run-collector run-controller run-database run-preprocessing \
+				run-dashboard run-collector run-controller run-database run-preprocessing run-alert-engine \
 				test venv \
 				clean-env clean-venv clean-pyc \
 				update-deps check-deps
@@ -31,9 +32,11 @@ help:
 	@echo "Run targets:"
 	@echo "  make run-dashboard				-> Flask app (web dashboard)"
 	@echo "  make run-collector				-> sensor polling loop"
-	@echo "  make run-collector				-> actuator/controller app"
+	@echo "  make run-controller				-> actuator/controller app"
 	@echo "  make run-database				-> database (TS and RDB) app (SQLite/InfluxDB)"
 	@echo "  make run-preprocessing			-> Spark preprocessing pipeline"
+	@echo "  make run-alert-engine			-> alert engine service (Kafka + Flask API)"
+	@echo "  make run-alert-api-only		-> alert engine Flask API only (no Kafka consumer)"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test					-> run tests with pytest"
@@ -91,6 +94,12 @@ run-database:
 
 run-preprocessing:
 	$(PY) $(PREPROCESS)
+
+run-alert-engine:
+	$(PY) -m dt.alerts.app
+
+run-alert-api-only:
+	$(PY) -c "from dt.alerts.app import create_app; app=create_app(start_consumer=False); app.run(host='0.0.0.0', port=5003)"
 
 # -------------------------
 # Quality (optional groups: dev)

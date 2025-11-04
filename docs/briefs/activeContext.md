@@ -19,20 +19,20 @@
 
 
 # Active Context
-**Branch:** preprocessing-module  
-**Phase:** P1 — Data Preprocessing & Quality  
-**Window:** Oct–Dec 2025  
+**Branch:** feature/alert-engine
+**Phase:** P1 — Data Preprocessing & Quality
+**Window:** Oct–Dec 2025
 
 ---
 
 ## 🎯 Focus & Exit Criteria
-**Focus:** Build a production-ready real-time preprocessing pipeline ensuring sensor data validity, integrity, and readiness for analytics.  
+**Focus:** Build a production-ready real-time preprocessing pipeline ensuring sensor data validity, integrity, and readiness for analytics.
 **Exit criteria (target Dec 2025):**
 - Data validation gates (range, rate, stuck, flatline) ≥ 99% pass rate
 - DQ score and alerting active in dashboard
 - Schema versioning and audit log stable
 - Influx retention & rollups automated
-- Basic alerting rules engine functional
+- Basic alerting rules engine functional ✅
 - Action logging schema and API endpoints defined
 
 ---
@@ -41,14 +41,16 @@
 - [x] Define and implement sensor event schema
 - [x] Sensor data validation pipelines/rules (range, RoC, stuck or flatline, DQ scoring)
 - [x] Implement missing data handling (forward fill, window averaging, linear extrapolation guardrails)
-- [ ] **ACTIVE: Refactor monolithic pipeline.py into modular architecture** (feature/pipeline-refactoring → feature/calibration-normalization-pipeline)
+- [x] Refactor monolithic pipeline.py into modular architecture (feature/pipeline-refactoring → feature/calibration-normalization-pipeline)
   - Chain of Responsibility pattern with 5 processors (Calibration → Validation → Imputation → Smoothing → Normalization)
   - See docs/plans/pipeline_refactoring_implementation_plan.md for full plan
+- [x] Implement alert rules engine (thresholds, persistence, cooldown) — **COMPLETED**
+  - Standalone `dt.alerts` service with Kafka consumer, REST API, and in-memory registry
+  - See docs/plans/alert_engine_implementation_plan.md for details
 - [ ] Noise filtering (EWMA smoothing available; Kalman filter evaluation pending)
 - [ ] Finalize calibration tables and normalization logic (Spark end-to-end pytest harness in place; wire remaining streaming stages)
 - [ ] Rollups and retention policy for InfluxDB
 - [ ] Setup of a non-TS database (Postgres) for audit logs and alert/action tracking
-- [ ] Implement alert rules engine (thresholds, persistence, cooldown)
 - [ ] Finalize action/audit log schemas and migrations
 - [ ] Create API endpoints `/logs`, `/alerts`, `/actions`, `/configs`
 - [ ] Create a Minimal UI for logs and alerts to expose to users
@@ -69,6 +71,13 @@
 - `SparkStateProvider` mediates tuple-backed `SensorState` so validation, imputation, and smoothing layers share consistent history windows.
 - Added end-to-end calibration/normalization pytest harness validating profile lookups and processed payload fields.
 - **2025-10-30**: Started pipeline refactoring (feature/pipeline-refactoring branch) to break monolithic pipeline.py (942 lines) into modular Chain of Responsibility architecture for better readability, testability, and extensibility.
+- **2025-11-03**: Completed alert engine service (feature/alert-engine branch) with full TDD implementation:
+  - Standalone `dt.alerts` package with config loader, rule evaluator, state registry, REST API, and Kafka consumer
+  - YAML-based alert rules with threshold, range, DQ score, and validation flag conditions
+  - Persistence counters and cooldown timers prevent alert fatigue
+  - REST endpoints: POST /alerts/submit, POST /alerts/<id>/acknowledge, POST /alerts/<id>/clear, GET /alerts/active, GET /alert-rules
+  - Publishes canonical AlertEvent messages to `dt.alerts` topic for downstream consumption
+  - 122 tests passing (including 5 end-to-end integration tests)
 
 ---
 

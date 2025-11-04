@@ -109,6 +109,58 @@ pipeline hydrates these strategies per sensor, applies calibration before valida
 imputation, and normalizes the post-validation signal so processed payloads expose raw,
 calibrated, and normalized views side-by-side.
 
+### Alert Event Contract
+
+The alert engine service consumes processed sensor data from `dt.sensors.processed.*` topics
+and publishes canonical `AlertEvent` messages to the `dt.alerts` topic. Each `AlertEvent`
+contains:
+- **event**: Lifecycle event type (CREATED, UPDATED, SUPPRESSED, IGNORED, ACKNOWLEDGED, CLEARED)
+- **alert_id**: Unique alert identifier (format: `{rule_id}:{source}` for rule-based alerts)
+- **timestamp**: Unix timestamp when the event was generated
+- **plant_id**: Plant identifier for multi-environment deployments
+- **alert**: Full `CandidateAlert` payload for CREATED/UPDATED events (includes rule_id, source, severity, message, correlation_id, and processed data snapshot)
+- **actor**: Optional actor identifier for ACKNOWLEDGED/CLEARED events
+
+Alert rules are configured via YAML (`dt/utils/alert_rules.yml`) and support four condition types:
+- **threshold**: Compare sensor value against a threshold with operators (>, <, >=, <=, ==, !=)
+- **range**: Check if value falls outside min/max bounds
+- **dq_score**: Trigger when data quality score drops below threshold
+- **validation_flag**: Activate when specific validation flags are set
+
+Each rule specifies a **persistence_count** (consecutive violations required before alerting)
+and **cooldown_seconds** (minimum time between repeated alerts for the same rule/source)
+to prevent alert fatigue. The alert registry maintains in-memory state with deduplication,
+cooldown tracking, and acknowledgment flags.
+
+### Alert Service REST API
+
+The alert engine exposes a REST API (default port 5003) for programmatic alert management:
+
+**Alert Management Endpoints:**
+- `POST /alerts/submit` — Submit external alerts (e.g., from AI/control modules)
+  - Required fields: `alert_id`, `source`, `severity`, `message`, `correlation_id`
+  - Optional fields: `persistence_count` (default: 1), `cooldown_seconds` (default: 300), `payload` (additional context)
+  - Returns: 202 Accepted with `alert_id` and lifecycle `event` (CREATED, UPDATED, SUPPRESSED, or IGNORED)
+
+- `POST /alerts/<alert_id>/acknowledge` — Acknowledge an alert
+  - Required body: `{"actor": "<identifier>"}`
+  - Returns: 200 OK on success, 404 if alert not found
+  - Publishes ACKNOWLEDGED event to Kafka
+
+- `POST /alerts/<alert_id>/clear` — Clear a resolved alert
+  - Returns: 200 OK on success, 404 if alert not found
+  - Publishes CLEARED event to Kafka
+
+- `GET /alerts/active` — List all active alerts
+  - Returns: JSON array of active alert states with timestamps, severity, acknowledgment status, and occurrence counts
+
+**Configuration Endpoint:**
+- `GET /alert-rules` — Retrieve configured alert rules
+  - Returns: JSON array of all loaded alert rule definitions
+
+All REST operations that modify alert state (submit, acknowledge, clear) publish corresponding
+lifecycle events to the `dt.alerts` Kafka topic for downstream consumers (dashboard, audit logger, notification workers).
+
 ## Preprocessing Pipeline Architecture
 
 The preprocessing module (`dt/data/preprocess`) uses a **Chain of Responsibility**

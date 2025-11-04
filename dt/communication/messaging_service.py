@@ -8,7 +8,7 @@ from typing import Callable
 from kafka import KafkaConsumer, KafkaProducer
 from typing_extensions import override
 
-from dt.communication.dataclasses import RawSensorData
+from dt.communication.dataclasses import JsonSerializable, RawSensorData
 from dt.utils import get_logger
 
 
@@ -38,7 +38,7 @@ class MessagingService(ABC):
         pass
 
     @abstractmethod
-    def publish(self, topic: str, payload: RawSensorData, **kwargs) -> bool:
+    def publish(self, topic: str, payload: JsonSerializable, **kwargs) -> bool:
         """Publish a message to a topic.
 
         Parameters

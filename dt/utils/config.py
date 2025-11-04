@@ -42,3 +42,8 @@ class Config(StrEnum):
     SPARK_STARTING_OFFSETS = os.getenv(
         "STARTING_OFFSETS", "latest"
     )  # Kafka starting offsets for streaming
+
+    # ALERT ENGINE CONFIGURATION
+    ALERT_RULES_PATH = os.getenv(
+        "ALERT_RULES_PATH", "dt/utils/alert_rules.yml"
+    )  # Path to alert rules configuration file
