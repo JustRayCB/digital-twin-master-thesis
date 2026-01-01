@@ -19,7 +19,7 @@
 
 
 # Active Context
-**Branch:** feature/alert-engine
+**Branch:** feature/storage-architecture
 **Phase:** P1 — Data Preprocessing & Quality
 **Window:** Oct–Dec 2025
 
@@ -31,7 +31,7 @@
 - Data validation gates (range, rate, stuck, flatline) ≥ 99% pass rate
 - DQ score and alerting active in dashboard
 - Schema versioning and audit log stable
-- Influx retention & rollups automated
+- TimescaleDB retention & aggregates automated ✅
 - Basic alerting rules engine functional ✅
 - Action logging schema and API endpoints defined
 
@@ -47,12 +47,14 @@
 - [x] Implement alert rules engine (thresholds, persistence, cooldown) — **COMPLETED**
   - Standalone `dt.alerts` service with Kafka consumer, REST API, and in-memory registry
   - See docs/plans/alert_engine_implementation_plan.md for details
+- [x] Migrate to unified PostgreSQL + TimescaleDB storage — **COMPLETED**
+  - Replaced InfluxDB with TimescaleDB hypertables for measurements
+  - Unified relational tables (sensors, plants, actuators, alerts, alert_events) in same database
+  - Implemented continuous aggregates (1h rollups), retention (30d), and compression policies
+  - See docs/plans/storage_architecture_implementation_plan.md for details
 - [ ] Noise filtering (EWMA smoothing available; Kalman filter evaluation pending)
 - [ ] Finalize calibration tables and normalization logic (Spark end-to-end pytest harness in place; wire remaining streaming stages)
-- [ ] Rollups and retention policy for InfluxDB
-- [ ] Setup of a non-TS database (Postgres) for audit logs and alert/action tracking
-- [ ] Finalize action/audit log schemas and migrations
-- [ ] Create API endpoints `/logs`, `/alerts`, `/actions`, `/configs`
+- [ ] Create API endpoints `/logs`, `/actions`, `/configs`
 - [ ] Create a Minimal UI for logs and alerts to expose to users
 - [ ] Run QA: synthetic replays, dropouts, noisy to see how the system copes and compute DQ score metrics  
 
@@ -76,8 +78,16 @@
   - YAML-based alert rules with threshold, range, DQ score, and validation flag conditions
   - Persistence counters and cooldown timers prevent alert fatigue
   - REST endpoints: POST /alerts/submit, POST /alerts/<id>/acknowledge, POST /alerts/<id>/clear, GET /alerts/active, GET /alert-rules
-  - Publishes canonical AlertEvent messages to `dt.alerts` topic for downstream consumption
+  - Publishes canonical AlertHistoryEvent messages (sensor/external variants) to `dt.alerts` topic for downstream consumption
   - 122 tests passing (including 5 end-to-end integration tests)
+- **2025-11-08**: Completed storage architecture migration (feature/storage-architecture branch):
+  - Migrated from InfluxDB to unified PostgreSQL + TimescaleDB storage
+  - TimescaleDB hypertables for sensor measurements with automatic partitioning, compression, and 1h continuous aggregates
+  - Relational tables for sensors, plants, actuators, alerts, and alert events (normalized schema)
+  - Direct Flask-to-Storage architecture with SQLAlchemy Core for explicit query control
+  - Implemented TimescaleStorage repository with full CRUD operations and testcontainers-based tests
+  - Kafka bridge persists both measurements and alert events
+  - SQL migrations via scripts/run_sql_migration.py with idempotent tracking
 
 ---
 
@@ -89,12 +99,15 @@
 ---
 
 ## 🪄 Summary
-The preprocessing-module branch now focuses on:
-- Validation and normalization of sensor data  
-- Quality flagging, DQ scoring, and audit visibility  
-- Preparing alerting and action logging foundations  
+Phase P1 (Data Preprocessing & Quality) is nearly complete:
+- ✅ Validation and normalization of sensor data (Chain of Responsibility pipeline with calibration, validation, imputation, smoothing, normalization)
+- ✅ Quality flagging, DQ scoring, and audit visibility (processed payloads include flags, dq_score, imputed markers, raw_value)
+- ✅ Alert engine with rule-based evaluation, persistence counters, and REST API
+- ✅ Unified PostgreSQL + TimescaleDB storage with hypertables, continuous aggregates, and relational tables
+- 🔄 Calibration/normalization finalization (harness in place, streaming wiring pending)
+- 🔄 Dashboard UI for alerts and logs (backend ready, frontend integration pending)
 
-By end of P1 (Dec 2025), data pipelines should be fully validated and alert-ready, setting up for control automation (P2).  
+By end of P1 (Dec 2025), data pipelines will be fully validated and alert-ready, setting up for control automation (P2).  
 
 ---
 

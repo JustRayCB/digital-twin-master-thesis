@@ -1,7 +1,8 @@
 import pytest
 
-from dt.communication import Topics
+from dt.communication.topics import Topics
 from dt.communication.dataclasses import RawSensorData
+from dt.communication.adapters import dump, load
 
 
 def test_raw_sensor_data_serialization_roundtrip():
@@ -31,13 +32,20 @@ def test_raw_sensor_data_serialization_roundtrip():
     assert payload.topic is Topics.LIGHT_INTENSITY
     assert payload.correlation_id == "abc-123"
 
-    expected_json = (
-        '{"plant_id":3,"sensor_id":7,"timestamp":0.5,"value":42.1,"unit":"lux",'
-        '"topic":"dt.sensors.light_intensity","correlation_id":"abc-123"}'
-    )
-    assert payload.to_json() == expected_json
+    expected_dict = {
+        "plant_id": 3,
+        "sensor_id": 7,
+        "timestamp": 0.5,
+        "value": 42.1,
+        "unit": "lux",
+        "topic": "dt.sensors.light_intensity",
+        "correlation_id": "abc-123"
+    }
+    # Using dump("generic") returns a dict, which is JSON-serializable
+    assert dump("generic", payload) == expected_dict
 
-    decoded = RawSensorData.from_json(expected_json)
+    # Test roundtrip using load("generic") from the dict (which simulates loaded JSON)
+    decoded = load("generic", RawSensorData, expected_dict)
     assert decoded == payload
 
 
@@ -75,9 +83,12 @@ def test_raw_sensor_data_from_json_missing_field():
     None
         The context manager raises when field validation misbehaves.
     """
+    from cattrs.errors import ClassValidationError
 
-    with pytest.raises(ValueError, match="Missing field: unit"):
-        RawSensorData.from_json(
+    with pytest.raises(ClassValidationError):
+        load(
+            "generic",
+            RawSensorData,
             {
                 "plant_id": 2,
                 "sensor_id": 1,
@@ -85,5 +96,5 @@ def test_raw_sensor_data_from_json_missing_field():
                 "value": 3.0,
                 "topic": "dt.sensors.temperature",
                 "correlation_id": "xyz-789",
-            }
+            },
         )

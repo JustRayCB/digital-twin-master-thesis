@@ -237,37 +237,45 @@ Topics.SOIL_MOISTURE.processed  == "dt.sensors.processed.soil_moisture"
 
 ---
 
-## Event: `AlertEvent`
+## Events: `SensorAlertEvent` / `ExternalAlertEvent`
 
-**Purpose:** Notify the system of a condition detected by rules or ML (e.g., low moisture).
+**Purpose:** Persist and emit alert lifecycle entries keyed by `alert_key` and `plant_id`.
 
-**Fields**
+**Shared fields (AlertHistoryEvent)**
 
-| Field            |  Type | Required | Constraints / Notes                                       |
-| ---------------- | ----: | :------: | --------------------------------------------------------- |
-| `plant_id`       |   int |     ✓    | Owning plant instance.                                    |
-| `alert_id`       |   str |     ✓    | Unique identifier (UUID recommended).                     |
-| `timestamp`      | float |     ✓    | Detection time (Unix seconds).                            |
-| `description`    |   str |     ✓    | Short human-readable message.                             |
-| `severity`       |   str |     ✓    | e.g., `"info"`, `"warning"`, `"critical"`. Consider Enum. |
-| `correlation_id` |   str |     ✓    | Links to triggering readings and subsequent actions.      |
+| Field              |  Type | Required | Constraints / Notes                                         |
+| ------------------ | ----: | :------: | ----------------------------------------------------------- |
+| `alert_key`        |   str |     ✓    | Stable key (rule-based: `{rule_id}:{source}`; external: any) |
+| `plant_id`         |   int |     ✓    | Owning plant instance.                                      |
+| `timestamp`        | float |     ✓    | Event time (Unix seconds).                                  |
+| `status`           |   str |     ✓    | `active`/`suppressed`/`acknowledged`/`cleared`.             |
+| `severity`         |   str |     ✓    | Enum: `info`/`warning`/`error`/`critical`.                  |
+| `message`          |   str |     ✓    | Human-readable message.                                     |
+| `correlation_id`   |   str |     ✓    | Trace identifier.                                           |
+| `acknowledged_by`  |   str |     -    | Actor when status is `acknowledged`.                        |
+| `acknowledged_ts`  | float |     -    | Timestamp when acknowledged.                                |
+| `cleared_ts`       | float |     -    | Timestamp when cleared.                                     |
 
-**Example (JSON)**
+**SensorAlertEvent additions**
 
-```json
-{
-  "plant_id": 1,
-  "alert_id": "al-b0a2d91a",
-  "timestamp": 1728307212.5,
-  "description": "Low soil moisture (avg < 30%)",
-  "severity": "warning",
-  "correlation_id": "6b1b9af8-1a57-4742-8c9c-3a5f38f5b6b1"
-}
-```
+| Field             |  Type | Required | Constraints / Notes                            |
+| ----------------- | ----: | :------: | ---------------------------------------------- |
+| `reading`         |   obj |     ✓    | `ProcessedSensorData` snapshot.                |
+| `threshold_op`    |   str |     -    | For threshold rules (`>`, `<`, `>=`, etc.).    |
+| `threshold_value` | float |     -    | Threshold value when applicable.               |
+| `range_min`       | float |     -    | Lower bound for range rules.                   |
+| `range_max`       | float |     -    | Upper bound for range rules.                   |
+
+**ExternalAlertEvent additions**
+
+| Field      |  Type | Required | Constraints / Notes        |
+| ---------- | ----: | :------: | -------------------------- |
+| `metadata` |  dict |     ✓    | JSON-serializable context. |
 
 **Notes**
 
-* The alerting engine should implement throttling and de-duplication; store state transitions (open → acknowledged → resolved) in the events DB.
+* Alert definitions (persistence, cooldown, source, rule metadata) live in `alert_definitions` keyed by `(alert_key, plant_id)` and must exist before history rows are written.
+* Registry ensures persistence/cooldown before emitting; storage guards upsert definitions on insert for safety.
 
 ---
 
@@ -278,7 +286,7 @@ Topics.SOIL_MOISTURE.processed  == "dt.sensors.processed.soil_moisture"
 
   * `dt.sensor.raw` → raw readings (optional if preprocessing on-edge).
   * `dt.sensor.proc` → validated/processed `SensorData`.
-  * `dt.alerts` → `AlertEvent`.
+  * `dt.alerts` → `AlertHistoryEvent` (`SensorAlertEvent` / `ExternalAlertEvent`).
   * `dt.actions` → `ActionCommand`.
 * **InfluxDB measurements (suggested):**
 
@@ -315,3 +323,4 @@ Topics.SOIL_MOISTURE.processed  == "dt.sensors.processed.soil_moisture"
 *Initialize on first release.*
 
 * **2025‑10‑07:** P1 baseline. Defined `SensorData`, `SensorDescriptor`, `DBTimestampQuery`, `DBIdQuery`, `ActionCommand`, `AlertEvent`. Added guidance on Topics enum, transport, and validation.
+* **2025‑11‑10:** Replaced `AlertEvent`/`CandidateAlert` with `AlertDefinition` + `AlertHistoryEvent` (`SensorAlertEvent`/`ExternalAlertEvent`) keyed by `alert_key`/`plant_id` with persistence/cooldown metadata.

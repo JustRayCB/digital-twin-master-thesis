@@ -2,7 +2,7 @@ import numpy as np
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Sensor
-from dt.communication import Topics
+from dt.communication.topics import Topics
 from dt.utils.logger import get_logger
 
 

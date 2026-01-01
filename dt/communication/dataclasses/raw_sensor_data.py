@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 
-
-from dt.communication.dataclasses.serializable import JsonSerializable
 from dt.communication.topics import Topics
 
 
 @dataclass
-class RawSensorData(JsonSerializable):
+class RawSensorData:
     """Represents a single raw data point from a sensor.
 
     This dataclass is used to store and transmit raw data read from sensors. It is
@@ -109,95 +107,4 @@ class RawSensorData(JsonSerializable):
                 StructField("topic", StringType(), nullable=False),
                 StructField("correlation_id", StringType(), nullable=False),
             ]
-        )
-
-    def to_tuple(self):
-        """Convert the RawSensorData instance to a tuple for Spark storage.
-
-        This method converts the attributes of the RawSensorData instance
-        into a tuple format that is compatible with Spark DataFrame storage.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the attributes of the RawSensorData instance.
-        """
-        return (
-            self.plant_id,
-            self.sensor_id,
-            self.timestamp,
-            self.value,
-            self.unit,
-            self.topic.value,
-            self.correlation_id,
-        )
-
-    @classmethod
-    def from_tuple(cls, values: tuple):
-        """Create a RawSensorData instance from a tuple.
-
-        This class method constructs a RawSensorData instance using data
-        provided in a tuple format. It maps the elements of the tuple to
-        the corresponding attributes of the dataclass.
-
-        Parameters
-        ----------
-        values : tuple
-            A tuple containing the raw sensor data.
-
-        Returns
-        -------
-        RawSensorData
-            An instance of RawSensorData populated with data from the tuple.
-        """
-        if values is None:
-            raise TypeError("Raw sensor payload tuple cannot be None")
-        (
-            plant_id,
-            sensor_id,
-            timestamp,
-            value,
-            unit,
-            topic,
-            correlation_id,
-        ) = values
-        topic_enum = Topics(str(topic))
-        return cls(
-            plant_id=plant_id,
-            sensor_id=sensor_id,
-            timestamp=timestamp,
-            value=value,
-            unit=unit,
-            topic=topic_enum,
-            correlation_id=correlation_id,
-        )
-
-    @classmethod
-    def from_row(cls, row):
-        """Create a RawSensorData instance from a PySpark Row object.
-
-        This class method constructs a RawSensorData instance using data
-        extracted from a PySpark Row object. It maps the fields of the Row
-        to the corresponding attributes of the dataclass.
-
-        Parameters
-        ----------
-        row : pyspark.sql.Row
-            A PySpark Row object containing the raw sensor data.
-
-        Returns
-        -------
-        RawSensorData
-            An instance of RawSensorData populated with data from the Row.
-        """
-        topic_value = str(getattr(row, "topic"))
-        topic = Topics(topic_value)
-        return cls(
-            plant_id=getattr(row, "plant_id"),
-            sensor_id=getattr(row, "sensor_id"),
-            timestamp=getattr(row, "timestamp"),
-            value=getattr(row, "value"),
-            unit=getattr(row, "unit"),
-            topic=topic,
-            correlation_id=getattr(row, "correlation_id"),
         )

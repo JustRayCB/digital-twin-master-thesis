@@ -4,7 +4,7 @@ from pyspark.sql import functions as F
 from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
-from dt.data.preprocess.configuration.manager import ConfigurationManager
+from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.spark_adapter import SparkStreamingAdapter
 from dt.utils import Config, get_logger
 

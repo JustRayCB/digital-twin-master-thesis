@@ -9,6 +9,3 @@ This module provides a centralized alert engine that:
 TODO: Implement alert engine service following TDD approach.
 """
 
-from dt.alerts.app import create_app
-
-__all__ = ["create_app"]

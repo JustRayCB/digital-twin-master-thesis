@@ -29,10 +29,10 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisture_sensor = SoilMoistureSensor("moisture_sensor", 5, board.D1)
-    temperature_sensor = TemperatureSensor("temperature_sensor", 5, board.D17)
-    humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D17)
-    light_sensor = LightSensor("light_sensor", 5, board.D3)
+    moisture_sensor = SoilMoistureSensor("sensors.basil.stemma.001.soil_moisture", 5, board.D1)
+    temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 5, board.D17)
+    humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 5, board.D17)
+    light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 5, board.D3)
 
     sensor_manager.add_sensor(moisture_sensor)
     sensor_manager.add_sensor(temperature_sensor)
@@ -45,7 +45,7 @@ def main():
         while True:
             sensor_manager.read_all_sensors()
             print("Reading all sensors")
-            sleep(1)
+            sleep(sensor_manager.seconds_until_next_read())
     except KeyboardInterrupt:
         logger.info("Exiting main")
     finally:

@@ -1,7 +1,13 @@
-from .action_command import ActionCommand as ActionCommand
-from .db_id_query import DBIdQuery as DBIdQuery
-from .db_timestamp_query import DBTimestampQuery as DBTimestampQuery
-from .processed_sensor_data import ProcessedSensorData as ProcessedSensorData
-from .raw_sensor_data import RawSensorData as RawSensorData
-from .sensor import SensorDescriptor as SensorDescriptor
-from .serializable import JsonSerializable as JsonSerializable
+from .action_command import ActionCommand
+from .aggregated_reading import AggregatedReading
+from .processed_sensor_data import ProcessedSensorData
+from .raw_sensor_data import RawSensorData
+from .sensor import SensorDescriptor
+
+__all__ = [
+    "ActionCommand",
+    "AggregatedReading",
+    "ProcessedSensorData",
+    "RawSensorData",
+    "SensorDescriptor",
+]

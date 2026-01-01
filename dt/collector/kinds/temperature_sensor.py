@@ -2,7 +2,7 @@ from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
 from dt.collector.kinds.dht22_sensor import DHT22Singleton
-from dt.communication import Topics
+from dt.communication.topics import Topics
 
 
 class TemperatureSensor(Sensor):

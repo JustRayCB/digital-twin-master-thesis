@@ -1,414 +1,584 @@
 """Tests for alert engine Kafka consumer service."""
 
-from unittest.mock import Mock, call
+from contextlib import contextmanager
 
 import pytest
 
-from dt.alerts.config.alert_rule import (AlertCondition, AlertRule,
-                                         ConditionType, EvaluationStage,
-                                         SeverityLevel)
-from dt.alerts.state.models import AlertLifecycleEvent
-from dt.communication import Topics
-from dt.communication.dataclasses import ProcessedSensorData
-from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.dataclasses.alerts import CandidateAlert
+from dt.alerts.evaluator import RuleEvaluator
+from dt.alerts.publisher import AlertPublisher
+from dt.alerts.registry import AlertRegistry
+from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.communication.dataclasses.alerts.alert_record import AlertStatus
+from dt.communication.messaging_service import KafkaService
+from dt.communication.topics import Topics
+from tests.alerts.conftest import collect_alert_events, poll_alert_event
+
+pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
 
-@pytest.fixture
-def mock_kafka_service():
-    """Create a mock KafkaService."""
-    mock = Mock()
-    mock.subscribe = Mock(return_value=True)
-    mock.connect = Mock(return_value=True)
-    mock.disconnect = Mock()
-    return mock
+@contextmanager
+def running_alert_service(
+    consumer_service: KafkaService,
+    evaluator: RuleEvaluator,
+    registry: AlertRegistry,
+    publisher: AlertPublisher,
+    wait_for_consumer,
+):
+    """Run the alert engine service and ensure shutdown.
 
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
 
-@pytest.fixture
-def mock_registry():
-    """Create a mock AlertRegistry."""
-    mock = Mock()
-    mock.register = Mock(return_value=AlertLifecycleEvent.CREATED)
-    return mock
+    Yields
+    ------
+    AlertEngineService
+        Running alert engine service instance.
+    """
+    from dt.alerts.service import AlertEngineService
 
-
-@pytest.fixture
-def mock_publisher():
-    """Create a mock AlertPublisher."""
-    mock = Mock()
-    mock.publish = Mock(return_value=True)
-    return mock
-
-
-@pytest.fixture
-def mock_evaluator():
-    """Create a mock RuleEvaluator."""
-    mock = Mock()
-    mock.evaluate = Mock(return_value=[])
-    return mock
-
-
-@pytest.fixture
-def sample_processed_data():
-    """Create sample processed sensor data."""
-    return ProcessedSensorData(
-        plant_id=1,
-        sensor_id=101,
-        timestamp=1234567890.0,
-        value=38.0,
-        unit="Celsius",
-        topic=Topics.TEMPERATURE,
-        correlation_id="test-corr-123",
-        flags={ValidationFlag.VALID: True},
-        dq_score=0.95,
-        imputed=False,
+    service = AlertEngineService(
+        kafka_service=consumer_service,
+        evaluator=evaluator,
+        registry=registry,
+        publisher=publisher,
     )
+    service.start()
+    wait_for_consumer(consumer_service)
+    try:
+        yield service
+    finally:
+        service.shutdown()
 
 
 def test_service_subscribes_to_all_processed_topics(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator
+    consumer_service, registry, publisher, evaluator, wait_for_consumer
 ):
-    """Test that service subscribes to all processed sensor topics."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service subscribes to all processed sensor topics.
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
 
-    service.start()
+    Returns
+    -------
+    None
+        The assertions raise if subscription handling regresses.
+    """
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Verify subscribe was called for each sensor topic with .processed suffix
+        sensor_topics = Topics.list_sensor_topics()
+        expected_topics = [topic.processed for topic in sensor_topics]
 
-    # Verify subscribe was called for each sensor topic with .processed suffix
-    sensor_topics = Topics.list_sensor_topics()
-    expected_topics = [topic.processed for topic in sensor_topics]
+        subscribed_topics = list(consumer_service.topic_callbacks.keys())
 
-    # Should be called once per processed topic
-    assert mock_kafka_service.subscribe.call_count == len(expected_topics)
-
-    # Extract the topics from subscribe calls
-    subscribe_calls = mock_kafka_service.subscribe.call_args_list
-    subscribed_topics = [call_args[0][0] for call_args in subscribe_calls]
-
-    # Verify all processed topics were subscribed to
-    for expected_topic in expected_topics:
-        assert expected_topic in subscribed_topics
+        # Verify all processed topics were subscribed to
+        for expected_topic in expected_topics:
+            assert expected_topic in subscribed_topics
 
 
 def test_service_evaluates_payload_on_callback(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    evaluator,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
+    wait_for_alert,
 ):
-    """Test that service evaluates payload when callback is invoked."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service evaluates payload when Kafka receives a message.
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+    wait_for_alert : Callable
+        Fixture to wait for alert state.
 
-    service.start()
+    Returns
+    -------
+    None
+        The assertions raise if evaluation handling regresses.
+    """
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-eval-1"
+        )
+        # Send two readings to satisfy persistence_count=2
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    # Extract the callback from the first subscribe call
-    first_subscribe_call = mock_kafka_service.subscribe.call_args_list[0]
-    callback = first_subscribe_call[0][1]
-
-    # Invoke the callback with sample data
-    callback(sample_processed_data)
-
-    # Verify evaluator was called with the payload
-    mock_evaluator.evaluate.assert_called_once_with(sample_processed_data)
+        alert_event = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+        assert alert_event is not None
+        assert wait_for_alert(registry, "temp_high:temperature") is not None
 
 
 def test_service_registers_candidates_with_registry(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
+    wait_for_alert,
 ):
-    """Test that service registers candidate alerts with the registry."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service registers candidate alerts with the registry.
 
-    # Create a sample candidate alert
-    candidate = CandidateAlert(
-        alert_id="temp_high:temperature",
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+    wait_for_alert : Callable
+        Fixture to wait for alert state.
+
+    Returns
+    -------
+    None
+        The assertions raise if registry registration regresses.
+    """
+    rule = AlertRule(
         rule_id="temp_high",
-        source="temperature",
+        name="High Temp",
+        description="Temperature exceeds {threshold}°C",
         severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
-        persistence_count=1,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="temperature",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 35.0},
+        ),
+        persistence_count=2,  # Set to 2 to avoid ACTIVE alert creation
         cooldown_seconds=300,
     )
+    evaluator = RuleEvaluator([rule])
 
-    # Configure evaluator to return the candidate
-    mock_evaluator.evaluate = Mock(return_value=[candidate])
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Extract and invoke callback
+        reading = processed_reading_factory(sample_sensor, value=38.0, correlation_id="svc-reg-1")
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
-
-    service.start()
-
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify registry.register was called with the candidate
-    mock_registry.register.assert_called_once()
-    call_args = mock_registry.register.call_args
-    assert call_args[0][0] == candidate
+        state = wait_for_alert(registry, "temp_high:temperature", timeout_seconds=10.0)
+        assert state is not None
+        assert state.occurrences == 1
+        assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
 
 def test_service_publishes_created_alerts(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    evaluator,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
 ):
-    """Test that service publishes CREATED alerts via publisher."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service publishes ACTIVE alerts via publisher.
 
-    candidate = CandidateAlert(
-        alert_id="temp_high:temperature",
-        rule_id="temp_high",
-        source="temperature",
-        severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
-        persistence_count=1,
-        cooldown_seconds=300,
-    )
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
 
-    mock_evaluator.evaluate = Mock(return_value=[candidate])
-    mock_registry.register = Mock(return_value=AlertLifecycleEvent.CREATED)
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Extract and invoke callback
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-created-1"
+        )
+        # Send two readings to satisfy persistence_count=2
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
-
-    service.start()
-
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify publisher was called for CREATED event
-    mock_publisher.publish.assert_called_once_with(AlertLifecycleEvent.CREATED, candidate)
+        event = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+        assert event is not None
+        assert event.status == AlertStatus.ACTIVE
 
 
 def test_service_publishes_updated_alerts(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
 ):
-    """Test that service publishes UPDATED alerts via publisher."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service publishes ACTIVE alerts via publisher.
 
-    candidate = CandidateAlert(
-        alert_id="temp_high:temperature",
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+
+    Returns
+    -------
+    None
+        The assertions raise if updates stop publishing.
+    """
+    rule = AlertRule(
         rule_id="temp_high",
-        source="temperature",
+        name="High Temp",
+        description="Temperature exceeds {threshold}°C",
         severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="temperature",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 35.0},
+        ),
         persistence_count=1,
-        cooldown_seconds=300,
+        cooldown_seconds=0,
     )
+    evaluator = RuleEvaluator([rule])
 
-    mock_evaluator.evaluate = Mock(return_value=[candidate])
-    mock_registry.register = Mock(return_value=AlertLifecycleEvent.UPDATED)
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Extract and invoke callback
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-updated-1"
+        )
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
-
-    service.start()
-
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify publisher was called for UPDATED event
-    mock_publisher.publish.assert_called_once_with(AlertLifecycleEvent.UPDATED, candidate)
+        events = collect_alert_events(alerts_consumer, count=2, timeout_seconds=10.0)
+        assert len(events) == 2
 
 
 def test_service_does_not_publish_ignored_alerts(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
 ):
-    """Test that service does not publish IGNORED alerts."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service does not publish IGNORED alerts.
 
-    candidate = CandidateAlert(
-        alert_id="temp_high:temperature",
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+
+    Returns
+    -------
+    None
+        The assertions raise if ignored alerts are published.
+    """
+    rule = AlertRule(
         rule_id="temp_high",
-        source="temperature",
+        name="High Temp",
+        description="Temperature exceeds {threshold}°C",
         severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
-        persistence_count=1,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="temperature",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 35.0},
+        ),
+        persistence_count=2,
         cooldown_seconds=300,
     )
+    evaluator = RuleEvaluator([rule])
 
-    mock_evaluator.evaluate = Mock(return_value=[candidate])
-    mock_registry.register = Mock(return_value=AlertLifecycleEvent.IGNORED)
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Extract and invoke callback
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-ignored-1"
+        )
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
-
-    service.start()
-
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify publisher was NOT called for IGNORED event
-    mock_publisher.publish.assert_not_called()
-
-
-def test_service_does_not_publish_suppressed_alerts(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
-):
-    """Test that service does not publish SUPPRESSED alerts."""
-    from dt.alerts.service import AlertEngineService
-
-    candidate = CandidateAlert(
-        alert_id="temp_high:temperature",
-        rule_id="temp_high",
-        source="temperature",
-        severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
-        persistence_count=1,
-        cooldown_seconds=300,
-    )
-
-    mock_evaluator.evaluate = Mock(return_value=[candidate])
-    mock_registry.register = Mock(return_value=AlertLifecycleEvent.SUPPRESSED)
-
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
-
-    service.start()
-
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify publisher was NOT called for SUPPRESSED event
-    mock_publisher.publish.assert_not_called()
+        assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
+        assert registry._states != {}
 
 
 def test_service_handles_multiple_candidates(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
 ):
-    """Test that service handles multiple candidate alerts from one payload."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service handles multiple candidate alerts from one payload.
 
-    candidate1 = CandidateAlert(
-        alert_id="temp_high:temperature",
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+
+    Returns
+    -------
+    None
+        The assertions raise if multi-rule handling regresses.
+    """
+    threshold_rule = AlertRule(
         rule_id="temp_high",
-        source="temperature",
+        name="High Temp",
+        description="Temperature exceeds {threshold}°C",
         severity=SeverityLevel.WARNING,
-        message="Temperature exceeds 35°C",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
-        persistence_count=1,
-        cooldown_seconds=300,
-    )
-
-    candidate2 = CandidateAlert(
-        alert_id="dq_low:temperature",
-        rule_id="dq_low",
+        evaluation_stage=EvaluationStage.PROCESSED,
         source="temperature",
-        severity=SeverityLevel.INFO,
-        message="Data quality below threshold",
-        correlation_id=sample_processed_data.correlation_id,
-        payload=sample_processed_data.to_dict(),
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 35.0},
+        ),
         persistence_count=1,
         cooldown_seconds=300,
     )
-
-    # Return two candidates
-    mock_evaluator.evaluate = Mock(return_value=[candidate1, candidate2])
-    mock_registry.register = Mock(return_value=AlertLifecycleEvent.CREATED)
-
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
+    dq_rule = AlertRule(
+        rule_id="dq_low",
+        name="DQ Low",
+        description="Data quality below threshold",
+        severity=SeverityLevel.INFO,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="temperature",
+        condition=AlertCondition(type=ConditionType.DQ_SCORE, params={"threshold": 0.99}),
+        persistence_count=1,
+        cooldown_seconds=300,
     )
+    evaluator = RuleEvaluator([threshold_rule, dq_rule])
 
-    service.start()
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        # Extract and invoke callback
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-multi-1"
+        )
+        reading.dq_score = 0.5
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
 
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify both candidates were registered
-    assert mock_registry.register.call_count == 2
-
-    # Verify both candidates were published
-    assert mock_publisher.publish.call_count == 2
+        events = collect_alert_events(alerts_consumer, count=2, timeout_seconds=10.0)
+        assert {event.alert_key for event in events} == {
+            "temp_high:temperature",
+            "dq_low:temperature",
+        }
 
 
-def test_service_shutdown(mock_kafka_service, mock_registry, mock_publisher, mock_evaluator):
-    """Test that service can be gracefully shut down."""
+def test_service_shutdown(
+    consumer_service, registry, publisher, evaluator, wait_for_consumer
+):
+    """Test that service can be gracefully shut down.
+
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    evaluator : RuleEvaluator
+        Rule evaluator for alert checks.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
+
+    Returns
+    -------
+    None
+        The assertions raise if shutdown handling regresses.
+    """
     from dt.alerts.service import AlertEngineService
 
     service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
+        kafka_service=consumer_service,
+        evaluator=evaluator,
+        registry=registry,
+        publisher=publisher,
     )
 
     service.start()
+    # Wait for start before shutdown to be clean
+    wait_for_consumer(consumer_service)
     service.shutdown()
 
-    # Verify disconnect was called on kafka service
-    mock_kafka_service.disconnect.assert_called_once()
+    assert consumer_service._running is False
 
 
 def test_service_does_not_fail_when_no_candidates(
-    mock_kafka_service, mock_registry, mock_publisher, mock_evaluator, sample_processed_data
+    consumer_service,
+    registry,
+    publisher,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+    wait_for_consumer,
 ):
-    """Test that service handles payloads that produce no candidate alerts."""
-    from dt.alerts.service import AlertEngineService
+    """Test that service handles payloads that produce no candidate alerts.
 
-    # Evaluator returns empty list (no rules triggered)
-    mock_evaluator.evaluate = Mock(return_value=[])
+    Parameters
+    ----------
+    consumer_service : KafkaService
+        Kafka service used for alert subscriptions.
+    registry : AlertRegistry
+        Registry instance for service tests.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
 
-    service = AlertEngineService(
-        kafka_service=mock_kafka_service,
-        evaluator=mock_evaluator,
-        registry=mock_registry,
-        publisher=mock_publisher,
-    )
+    Returns
+    -------
+    None
+        The assertions raise if empty evaluations regress.
+    """
 
-    service.start()
+    evaluator = RuleEvaluator([])
+    with running_alert_service(
+        consumer_service, evaluator, registry, publisher, wait_for_consumer
+    ):
+        reading = processed_reading_factory(
+            sample_sensor, value=38.0, correlation_id="svc-empty-1"
+        )
+        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        import time
+        time.sleep(0.5)
 
-    # Extract and invoke callback
-    callback = mock_kafka_service.subscribe.call_args_list[0][0][1]
-    callback(sample_processed_data)
-
-    # Verify registry and publisher were not called
-    mock_registry.register.assert_not_called()
-    mock_publisher.publish.assert_not_called()
+        assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
+        assert registry._states == {}

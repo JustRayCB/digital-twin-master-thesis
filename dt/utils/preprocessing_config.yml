@@ -1,21 +1,22 @@
-defaults:
+system:
   windows: # window size definitions for rolling calculations
     small_sec: 60
     medium_sec: 300
     big_sec: 1000
-  scoring:
-    weights: # Data quality scoring weights (must sum to 1.0)
-      range_ok: 0.4
-      roc_ok:   0.4
-      stuck_ok: 0.2
+  weights: # Data quality scoring weights (must sum to 1.0)
+    range_ok: 0.4
+    roc_ok: 0.4
+    stuck_ok: 0.2
 
-sensors:
+templates:
+  # TODO: Make an accuracy field
   dht22.temperature:
     units: "°C"
-    range: { min: -40, max: 80 }
-    accuracy: 0.5 # +-0.5°C
-    roc:   { max_per_minute: 1.0 } # Maximum rate of change per minute, in this case it is 1 degree Celsius per minute
-    stuck: { max_flat_seconds: 300 } # 5 minutes
+    # accuracy: 0.5 # +-0.5°C
+    validation:
+      range: { min: -40, max: 80 }
+      roc: { max_per_minute: 1.0 } # Maximum rate of change per minute, in this case it is 1 degree Celsius per minute
+      stuck: { max_flat_seconds: 300 } # 5 minutes
     imputation:
       strategy: window_average
       # 2 min sampling → 3-sample window ≈ 6 minutes
@@ -24,12 +25,25 @@ sensors:
       # retained for schema consistency; not used by window_average
       max_gap_seconds: 480
       decay_seconds: 0
+    calibration:
+      strategy: affine
+      scale: 1.0
+      offset: 0.0
+    normalization:
+      strategy: min_max
+      input_min: -40.0
+      input_max: 80.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+
   dht22.humidity:
     units: "%"
-    range: { min: 0, max: 100 }
-    accuracy: 2.0 # +-2%
-    roc:   { max_per_minute: 5.0 }
-    stuck: { max_flat_seconds: 300 }
+    # accuracy: 2.0 # +-2%
+    validation:
+      range: { min: 0, max: 100 }
+      roc: { max_per_minute: 5.0 }
+      stuck: { max_flat_seconds: 300 }
     imputation:
       strategy: window_average
       # 2 min sampling → 3-sample window = 6 minutes
@@ -37,17 +51,29 @@ sensors:
       min_samples: 2
       # retained for schema consistency; not used by window_average
       max_gap_seconds: 480
-      decay_seconds: 0
+    calibration:
+      strategy: affine
+      scale: 1.0
+      offset: 0.0
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 100.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+
   bh1750.lux:
     units: "lux"
-    range: { min: 1, max: 65535 }
-    accuracy: 13107 # +-20% (13107 is 20% of 65535)
-    roc:
-      profiles: # different rate of change profiles for different environments
-        indoor:  { max_per_minute: 100 }
-        outdoor: { max_per_minute: 1000 }
-      active_profile: indoor
-    stuck: { max_flat_seconds: 180 } 
+    # accuracy: 13107 # +-20% (13107 is 20% of 65535)
+    validation:
+      range: { min: 1, max: 65535 }
+      roc:
+        profiles:
+          indoor: { max_per_minute: 100 }
+          outdoor: { max_per_minute: 1000 }
+        active_profile: indoor
+      stuck: { max_flat_seconds: 180 }
     imputation:
       strategy: window_average
       # 1 min sampling → 3-sample window = 3 minutes
@@ -56,16 +82,27 @@ sensors:
       # retained for schema consistency; not used by window_average
       max_gap_seconds: 240
       decay_seconds: 0
+    calibration:
+      strategy: identity
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 65535.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+
   stemma.soil_moisture:
     units: "%"
-    range: { min: 0, max: 2000 } # Need to be calibrated to 0-100%
-    accuracy: 40 # +-2% (40 is 2% of 2000)
-    roc:
-      profiles:
-        normal: { max_per_minute: 5 }
-        irrigation: { max_per_minute: 50 }
-      active_profile: normal
-    stuck: { max_flat_seconds: 600 } # 10 minutes
+    # accuracy: 40 # +-2% (40 is 2% of 2000)
+    validation:
+      range: { min: 0, max: 2000 } # Need to be calibrated to 0-100%
+      roc:
+        profiles:
+          normal: { max_per_minute: 5 }
+          irrigation: { max_per_minute: 50 }
+        active_profile: normal
+      stuck: { max_flat_seconds: 600 }  # 10 minutes
     imputation:
       strategy: forward_fill_with_decay
       # 2 min sampling → accept up to ~5 intervals before baseline fallback
@@ -73,84 +110,40 @@ sensors:
       # decay window for gentle fallback if baseline provided in future
       decay_seconds: 300
       baseline: null
+    calibration:
+      strategy: affine
+      scale: 0.05
+      offset: 0.0
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 2000.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
 
-calibration_profiles:
-  defaults:
-    dht22.temperature:
-      profile_id: calibration.dht22.temperature.default
-      strategy: affine
-      parameters:
-        scale: 1.0
-        offset: 0.0
-    dht22.humidity:
-      profile_id: calibration.dht22.humidity.default
-      strategy: affine
-      parameters:
-        scale: 1.0
-        offset: 0.0
-    bh1750.lux:
-      profile_id: calibration.bh1750.lux.default
-      strategy: identity
-      parameters: {}
-    stemma.soil_moisture:
-      profile_id: calibration.stemma.soil_moisture.default
-      strategy: affine
-      parameters:
-        scale: 0.05
-        offset: 0.0
-  overrides:
-    sensors.greenhouse.dht22.001.temperature:
-      sensor_type: dht22.temperature
-      profile_id: calibration.dht22.temperature.greenhouse-001
-      parameters:
-        offset: -0.2
-    sensors.greenhouse.stemma.001.moisture:
-      sensor_type: stemma.soil_moisture
-      profile_id: calibration.stemma.soil_moisture.greenhouse-001
-      parameters:
-        scale: 0.047
+sensors:
+  # Generic mappings (backward compatibility for lookups by sensor type)
+  dht22.temperature: { template: dht22.temperature }
+  dht22.humidity: { template: dht22.humidity }
+  bh1750.lux: { template: bh1750.lux }
+  stemma.soil_moisture: { template: stemma.soil_moisture }
 
-normalization_profiles:
-  defaults:
-    dht22.temperature:
-      profile_id: normalization.dht22.temperature.default
+  # Specific sensor overrides
+  sensors.basil.dht22.001.temperature:
+    template: dht22.temperature
+    calibration:
+      strategy: affine
+      offset: -0.2
+
+  sensors.basil.stemma.001.soil_moisture:
+    template: stemma.soil_moisture
+    calibration:
+      strategy: affine
+      scale: 0.047
+
+  sensors.basil.bh1750.001.lux:
+    template: bh1750.lux
+    normalization:
       strategy: min_max
-      parameters:
-        input_min: -40.0
-        input_max: 80.0
-        output_min: 0.0
-        output_max: 1.0
-        clip: true
-    dht22.humidity:
-      profile_id: normalization.dht22.humidity.default
-      strategy: min_max
-      parameters:
-        input_min: 0.0
-        input_max: 100.0
-        output_min: 0.0
-        output_max: 1.0
-        clip: true
-    bh1750.lux:
-      profile_id: normalization.bh1750.lux.default
-      strategy: min_max
-      parameters:
-        input_min: 0.0
-        input_max: 65535.0
-        output_min: 0.0
-        output_max: 1.0
-        clip: true
-    stemma.soil_moisture:
-      profile_id: normalization.stemma.soil_moisture.default
-      strategy: min_max
-      parameters:
-        input_min: 0.0
-        input_max: 2000.0
-        output_min: 0.0
-        output_max: 1.0
-        clip: true
-  overrides:
-    sensors.greenhouse.bh1750.001:
-      sensor_type: bh1750.lux
-      profile_id: normalization.bh1750.lux.greenhouse-001
-      parameters:
-        input_max: 20000.0
+      input_max: 20000.0

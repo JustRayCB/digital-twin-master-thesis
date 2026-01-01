@@ -5,14 +5,13 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
 
-from dt.communication.dataclasses.processed_sensor_data import (
-    ProcessedSensorData, ValidationFlag)
+from dt.communication.adapters import load
+from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
-from dt.data.preprocess.state import SensorState
-from dt.data.preprocess.configuration.manager import ConfigurationManager
-from dt.data.preprocess.pipeline.context import ProcessingContext
-from dt.data.preprocess.pipeline.pipeline_builder import PipelineBuilder
-from dt.data.preprocess.state import SparkStateProvider
+from dt.data.preprocess.config.manager import ConfigurationManager
+from dt.data.preprocess.core.context import ProcessingContext
+from dt.data.preprocess.core.pipeline import PipelineBuilder
+from dt.data.preprocess.core.state import SensorState, SparkStateProvider
 from dt.utils import get_logger
 from dt.utils.exceptions.drop_reading import DropReadingException
 
@@ -255,6 +254,8 @@ class SparkStreamingAdapter:
                 watermark_seconds=watermark_seconds,
                 sensor_key=sensor_key,
                 sensor_config=sensor_config,
+                calibration_profile_id=sensor_config.calibration_profile_id or "",
+                normalization_profile_id=sensor_config.normalization_profile_id or "",
             )
 
             record_emitted = False
@@ -329,7 +330,9 @@ class SparkStreamingAdapter:
         """
         readings: list[RawSensorData] = []
         for pdf in pdf_iter:
-            readings.extend(RawSensorData.from_row(row) for row in pdf.itertuples(index=False))
+            readings.extend(
+                load("spark_row", RawSensorData, row) for row in pdf.itertuples(index=False)
+            )
         return readings
 
     def build_output_dataframe(self, records: list[dict]) -> Iterator[pd.DataFrame]:

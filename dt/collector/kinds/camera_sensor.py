@@ -15,7 +15,7 @@ class CameraSensor(Sensor):
 
     @property
     @override
-    def topic(self) -> str:
+    def topic(self) -> Topics:
         return Topics.CAMERA_IMAGE
 
     @override

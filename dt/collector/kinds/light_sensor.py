@@ -3,7 +3,7 @@ import board
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
-from dt.communication import Topics
+from dt.communication.topics import Topics
 
 
 class LightSensor(Sensor):

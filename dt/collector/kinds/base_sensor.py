@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import board
 
-from dt.communication import Topics
+from dt.communication.topics import Topics
 from dt.communication.dataclasses import RawSensorData, SensorDescriptor
 from dt.utils.logger import get_logger
 
@@ -45,8 +45,9 @@ class Sensor(ABC):
         The logger for this sensor instance.
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin, plant_id: int = -1) -> None:
         self.sensor_id: int = -1  # Assigned by the database
+        self.plant_id: int = plant_id
         self.name: str = name
         self.pin: board.Pin = pin
         self.read_interval: int = read_interval
@@ -124,7 +125,7 @@ class Sensor(ABC):
         # assert self.id != -1, "Sensor ID not set"
 
         data = RawSensorData(
-            plant_id=-1,  # TODO: To be set by the collector
+            plant_id=self.plant_id,
             sensor_id=self.sensor_id,
             timestamp=current_time,
             value=raw_value,
@@ -162,7 +163,8 @@ class Sensor(ABC):
             self.logger.error(f"Invalid pin value: {self.pin}")
             pin_id = -2
         return SensorDescriptor(
-            sensor_id=self.sensor_id,
+            id=self.sensor_id,
+            plant_id=self.plant_id,
             name=self.name,
             read_interval=self.read_interval,
             pin=pin_id,

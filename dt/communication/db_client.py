@@ -1,225 +1,172 @@
-import time
+"""HTTP client for the database service.
+
+Provides a thin wrapper over the Flask database API for sensor/actuator metadata,
+readings, alert history, and alert definition upserts.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Iterable, Type
 
 import requests
 
-from dt.communication.dataclasses import (
-    DBIdQuery,
-    DBTimestampQuery,
-    SensorDescriptor,
+from dt.communication.adapters import dump, load
+from dt.communication.dataclasses import AggregatedReading, ProcessedSensorData, SensorDescriptor
+from dt.communication.dataclasses.alerts.alert_record import (
+    AlertDefinition,
+    AlertHistoryEvent,
+    ExternalAlertEvent,
+    SensorAlertEvent,
+)
+from dt.communication.dataclasses.queries import (
+    ActiveAlertsQuery,
+    AlertHistoryQuery,
+    ReadingsQuery,
 )
 from dt.utils import Config, get_logger
 
 
 class DatabaseApiClient:
-    """Client for interacting with the database via Flask API endpoints.
-
-    This class provides an abstraction layer for other components to access the
-    database via HTTP requests to the Flask API, without needing to know the
-    details of the API implementation.
-
-    Parameters
-    ----------
-    base_url : str, optional
-        The base URL of the Flask API. Defaults to the value specified in
-        the application's configuration.
-    """
+    """Client for interacting with the database service HTTP API."""
 
     def __init__(self, base_url: str = Config.FLASK_DB_URL):
         self.base_url = base_url.rstrip("/")
         self.logger = get_logger(__name__)
 
+    # ---------------------------------------------------------------------- #
+    # Sensors / Actuators
+    # ---------------------------------------------------------------------- #
     def bind_sensor(self, sensor: SensorDescriptor) -> int:
-        """Register a sensor with the database via the API.
-
-        Parameters
-        ----------
-        sensor : SensorDescriptor
-            The sensor descriptor object to register.
-
-        Returns
-        -------
-        int
-            The ID assigned to the sensor by the database, or -1 on error.
-        """
+        """Register a sensor with the database."""
         try:
             response = requests.post(
                 f"{self.base_url}/bind_sensor",
-                json=sensor.to_json(),
+                json=dump("generic", sensor),
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
-
-            if response.status_code == 200:
-                return response.json().get("sensor_id", -1)
-            self.logger.error(f"Error registering sensor: {response.text}")
-            return -1
-        except requests.Timeout:
-            self.logger.error("Timeout occurred while trying to bind sensor.")
-            return -1
-        except requests.RequestException as e:
-            self.logger.error(f"Error in bind_sensor API call: {e}")
-            return -1
+            response.raise_for_status()
+            payload = response.json()
+            return int(payload.get("sensor_id", -1))
+        except requests.RequestException as exc:
+            self.logger.error(f"Error binding sensor: {exc}")
+            raise RuntimeError(f"Failed to bind sensor: {exc}") from exc
 
     def list_sensors(self) -> list[SensorDescriptor]:
-        """Return all sensors registered in the database."""
-
+        """Return all registered sensors."""
         try:
             response = requests.get(
                 f"{self.base_url}/sensors",
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
-            if response.status_code != 200:
-                self.logger.error(f"Error retrieving sensors: {response.text}")
-                return []
+            response.raise_for_status()
             payload = response.json()
-            sensors: list[SensorDescriptor] = []
-            for item in payload:
-                try:
-                    sensors.append(SensorDescriptor.from_json(item))
-                except Exception as exc:
-                    self.logger.error(f"Failed to parse sensor descriptor {item}: {exc}")
-            return sensors
-        except requests.Timeout:
-            self.logger.error("Timeout occurred while listing sensors.")
-            return []
+            return [load("generic", SensorDescriptor, item) for item in payload]
         except requests.RequestException as exc:
-            self.logger.error(f"Error in list_sensors API call: {exc}")
-            return []
+            self.logger.error(f"Error listing sensors: {exc}")
+            raise RuntimeError(f"Failed to list sensors: {exc}") from exc
 
-    def get_data_by_timeframe(self, time_frame: DBTimestampQuery) -> list[dict]:
-        """Get sensor data within a specific time range.
-
-        Parameters
-        ----------
-        time_frame : DBTimestampQuery
-            A query object specifying the data type and the time range (since
-            and until timestamps).
-
-        Returns
-        -------
-        List[Dict]
-            A list of sensor data dictionaries, or an empty list on error.
-        """
-
+    def list_actuators(self) -> list[dict[str, Any]]:
+        """Return all registered actuators."""
         try:
-            response = requests.post(
-                f"{self.base_url}/data/timestamp",
-                json=time_frame.to_json(),
+            response = requests.get(
+                f"{self.base_url}/actuators",
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error listing actuators: {exc}")
+            raise RuntimeError(f"Failed to list actuators: {exc}") from exc
 
-            if response.status_code == 200:
-                return response.json()
-            self.logger.error(f"Error fetching data: {response.text}")
-            return []
-        except requests.Timeout:
-            self.logger.error("Timeout occurred while trying to get data by timeframe.")
-            return []
-        except requests.RequestException as e:
-            self.logger.error(f"Error in get_data_by_timeframe API call: {e}")
-            return []
+    # ---------------------------------------------------------------------- #
+    # Readings
+    # ---------------------------------------------------------------------- #
+    def query_readings(self, query: ReadingsQuery) -> list[ProcessedSensorData | AggregatedReading]:
+        """Fetch processed readings or aggregates based on the query window."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/readings",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error querying readings: {exc}")
+            raise RuntimeError(f"Failed to query readings: {exc}") from exc
 
-    def get_recent_data(self, sensor_id: int, limit: int = 10) -> list[dict]:
-        """Get the most recent data points for a specific sensor.
+        target_cls: Type[ProcessedSensorData] | Type[AggregatedReading]
+        target_cls = AggregatedReading if query.window == "1h" else ProcessedSensorData
+        return [load("generic", target_cls, item) for item in payload]
 
-        Parameters
-        ----------
-        sensor_id : int
-            The ID of the sensor.
-        limit : int, optional
-            The maximum number of records to return, by default 10.
+    # ---------------------------------------------------------------------- #
+    # Alerts
+    # ---------------------------------------------------------------------- #
+    def get_alert_history(self, query: AlertHistoryQuery) -> list[AlertHistoryEvent]:
+        """Fetch alert history events (sensor or external)."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/alerts/history",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching alert history: {exc}")
+            raise RuntimeError(f"Failed to fetch alert history: {exc}") from exc
 
-        Returns
-        -------
-        List[Dict]
-            A list of sensor data dictionaries, or an empty list on error.
-        """
-        query = DBIdQuery(sensor_id=sensor_id, limit=limit)
+        return [self._load_alert_event(item) for item in payload]
+
+    def get_active_alerts(self, query: ActiveAlertsQuery) -> list[AlertHistoryEvent]:
+        """Fetch currently active alerts from the database."""
+        params = dump("generic", query)
+
+        try:
+            response = requests.get(
+                f"{self.base_url}/alerts/active",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching active alerts: {exc}")
+            raise RuntimeError(f"Failed to fetch active alerts: {exc}") from exc
+
+        return [self._load_alert_event(item) for item in payload]
+
+    def ensure_alert_definition(self, definition: AlertDefinition) -> None:
+        """Persist an alert definition (idempotent upsert)."""
+        payload = dump("generic", definition)
         try:
             response = requests.post(
-                f"{self.base_url}/data/id",
-                json=query.to_json(),
+                f"{self.base_url}/alerts/definitions",
+                json=payload,
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error upserting alert definition: {exc}")
+            raise RuntimeError(f"Failed to upsert alert definition: {exc}") from exc
 
-            if response.status_code == 200:
-                return response.json()
-            self.logger.error(f"Error fetching sensor data: {response.text}")
-            return []
+    # ---------------------------------------------------------------------- #
+    # Internal helpers
+    # ---------------------------------------------------------------------- #
 
-        except requests.Timeout:
-            self.logger.error("Timeout occurred while trying to get recent data.")
-            return []
-        except requests.RequestException as e:
-            print(f"Error in get_recent_data API call: {e}")
-            self.logger.error(f"Error in get_recent_data API call: {e}")
-            return []
-
-    def get_data_for_last(self, data_type: str, hours: int = 24) -> list[dict]:
-        """Fetch data for a specified number of hours leading up to the present.
-
-        Parameters
-        ----------
-        data_type : str
-            The type of data to retrieve (e.g., "temperature").
-        hours : int, optional
-            The number of hours of data to retrieve, by default 24.
-
-        Returns
-        -------
-        List[Dict]
-            A list of sensor data dictionaries.
-        """
-        end_time = time.time()
-        start_time = end_time - (hours * 3600)
-
-        timeframe = DBTimestampQuery(
-            data_type=data_type,
-            since=start_time,
-            until=end_time,
-        )
-
-        return self.get_data_by_timeframe(timeframe)
-
-    def get_latest_value(self, data_type: str) -> dict | None:
-        """Get the most recent value for a specific data type.
-
-        This method retrieves data from the last hour and returns the most
-        recent data point.
-
-        Parameters
-        ----------
-        data_type : str
-            The type of data to retrieve (e.g., "temperature").
-
-        Returns
-        -------
-        Optional[Dict]
-            The most recent sensor data dictionary, or ``None`` if no data
-            exists or an error occurs.
-        """
-        # Get a small window of recent data and take the most recent
-        try:
-            # Get data from the last hour
-
-            start_time = time.time() - 3600
-            end_time = time.time()
-            timeframe = DBTimestampQuery(
-                data_type=data_type,
-                since=start_time,
-                until=end_time,
-            )
-            data = self.get_data_by_timeframe(timeframe)
-
-            if not data:
-                return None
-
-            # Sort by timestamp and return the most recent
-            return max(data, key=lambda x: x.get("timestamp", 0))
-
-        except Exception as e:
-            self.logger.error(f"Error in get_latest_value API call: {e}")
-            return None
+    def _load_alert_event(self, item: dict[str, Any]) -> AlertHistoryEvent:
+        """Load polymorphic alert event based on payload shape."""
+        if "reading" in item:
+            return load("generic", SensorAlertEvent, item)
+        if "metadata" in item:
+            return load("generic", ExternalAlertEvent, item)
+        return load("generic", AlertHistoryEvent, item)

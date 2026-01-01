@@ -10,18 +10,22 @@ from flask import Flask
 from flask_cors import CORS
 
 from dt.alerts.api import create_alert_blueprint
-from dt.alerts.config.manager import build_alert_rule_manager
-from dt.alerts.engine.evaluator import RuleEvaluator
-from dt.alerts.engine.publisher import AlertPublisher
+from dt.alerts.evaluator import RuleEvaluator
+from dt.alerts.publisher import AlertPublisher
+from dt.alerts.registry import AlertRegistry
+from dt.alerts.rule_manager import build_alert_rule_manager
 from dt.alerts.service import AlertEngineService
-from dt.alerts.state.registry import AlertRegistry
+from dt.communication.dataclasses.queries import ActiveAlertsQuery
+from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.utils import Config, get_logger
 
 logger = get_logger(__name__)
 
 
-def create_app(start_consumer: bool = True, config_path: str | None = None) -> Flask:
+def create_app(
+    start_consumer: bool = True, config_path: str | None = None, definition_client=None
+) -> Flask:
     """Create and configure the alert engine Flask application.
 
     This factory function wires together all alert engine components:
@@ -69,8 +73,17 @@ def create_app(start_consumer: bool = True, config_path: str | None = None) -> F
         logger.error("Failed to connect to Kafka broker")
         raise ConnectionError("Failed to connect to Kafka broker")
 
-    # Create publisher with default plant_id (could be parameterized later)
-    publisher = AlertPublisher(messaging_service, plant_id=1)
+    # Create publisher with definition client
+    definition_client = definition_client or DatabaseApiClient()
+    publisher = AlertPublisher(messaging_service, definition_client)
+
+    # Hydrate registry from persistent storage
+    try:
+        active_alerts = definition_client.get_active_alerts(ActiveAlertsQuery())
+        registry.restore_state(active_alerts)
+        logger.info(f"Restored {len(active_alerts)} active alerts from database")
+    except Exception as e:
+        logger.warning(f"Failed to restore active alerts from database: {e}")
 
     # Create alert engine service
     service = AlertEngineService(

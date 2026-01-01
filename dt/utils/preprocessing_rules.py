@@ -1,5 +1,5 @@
-from dt.data.preprocess.configuration.preprocessing_config import SensorValidationConfig
+from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.utils.config import Config
 
-# Load configuration from default path
-PREPROCESSING_CONFIG = SensorValidationConfig.load(Config.PREPROCESSING_CONFIG_PATH)
+# Load configuration using the new manager
+PREPROCESSING_CONFIG = ConfigurationManager(Config.PREPROCESSING_CONFIG_PATH)

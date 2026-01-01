@@ -22,23 +22,38 @@ export function initPlantStatus() {
 
     // Subscribe to temperature updates
     plantStore.subscribe(DataType.TEMPERATURE, (data) => {
-        // Round the temperature value to the nearest first decimal
-        const temperature_value = data.value.toFixed(1)
-        stats_temperature.textContent = `${temperature_value}°C`
+        const value = Number(data?.value)
+        if (Number.isFinite(value)) {
+            // Round the temperature value to the nearest first decimal
+            const temperature_value = value.toFixed(1)
+            stats_temperature.textContent = `${temperature_value}°C`
+        } else {
+            stats_temperature.textContent = '—'
+        }
     })
 
     // Subscribe to humidity updates
     plantStore.subscribe(DataType.HUMIDITY, (data) => {
-        // Round the humidity value to the nearest integer
-        const humidity_value = Math.round(data.value)
-        stats_humidity.textContent = `${humidity_value}%`
+        const value = Number(data?.value)
+        if (Number.isFinite(value)) {
+            // Round the humidity value to the nearest integer
+            const humidity_value = Math.round(value)
+            stats_humidity.textContent = `${humidity_value}%`
+        } else {
+            stats_humidity.textContent = '—'
+        }
     })
 
     // Subscribe to light intensity updates
     plantStore.subscribe(DataType.LIGHT, (data) => {
-        // Round the light value to the nearest integer
-        const light_value = Math.round(data.value)
-        stats_light.textContent = `${light_value}lx`
+        const value = Number(data?.value)
+        if (Number.isFinite(value)) {
+            // Round the light value to the nearest integer
+            const light_value = Math.round(value)
+            stats_light.textContent = `${light_value}lx`
+        } else {
+            stats_light.textContent = '—'
+        }
     })
 
     // Subscribe to time updates to show the last update time

@@ -1,287 +1,369 @@
-"""Integration test for end-to-end alert flow.
-
-Tests the complete alert lifecycle from rule evaluation through acknowledgment,
-using fake components to verify the alert engine behaves correctly end-to-end.
-"""
+"""Integration tests for end-to-end alert flow."""
 
 import time
-from unittest.mock import Mock
 
 import pytest
 
-from dt.alerts.config.alert_rule import (AlertCondition, AlertRule,
-                                         ConditionType, EvaluationStage,
-                                         SeverityLevel)
-from dt.alerts.engine.evaluator import RuleEvaluator
-from dt.alerts.engine.publisher import AlertPublisher
+from dt.alerts.evaluator import RuleEvaluator
+from dt.alerts.publisher import AlertPublisher
+from dt.alerts.registry import AlertRegistry
+from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
 from dt.alerts.service import AlertEngineService
-from dt.alerts.state.models import AlertLifecycleEvent
-from dt.alerts.state.registry import AlertRegistry
-from dt.communication import Topics
 from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.alerts.alert_record import (
+    AlertDefinition,
+    AlertHistoryEvent,
+    AlertStatus,
+    SensorAlertEvent,
+)
+from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
+from dt.communication.messaging_service import KafkaService
+from dt.communication.topics import Topics
+from tests.alerts.conftest import poll_alert_event
+
+pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
 
 @pytest.fixture
-def threshold_rule():
-    """Create a threshold-based alert rule."""
-    condition = AlertCondition(
-        type=ConditionType.THRESHOLD, params={"operator": ">", "threshold": 35.0}
-    )
-    return AlertRule(
-        rule_id="temp_high",
-        name="High Temperature Alert",
-        description="Temperature exceeds {threshold}°C (actual: {value}°C)",
-        severity=SeverityLevel.WARNING,
-        evaluation_stage=EvaluationStage.PROCESSED,
-        source="temperature",
-        condition=condition,
-        persistence_count=2,
-        cooldown_seconds=300,
-    )
+def alert_service(threshold_rule, dq_rule, publisher, consumer_service, wait_for_consumer):
+    """Create alert service with Kafka-backed publisher.
 
+    Parameters
+    ----------
+    threshold_rule : AlertRule
+        Threshold rule used by the evaluator.
+    dq_rule : AlertRule
+        DQ score rule used by the evaluator.
+    publisher : AlertPublisher
+        Publisher emitting alert events to Kafka.
+    consumer_service : KafkaService
+        Kafka service used for subscriptions.
+    wait_for_consumer : Callable
+        Fixture to wait for consumer thread.
 
-@pytest.fixture
-def dq_rule():
-    """Create a DQ score-based alert rule."""
-    condition = AlertCondition(type=ConditionType.DQ_SCORE, params={"threshold": 0.5})
-    return AlertRule(
-        rule_id="dq_low",
-        name="Low Data Quality Alert",
-        description="Data quality score {dq_score} below threshold {threshold}",
-        severity=SeverityLevel.CRITICAL,
-        evaluation_stage=EvaluationStage.PROCESSED,
-        source="*",  # Apply to all sources
-        condition=condition,
-        persistence_count=3,
-        cooldown_seconds=120,
-    )
-
-
-@pytest.fixture
-def fake_publisher():
-    """Create a fake publisher that captures published messages."""
-
-    class FakePublisher:
-        def __init__(self):
-            self.published_events = []
-
-        def publish(self, event, payload, actor=None):
-            self.published_events.append(
-                {"event": event, "payload": payload, "actor": actor}
-            )
-            return True
-
-    return FakePublisher()
-
-
-@pytest.fixture
-def alert_service(threshold_rule, dq_rule, fake_publisher):
-    """Create alert service with fake components."""
+    Returns
+    -------
+    AlertEngineService
+        Alert engine service for integration tests.
+    """
     # Create real registry and evaluator
     registry = AlertRegistry()
     evaluator = RuleEvaluator([threshold_rule, dq_rule])
 
-    # Use mock Kafka service (not needed for this test)
-    mock_kafka = Mock()
-
-    # Create service with fake publisher
     service = AlertEngineService(
-        kafka_service=mock_kafka,
+        kafka_service=consumer_service,
         evaluator=evaluator,
         registry=registry,
-        publisher=fake_publisher,
+        publisher=publisher,
     )
 
-    return service
+    service.start()
+    wait_for_consumer(consumer_service)
+    try:
+        yield service
+    finally:
+        service.shutdown()
 
 
-def create_processed_reading(
-    value: float, dq_score: float = 1.0, correlation_id: str = "test-corr-1"
-) -> ProcessedSensorData:
-    """Helper to create a processed sensor reading."""
-    return ProcessedSensorData(
-        plant_id=1,
-        sensor_id=101,
-        timestamp=time.time(),
-        value=value,
-        unit="Celsius",
-        topic=Topics.TEMPERATURE,
-        correlation_id=correlation_id,
-        flags={ValidationFlag.VALID: True},
-        dq_score=dq_score,
-        imputed=False,
-    )
-
-
-def test_alert_flow_with_persistence_threshold(alert_service, fake_publisher):
+def test_alert_flow_with_persistence_threshold(
+    alert_service, alerts_consumer, processed_publisher, sample_sensor, processed_reading_factory
+):
     """Test that alerts are created only after reaching persistence threshold.
 
-    Scenario:
-    1. Send first high-temperature reading (persistence=2, so should be IGNORED)
-    2. Send second high-temperature reading (should trigger CREATED)
-    3. Verify publisher captured the CREATED event with correct alert details
+    Parameters
+    ----------
+    alert_service : AlertEngineService
+        Service under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Sensor descriptor providing plant and sensor IDs.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+
+    Returns
+    -------
+    None
+        The assertions raise if persistence handling regresses.
     """
     # First reading exceeding threshold (38°C > 35°C)
-    reading1 = create_processed_reading(value=38.0, correlation_id="corr-1")
-    alert_service._on_message(reading1)
+    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
     # Should not publish yet (persistence_count=2)
-    assert len(fake_publisher.published_events) == 0
+    assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
     # Second reading exceeding threshold
-    reading2 = create_processed_reading(value=39.0, correlation_id="corr-2")
-    alert_service._on_message(reading2)
+    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
-    # Should now publish CREATED event
-    assert len(fake_publisher.published_events) == 1
+    payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert payload is not None
+    assert type(payload) is SensorAlertEvent
+    assert payload.status == AlertStatus.ACTIVE
+    assert payload.alert_key == "temp_high:temperature"
+    assert payload.severity == SeverityLevel.WARNING
+    assert "39.0" in payload.message
+    assert payload.correlation_id == "corr-2"
+    assert payload.reading.value == reading2.value
 
-    event_data = fake_publisher.published_events[0]
-    assert event_data["event"] == AlertLifecycleEvent.CREATED
-    assert event_data["payload"].alert_id == "temp_high:temperature"
-    assert event_data["payload"].severity == SeverityLevel.WARNING
-    assert "39.0" in event_data["payload"].message
-    assert event_data["payload"].correlation_id == "corr-2"
 
-
-def test_dq_alert_with_higher_persistence(alert_service, fake_publisher):
+def test_dq_alert_with_higher_persistence(
+    alert_service, alerts_consumer, processed_publisher, sample_sensor, processed_reading_factory
+):
     """Test DQ alert requires 3 consecutive violations (higher persistence).
 
-    Scenario:
-    1. Send 2 low-DQ readings (should be IGNORED)
-    2. Send 3rd low-DQ reading (should trigger CREATED)
-    3. Verify publisher captured the CREATED event
+    Parameters
+    ----------
+    alert_service : AlertEngineService
+        Service under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Sensor descriptor providing plant and sensor IDs.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+
+    Returns
+    -------
+    None
+        The assertions raise if persistence handling regresses.
     """
     # DQ rule has persistence_count=3 and applies to all sources (wildcard)
-    reading1 = create_processed_reading(value=25.0, dq_score=0.3, correlation_id="dq-1")
-    alert_service._on_message(reading1)
-    assert len(fake_publisher.published_events) == 0
+    reading1 = processed_reading_factory(
+        sample_sensor, value=25.0, dq_score=0.3, correlation_id="dq-1"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
+    assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
-    reading2 = create_processed_reading(value=26.0, dq_score=0.4, correlation_id="dq-2")
-    alert_service._on_message(reading2)
-    assert len(fake_publisher.published_events) == 0
+    reading2 = processed_reading_factory(
+        sample_sensor, value=26.0, dq_score=0.4, correlation_id="dq-2"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
+    assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
     # Third occurrence should create the alert
-    reading3 = create_processed_reading(value=27.0, dq_score=0.2, correlation_id="dq-3")
-    alert_service._on_message(reading3)
+    reading3 = processed_reading_factory(
+        sample_sensor, value=27.0, dq_score=0.2, correlation_id="dq-3"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
 
-    # Should now publish CREATED event
-    assert len(fake_publisher.published_events) == 1
+    payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert payload is not None
+    assert type(payload) is SensorAlertEvent
+    assert payload.status == AlertStatus.ACTIVE
+    assert payload.alert_key == "dq_low:temperature"
+    assert payload.severity == SeverityLevel.CRITICAL
+    assert "0.2" in payload.message
+    assert payload.reading.dq_score == 0.2
 
-    event_data = fake_publisher.published_events[0]
-    assert event_data["event"] == AlertLifecycleEvent.CREATED
-    assert event_data["payload"].alert_id == "dq_low:temperature"
-    assert event_data["payload"].severity == SeverityLevel.CRITICAL
-    assert "0.2" in event_data["payload"].message
 
-
-def test_alert_updated_after_cooldown(alert_service, fake_publisher, threshold_rule):
+def test_alert_updated_after_cooldown(
+    alert_service,
+    alerts_consumer,
+    processed_publisher,
+    threshold_rule,
+    sample_sensor,
+    processed_reading_factory,
+):
     """Test that alert fires UPDATED event after cooldown expires.
 
-    Scenario:
-    1. Create alert (persistence=2)
-    2. Send another high reading within cooldown (should be SUPPRESSED, no publish)
-    3. Wait for cooldown to expire
-    4. Send another high reading (should trigger UPDATED)
-    5. Verify publisher captured both CREATED and UPDATED events
+    Parameters
+    ----------
+    alert_service : AlertEngineService
+        Service under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    threshold_rule : AlertRule
+        Rule defining the cooldown behavior.
+    sample_sensor : SensorDescriptor
+        Sensor descriptor providing plant and sensor IDs.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+
+    Returns
+    -------
+    None
+        The assertions raise if cooldown handling regresses.
     """
     # Use short cooldown for testing
     threshold_rule.cooldown_seconds = 0.1
 
     # Create alert with 2 readings
-    reading1 = create_processed_reading(value=38.0, correlation_id="corr-1")
-    alert_service._on_message(reading1)
+    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
-    reading2 = create_processed_reading(value=39.0, correlation_id="corr-2")
-    alert_service._on_message(reading2)
+    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
-    # Should have CREATED event
-    assert len(fake_publisher.published_events) == 1
-    assert fake_publisher.published_events[0]["event"] == AlertLifecycleEvent.CREATED
+    created_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert created_payload is not None
+    assert created_payload.status == AlertStatus.ACTIVE
 
-    # Immediate re-occurrence within cooldown (should be suppressed, not published)
-    reading3 = create_processed_reading(value=40.0, correlation_id="corr-3")
-    alert_service._on_message(reading3)
+    # Immediate re-occurrence within cooldown (should be ignored, not published)
+    reading3 = processed_reading_factory(sample_sensor, value=40.0, correlation_id="corr-3")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
 
-    # Still only one published event (SUPPRESSED events are not published)
-    assert len(fake_publisher.published_events) == 1
+    assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
     # Wait for cooldown to expire
     time.sleep(0.15)
 
     # Send another reading after cooldown
-    reading4 = create_processed_reading(value=41.0, correlation_id="corr-4")
-    alert_service._on_message(reading4)
+    reading4 = processed_reading_factory(sample_sensor, value=41.0, correlation_id="corr-4")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading4)
 
-    # Should now have both CREATED and UPDATED events
-    assert len(fake_publisher.published_events) == 2
-    assert fake_publisher.published_events[0]["event"] == AlertLifecycleEvent.CREATED
-    assert fake_publisher.published_events[1]["event"] == AlertLifecycleEvent.UPDATED
-    assert fake_publisher.published_events[1]["payload"].correlation_id == "corr-4"
+    updated_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert updated_payload is not None
+    assert updated_payload.status == AlertStatus.ACTIVE
+    assert updated_payload.correlation_id == "corr-4"
 
 
-def test_acknowledgment_publishes_lifecycle_event(alert_service, fake_publisher):
+def test_acknowledgment_publishes_lifecycle_event(
+    alert_service,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+):
     """Test that acknowledging an alert publishes an ACKNOWLEDGED lifecycle event.
 
-    Scenario:
-    1. Create an alert (send 2 high-temp readings)
-    2. Acknowledge the alert via registry
-    3. Manually publish the acknowledgment event (simulating REST API behavior)
-    4. Verify publisher captured both CREATED and ACKNOWLEDGED events
+    Parameters
+    ----------
+    alert_service : AlertEngineService
+        Service under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Sensor descriptor providing plant and sensor IDs.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+
+    Returns
+    -------
+    None
+        The assertions raise if lifecycle publishing regresses.
     """
     # Create alert
-    reading1 = create_processed_reading(value=38.0, correlation_id="corr-1")
-    alert_service._on_message(reading1)
+    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
-    reading2 = create_processed_reading(value=39.0, correlation_id="corr-2")
-    alert_service._on_message(reading2)
+    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
-    # Should have CREATED event
-    assert len(fake_publisher.published_events) == 1
-    assert fake_publisher.published_events[0]["event"] == AlertLifecycleEvent.CREATED
+    created_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert created_payload is not None
+    assert created_payload.status == AlertStatus.ACTIVE
 
     # Acknowledge the alert
-    alert_id = "temp_high:temperature"
-    success = alert_service.registry.acknowledge(alert_id, actor="test_operator")
+    alert_key = "temp_high:temperature"
+    success = alert_service.registry.acknowledge(alert_key, actor="test_operator")
     assert success is True
 
     # Simulate REST API publishing acknowledgment (this would be done by the API endpoint)
-    alert_service.publisher.publish(
-        AlertLifecycleEvent.ACKNOWLEDGED, alert_id, actor="test_operator"
+    alert_state = alert_service.registry.get_alert_state(alert_key)
+    alert_event = AlertHistoryEvent(
+        alert_key=alert_key,
+        plant_id=alert_state.plant_id if alert_state else 0,
+        timestamp=time.time(),
+        status=AlertStatus.ACKNOWLEDGED,
+        severity=alert_state.severity if alert_state else SeverityLevel.WARNING,
+        message=alert_state.message if alert_state else "",
+        correlation_id=alert_state.correlation_id if alert_state else "",
+        acknowledged_by="test_operator",
     )
 
-    # Should now have both CREATED and ACKNOWLEDGED events
-    assert len(fake_publisher.published_events) == 2
-    assert fake_publisher.published_events[1]["event"] == AlertLifecycleEvent.ACKNOWLEDGED
-    assert fake_publisher.published_events[1]["payload"] == alert_id
-    assert fake_publisher.published_events[1]["actor"] == "test_operator"
+    definition = AlertDefinition(
+        alert_key=alert_key,
+        plant_id=alert_state.plant_id if alert_state else 0,
+        sensor_id=None,
+        source=alert_state.source if alert_state else "external",
+        rule_id=alert_state.rule_id if alert_state else None,
+        rule_name=alert_state.rule_id if alert_state else None,
+        kind=(
+            AlertType.EXTERNAL
+            if (alert_state and alert_state.rule_id is None)
+            else AlertType.SENSOR
+        ),
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+
+    alert_service.publisher.publish(definition, alert_event)
+
+    ack_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert ack_payload is not None
+    assert ack_payload.status == AlertStatus.ACKNOWLEDGED
+    assert ack_payload.alert_key == alert_key
+    assert ack_payload.acknowledged_by == "test_operator"
+    assert ack_payload.plant_id == alert_state.plant_id
+    assert ack_payload.correlation_id == alert_state.correlation_id
 
 
-def test_multiple_rules_trigger_independently(alert_service, fake_publisher):
+def test_multiple_rules_trigger_independently(
+    alert_service,
+    alerts_consumer,
+    processed_publisher,
+    sample_sensor,
+    processed_reading_factory,
+):
     """Test that multiple rules can trigger independently on the same payload.
 
-    Scenario:
-    1. Send readings with both high temperature AND low DQ score
-    2. Verify both threshold and DQ alerts are created independently
+    Parameters
+    ----------
+    alert_service : AlertEngineService
+        Service under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    processed_publisher : KafkaService
+        Kafka service used to publish processed readings.
+    sample_sensor : SensorDescriptor
+        Sensor descriptor providing plant and sensor IDs.
+    processed_reading_factory : Callable
+        Factory to create processed readings.
+
+    Returns
+    -------
+    None
+        The assertions raise if multi-rule handling regresses.
     """
     # Send readings that violate both rules
     # Threshold rule: persistence=2, DQ rule: persistence=3
-    reading1 = create_processed_reading(value=38.0, dq_score=0.3, correlation_id="multi-1")
-    alert_service._on_message(reading1)
-    assert len(fake_publisher.published_events) == 0  # Neither at persistence yet
+    reading1 = processed_reading_factory(
+        sample_sensor, value=38.0, dq_score=0.3, correlation_id="multi-1"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
+    assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
-    reading2 = create_processed_reading(value=39.0, dq_score=0.4, correlation_id="multi-2")
-    alert_service._on_message(reading2)
+    reading2 = processed_reading_factory(
+        sample_sensor, value=39.0, dq_score=0.4, correlation_id="multi-2"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
     # Threshold alert should be created now (persistence=2)
-    assert len(fake_publisher.published_events) == 1
-    assert fake_publisher.published_events[0]["payload"].alert_id == "temp_high:temperature"
+    first_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert first_payload is not None
+    assert first_payload.alert_key == "temp_high:temperature"
 
-    reading3 = create_processed_reading(value=40.0, dq_score=0.2, correlation_id="multi-3")
-    alert_service._on_message(reading3)
+    reading3 = processed_reading_factory(
+        sample_sensor, value=40.0, dq_score=0.2, correlation_id="multi-3"
+    )
+    assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
     # DQ alert should be created now (persistence=3)
-    assert len(fake_publisher.published_events) == 2
-    assert fake_publisher.published_events[1]["payload"].alert_id == "dq_low:temperature"
+    second_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+    assert second_payload is not None
+    assert second_payload.alert_key == "dq_low:temperature"
 
     # Both alerts should have been created independently
-    alert_ids = {event["payload"].alert_id for event in fake_publisher.published_events}
-    assert alert_ids == {"temp_high:temperature", "dq_low:temperature"}
+    assert {first_payload.alert_key, second_payload.alert_key} == {
+        "temp_high:temperature",
+        "dq_low:temperature",
+    }

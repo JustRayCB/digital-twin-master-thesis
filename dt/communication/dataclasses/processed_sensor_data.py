@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -98,8 +100,14 @@ class ProcessedSensorData(RawSensorData):
             A PySpark StructType schema representing the dataclass fields.
         """
         # Importing here to avoid needed dependency if Spark is not used
-        from pyspark.sql.types import (BooleanType, DoubleType, MapType,
-                                       StringType, StructField, StructType)
+        from pyspark.sql.types import (
+            BooleanType,
+            DoubleType,
+            MapType,
+            StringType,
+            StructField,
+            StructType,
+        )
 
         raw_sensor_schema = RawSensorData.get_spark_schema()
         processed_sensor_schema = StructType(
@@ -117,27 +125,29 @@ class ProcessedSensorData(RawSensorData):
         )
         return processed_sensor_schema
 
-    @classmethod
-    def from_row(cls, row):
-        """Create a processed sensor data instance from a Spark Row."""
-        base = RawSensorData.from_row(row)
-        return cls(
-            plant_id=base.plant_id,
-            sensor_id=base.sensor_id,
-            timestamp=base.timestamp,
-            value=base.value,
-            unit=base.unit,
-            topic=base.topic,
-            correlation_id=base.correlation_id,
-            flags=getattr(row, "flags"),
-            dq_score=getattr(row, "dq_score"),
-            imputed=getattr(row, "imputed"),
-            raw_value=getattr(row, "raw_value", None),
-            calibrated_value=getattr(row, "calibrated_value", None),
-            normalized_value=getattr(row, "normalized_value", None),
-            calibration_profile_id=getattr(row, "calibration_profile_id", None),
-            normalization_profile_id=getattr(row, "normalization_profile_id", None),
+    @property
+    def snapshot(self):
+        """Convert the ProcessedSensorData instance to a snapshot dictionary.
+
+        This method creates a simplified dictionary representation of the
+        ProcessedSensorData instance, suitable for quick reference or logging.
+
+        Returns
+        -------
+        dict
+            A dictionary containing key attributes of the instance.
+        """
+        validations_flags_to_text = "|".join(
+            f"{flag}={str(value).lower()}" for flag, value in self.flags.items()
         )
+        return {
+            "sensor_id": self.sensor_id,
+            "plant_id": self.plant_id,
+            "value": self.value,
+            "unit": self.unit,
+            "dq_score": self.dq_score,
+            "flags": validations_flags_to_text,
+        }
 
     @classmethod
     def from_raw_sensor_data(
@@ -151,7 +161,7 @@ class ProcessedSensorData(RawSensorData):
         normalized_value: float | None = None,
         calibration_profile_id: str | None = None,
         normalization_profile_id: str | None = None,
-    ) -> "ProcessedSensorData":
+    ) -> ProcessedSensorData:
         """Create a ProcessedSensorData instance from a RawSensorData instance.
 
         Parameters

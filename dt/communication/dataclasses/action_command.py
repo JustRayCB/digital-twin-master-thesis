@@ -1,10 +1,8 @@
 from dataclasses import dataclass
 
-from dt.communication.dataclasses.serializable import JsonSerializable
-
 
 @dataclass
-class ActionCommand(JsonSerializable):
+class ActionCommand:
     """Represents a command to be sent to an actuator.
 
     This dataclass defines the structure of a command sent to an actuator

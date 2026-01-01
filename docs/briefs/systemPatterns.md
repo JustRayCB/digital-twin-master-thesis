@@ -1,6 +1,6 @@
-> Topics: raw.sensor.*, proc.sensor.*, alerts.*, actions.*, control.events.*, audit.*  
-> IDs: correlation_id propagated end-to-end  
-> Storage: Influx ‘events’ + Relational Action/Audit (SQLite→Postgres)  
+> Topics: dt.raw.sensor, dt.proc.sensor, dt.alerts
+> IDs: correlation_id propagated end-to-end
+> Storage: PostgreSQL + TimescaleDB (unified time-series hypertables + relational tables)  
 
 # Design Patterns, Coding Standards
 
@@ -109,28 +109,89 @@ pipeline hydrates these strategies per sensor, applies calibration before valida
 imputation, and normalizes the post-validation signal so processed payloads expose raw,
 calibrated, and normalized views side-by-side.
 
-### Alert Event Contract
+### Alerts (`dt/alerts`)
+- **Responsibility**: Evaluate rules, manage alert state, and publish lifecycle events.
+- **Structure**: Flattened module layout (`api`, `app`, `service`, `registry`, `rules`, `evaluator`, `publisher`).
+- **Core Components**:
+  - `AlertRegistry`: In-memory state machine (active alerts, cooldowns, persistence). **Hydrates from Database on startup** to restore state after restarts.
+  - `RuleEvaluator`: Checks `ProcessedSensorData` against loaded `AlertRule`s.
+  - `AlertPublisher`: Persists definitions to DB and publishes `AlertHistoryEvent` to Kafka.
+  - `DatabaseApiClient`: Used to fetch active alerts for hydration and upsert definitions.
+- **Data Flow**:
+  1. Consumes `dt.sensors.processed.*`.
+  2. Evaluates rules -> triggers `SensorAlertEvent`.
+  3. Updates Registry (checks persistence/cooldown).
+  4. If status changes (ACTIVE/CLEARED), publishes to `dt.alerts`.
+- **Source of Truth**: 
+  - **Historical & Active**: Database Service (via `TimescaleStorage`).
+  - **Runtime Logic**: In-memory `AlertRegistry` (synced on startup).
+  - **UI Queries**: Dashboard queries Database Service (`/alerts/active`) directly, not the Alert Engine.
 
-The alert engine service consumes processed sensor data from `dt.sensors.processed.*` topics
-and publishes canonical `AlertEvent` messages to the `dt.alerts` topic. Each `AlertEvent`
-contains:
-- **event**: Lifecycle event type (CREATED, UPDATED, SUPPRESSED, IGNORED, ACKNOWLEDGED, CLEARED)
-- **alert_id**: Unique alert identifier (format: `{rule_id}:{source}` for rule-based alerts)
-- **timestamp**: Unix timestamp when the event was generated
-- **plant_id**: Plant identifier for multi-environment deployments
-- **alert**: Full `CandidateAlert` payload for CREATED/UPDATED events (includes rule_id, source, severity, message, correlation_id, and processed data snapshot)
-- **actor**: Optional actor identifier for ACKNOWLEDGED/CLEARED events
+### PostgreSQL + TimescaleDB Configuration
 
-Alert rules are configured via YAML (`dt/utils/alert_rules.yml`) and support four condition types:
-- **threshold**: Compare sensor value against a threshold with operators (>, <, >=, <=, ==, !=)
-- **range**: Check if value falls outside min/max bounds
-- **dq_score**: Trigger when data quality score drops below threshold
-- **validation_flag**: Activate when specific validation flags are set
+The storage layer uses PostgreSQL with the TimescaleDB extension for unified time-series
+and relational data storage. Configuration is managed through environment variables with
+sensible defaults for local development:
 
-Each rule specifies a **persistence_count** (consecutive violations required before alerting)
-and **cooldown_seconds** (minimum time between repeated alerts for the same rule/source)
-to prevent alert fatigue. The alert registry maintains in-memory state with deduplication,
-cooldown tracking, and acknowledgment flags.
+- **PG_DATABASE_URL**: PostgreSQL connection string (default: `postgresql+psycopg://dt:dt@localhost:5432/dt`)
+- **SQL_POOL_SIZE**: SQLAlchemy connection pool size (default: 5)
+
+The storage architecture uses SQLAlchemy Core for explicit query control and portability,
+avoiding ORM overhead. Hypertables provide automatic time-based partitioning for
+measurements, while continuous aggregates maintain 1-hour rollups for
+efficient dashboard queries. Compression policies reduce storage footprint for older data
+while maintaining query performance.
+
+#### Database Schema
+
+The unified PostgreSQL + TimescaleDB schema consists of:
+
+**Relational Tables:**
+- **plants**: Base plant metadata (id, name, notes)
+- **sensors**: Sensor configuration with FK to plants (id, plant_id, name, pin, read_interval, status)
+- **actuators**: Actuator configuration with FK to plants (id, plant_id, name, relay_channel, status)
+- **alert_definitions**: Alert invariants keyed by `(alert_key, plant_id)` with optional sensor FK, source, optional rule_id/rule_name, kind, persistence_count, cooldown_seconds
+- **alert_history**: Append-only event log referencing alert_definitions (id PK, alert_key FK, plant_id FK, timestamp, status, severity, message, correlation_id, optional acknowledged_by/acknowledged_ts/cleared_ts)
+- **alert_sensors**: Sensor alert snapshots linked to history (id PK, alert_history_id FK, plant_id, sensor_id FK, timestamp, value, unit, topic, correlation_id, flags, dq_score, imputed, raw/calibrated/normalized values, calibration/normalization profiles, threshold_op/threshold_value/range_min/range_max)
+- **alert_external**: External alert metadata per history row stored as JSONB (id PK, alert_history_id FK, plant_id, metadata JSONB) — planned move to string key/value rows later
+
+**TimescaleDB Hypertables:**
+- **sensor_readings**: Time-series data partitioned by `time` column
+  - Fields: time, sensor_id FK, plant_id FK, data_type, value, unit, correlation_id, dq_score, imputed, validation_flag
+  - Optional audit fields: raw_value, calibrated_value, normalized_value, calibration_profile_id, normalization_profile_id
+  - Retention: 30 days (hardcoded in migration; dynamic configuration planned for future)
+  - Compression: Enabled for data >7 days old, segmented by sensor_id, plant_id, data_type (hardcoded in migration)
+
+**Continuous Aggregates:**
+- **sensor_readings_1h**: 1-hour rollups (avg, min, max, sample_count, avg_dq_score, imputed_count)
+  - Refresh policy: every 30 minutes for last 2 hours of data
+
+#### Schema Migrations
+
+SQL migrations live in `dt/data/database/migrations/` and are executed in alphanumeric order by the database service on startup (`dt/data/database/app.py`). The migration runner tracks applied migrations in the `schema_migrations` table to ensure idempotency.
+
+The migrations directory can be overridden by setting `DB_MIGRATIONS_DIR`.
+
+**Running Migrations:**
+```bash
+# Ensure PG_DATABASE_URL is configured in .env
+python scripts/run_sql_migration.py
+```
+
+The runner uses `psycopg` to execute each `*.sql` file and records completion in `schema_migrations`. Future schema changes should be added as new numbered migration files (e.g., `002_add_experiments_table.sql`).
+
+**Design Choice:** Alerts are modeled as append-only history events keyed by `(alert_key, plant_id)` with sensor snapshots and external metadata attached per event. Thresholds live on sensor snapshots; external metadata is temporarily stored as JSONB with a planned move to key/value rows.
+
+#### TimescaleDB Policies & Continuous Aggregates
+
+TimescaleDB policies (retention and continuous aggregates) are defined directly in the `001_init.sql` migration for the `sensor_readings` Hypercore hypertable. Current configuration:
+
+- **Retention**: 30 days for raw measurements (migration-defined).
+- **Compression**: Hypercore columnstore options are set on the hypertable; Data moved to Columnarstorage after 7 days.
+- **Continuous Aggregates**: 1-hour rollups with refresh every 30 minutes over the last 2 hours.
+- **5-minute aggregates**: Removed for now; add later if the dashboard needs finer granularity.
+
+Policies are hardcoded in the migration for deterministic schema setup. If we need adjustable policies later, add a configuration interface and avoid duplicating policy statements between migrations and runtime scripts.
 
 ### Alert Service REST API
 
@@ -138,18 +199,20 @@ The alert engine exposes a REST API (default port 5003) for programmatic alert m
 
 **Alert Management Endpoints:**
 - `POST /alerts/submit` — Submit external alerts (e.g., from AI/control modules)
-  - Required fields: `alert_id`, `source`, `severity`, `message`, `correlation_id`
-  - Optional fields: `persistence_count` (default: 1), `cooldown_seconds` (default: 300), `payload` (additional context)
-  - Returns: 202 Accepted with `alert_id` and lifecycle `event` (CREATED, UPDATED, SUPPRESSED, or IGNORED)
+  - Required fields: `alert_key`, `plant_id`, `severity`, `message`, `correlation_id`
+  - Optional fields: `metadata` (dict), `persistence_count` (default: 1), `cooldown_seconds` (default: 300)
+  - Returns: 202 Accepted with `alert_key` and `status` (`active` or `ignored` when persistence/cooldown suppresses publishing)
 
-- `POST /alerts/<alert_id>/acknowledge` — Acknowledge an alert
+- `POST /alerts/<alert_key>/acknowledge` — Acknowledge an alert
   - Required body: `{"actor": "<identifier>"}`
+  - Looks up registry state by `alert_key` (propagates plant_id/source/severity/message/correlation_id) and publishes `ACKNOWLEDGED` history event with minimal payload
   - Returns: 200 OK on success, 404 if alert not found
-  - Publishes ACKNOWLEDGED event to Kafka
+  - Publishes `ACKNOWLEDGED` event to Kafka
 
-- `POST /alerts/<alert_id>/clear` — Clear a resolved alert
+- `POST /alerts/<alert_key>/clear` — Clear a resolved alert
+  - Uses registry state to propagate plant_id/source/severity/message/correlation_id and publishes a minimal `CLEARED` history event
   - Returns: 200 OK on success, 404 if alert not found
-  - Publishes CLEARED event to Kafka
+  - Publishes `CLEARED` event to Kafka
 
 - `GET /alerts/active` — List all active alerts
   - Returns: JSON array of active alert states with timestamps, severity, acknowledgment status, and occurrence counts

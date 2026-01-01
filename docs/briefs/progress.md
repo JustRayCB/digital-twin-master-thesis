@@ -6,6 +6,72 @@
 ## ⚠️ Issues / Decisions Needed
 - <bullet, who/when>
 
+# Progress — Week of 2025-11-08
+**Branch:** feature/storage-architecture
+**Phase:** P1 (Preprocessing & Data Quality) - Storage Architecture
+
+---
+
+## ✅ Done
+
+### Storage Architecture Migration (PostgreSQL + TimescaleDB)
+
+**Date**: 2025-11-08
+**Branch**: feature/storage-architecture
+
+Migrated from InfluxDB to unified PostgreSQL + TimescaleDB storage for both time-series measurements and relational domain data.
+
+**Changes:**
+- Added PostgreSQL/Timescale configuration to `dt/utils/config.py` (`PG_DATABASE_URL`, `SQL_POOL_SIZE`)
+- Bootstrapped TimescaleDB on Raspberry Pi with PostgreSQL installation and extension enablement
+- Refactored database service with `create_app()` factory pattern for testability
+- Created unified schema in `dt/data/database/migrations/001_init.sql`:
+  - Relational tables: plants, sensors, actuators, alerts, alert_events (normalized), alert_event_snapshots, alert_event_thresholds
+  - Hypertable: sensor_readings with time-based partitioning
+  - Continuous aggregates: 1-hour rollups with automatic refresh policies
+  - Retention policy: 30-day default for raw measurements
+  - Hypercore columnstore settings: orderby/segmentby set on the hypertable; no scheduled columnstore policy yet
+- Implemented `TimescaleStorage` repository with SQLAlchemy Core:
+  - Methods: `register_sensor`, `list_sensors`, `upsert_plant`, `store_alert_event`, `get_alert_history`, `register_actuator`, `list_actuators`, `ingest_reading`, `query_readings`
+  - Connection pooling for efficient resource usage on Pi
+  - Full test coverage with testcontainers for integration tests
+- Updated Flask REST API endpoints:
+  - `GET /readings?window={raw|1h}&sensor_id=X&plant_id=Y&topic=Z&since=T1&until=T2` for measurement queries with optional aggregation
+  - `GET /actuators` for listing registered actuators
+  - `GET /alerts/history?plant_id=X&limit=N` for alert event history
+  - Fixed `POST /bind_sensor` to return storage-assigned sensor ID
+  - Updated `GET /sensors` to return full sensor descriptors with metadata
+- Enhanced Kafka bridge to persist both measurements and alert events
+- Created `scripts/run_sql_migration.py` for idempotent migration execution
+- Updated documentation (README, techStack, systemPatterns) to reflect new architecture
+
+**Benefits:**
+- Unified storage eliminates operational complexity of managing separate InfluxDB and SQL instances
+- TimescaleDB hypertables provide automatic partitioning, compression, and aggregation
+- Clear migration path to managed PostgreSQL services (AWS RDS, Azure Database, etc.)
+- SQLAlchemy Core provides portability and explicit query control
+- Direct Flask-to-Storage architecture keeps code simple without premature abstraction
+
+**Test coverage**: Comprehensive unit and integration tests using testcontainers
+
+---
+
+## 🔜 Next
+
+| Task                            | Description                                                                                  | Status         |
+| ------------------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| **Dashboard configurability**   | Add UI controls for retention and aggregation policy adjustments.                            | ⏳ To do        |
+| **Managed DB migration path**   | Document migration steps to AWS RDS/Azure Database for PostgreSQL.                          | ⏳ To do        |
+| **Alert UI Integration**        | Wire alert service into dashboard for real-time alert display and acknowledgment.            | ⏳ To do        |
+| **Actuator Control Loop**       | Implement closed-loop control for watering, lighting, and climate management.                | ⏳ To do        |
+
+---
+
+## ⚠️ Issues / Risks
+- **Policy configurability**: TimescaleDB policies are hardcoded in migrations; dashboard-driven adjustments require additional configuration interface
+
+---
+
 # Progress — Week of 2025-11-03
 **Branch:** feature/alert-engine
 **Phase:** P1 (Preprocessing & Data Quality)
@@ -39,7 +105,7 @@ rule-based evaluation, state tracking, and REST API for programmatic integration
 - Persistence mechanism prevents alerts until N consecutive violations occur
 - Cooldown timers prevent alert fatigue by suppressing repeated alerts
 - REST API enables external submissions from AI/control modules
-- Publishes canonical `AlertEvent` messages to `dt.alerts` Kafka topic
+- Publishes canonical alert history events (sensor/external) to `dt.alerts` Kafka topic
 - In-memory state maintains alert history, acknowledgments, and timestamps
 
 **Benefits:**

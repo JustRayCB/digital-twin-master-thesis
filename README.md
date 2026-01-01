@@ -1,6 +1,6 @@
 # Digital Twin for Plant Health Monitoring
 
-A modular digital-twin stack for monitoring plant health. Physical sensors (DHT22, BH1750, STEMMA soil moisture, camera) feed a Raspberry Pi collector that publishes telemetry to Kafka. A Flask-based database service persists data into SQLite or InfluxDB, while the web dashboard streams live updates over Socket.IO. Supporting modules cover AI model management, utilities, setup automation, and hardware/software experiments.
+A modular digital-twin stack for monitoring plant health. Physical sensors (DHT22, BH1750, STEMMA soil moisture, camera) feed a Raspberry Pi collector that publishes telemetry to Kafka. A Flask-based database service persists data into PostgreSQL with TimescaleDB, while the web dashboard streams live updates over Socket.IO. Supporting modules cover AI model management, utilities, setup automation, and hardware/software experiments.
 
 
 # ⚠️ WARNING
@@ -40,10 +40,10 @@ inconsistencies in the codebase as I refactor and extend functionality.
 
 - Real-time telemetry collection from GPIO/I²C sensors with configurable read cadences.
 - Kafka-backed messaging fabric with topic segregation for raw vs. processed sensor data.
-- Database façade that bridges Kafka → InfluxDB and exposes REST endpoints.
+- Unified PostgreSQL + TimescaleDB storage with hypertables, continuous aggregates, and REST endpoints.
 - Interactive web dashboard (Flask + Socket.IO + Plotly) for live and historical visualisation.
 - Early AI/model-registry scaffolding for future predictive and rule-based services.
-- Provisioning scripts for Debian/Ubuntu hosts, Kafka KRaft nodes, and InfluxDB.
+- Provisioning scripts for Debian/Ubuntu hosts and Kafka KRaft nodes.
 - Hands-on scripts to validate individual sensors, actuators, and platform services.
 
 ---
@@ -212,11 +212,11 @@ inconsistencies in the codebase as I refactor and extend functionality.
 | --- | --- |
 | `dt/collector/` | GPIO/I²C sensor abstractions, mocks, and the `SensorManager` publishing to Kafka. |
 | `dt/communication/` | Messaging clients (Kafka, MQTT) and REST API client for the database service and shared dataclasses. |
-| `dt/data/database/` | Flask API for data persistence plus `SQLStorage` (SQLite) and `InfluxDBStorage`. |
+| `dt/data/database/` | Flask API for data persistence with `TimescaleStorage` (PostgreSQL + TimescaleDB). |
 | `dt/webapp/` | Flask + Socket.IO dashboard, Plotly front-end assets, templates, and real-time store. |
 | `dt/ai/` | Model base class, metadata, registry, and filesystem storage backend (future analytics). |
 | `dt/utils/` | Config enum, logging setup, correlation IDs, preprocessing configuration and exceptions. |
-| `scripts/` | Provisioning scripts (`setup.sh`, `setup_kafka.sh`, `setup_influxdb.sh`), Kafka topic manager, and hands-on hardware/software experiments. |
+| `scripts/` | Provisioning scripts (`setup.sh`, `setup_kafka.sh`), Kafka topic manager, SQL migration runner, and hands-on hardware/software experiments. |
 | `tests/` | Pytest suite validating core dataclasses, preprocessing pipeline (serialization, helpers, validation). |
 | `Makefile` | Convenience targets for installing poetry profiles, running services, tests, and maintenance. |
 | `pyproject.toml` | Poetry project metadata, dependency groups (`dev`, `spark`, `db`, `rpi`), Python constraint (≥3.11,<4). |
@@ -230,7 +230,7 @@ inconsistencies in the codebase as I refactor and extend functionality.
 
 - **Runtime:** Python 3.11+, Poetry-managed environment.
 - **Messaging:** Apache Kafka (`kafka-python`)
-- **Data Storage:** InfluxDB 2.x client (`influxdb-client`) for TS data, a SQL managed DB for NTS data.
+- **Data Storage:** PostgreSQL with TimescaleDB extension for unified time-series and relational storage (`sqlalchemy`, `psycopg[binary]`).
 - **Web:** Flask, Flask-SocketIO, Flask-CORS, Plotly, vanilla JS modules.
 - **Analytics:** Pandas, Matplotlib, model registry scaffolding for future ML integration.
 - **Hardware I/O (optional group `rpi`):** `adafruit-circuitpython-*`, `adafruit-blinka`, `RPi.GPIO`, `board`, `busio`.
@@ -242,7 +242,7 @@ inconsistencies in the codebase as I refactor and extend functionality.
 
 - Python 3.11 and Poetry (`curl -sSL https://install.python-poetry.org | python3 -`).
 - Kafka broker (scripted install via `scripts/setup_kafka.sh` or existing cluster).
-- InfluxDB 2.x (provision with `scripts/setup_influxdb.sh`)
+- PostgreSQL with TimescaleDB extension (install via `apt` on Raspberry Pi).
 - Raspberry Pi OS (64-bit) for hardware deployment, with I²C/1-Wire/GPIO enabled.
 - For Spark features, install Java 17 (handled `scripts/setup.sh`).
 
@@ -275,7 +275,9 @@ Activate the virtual environment with `eval $(poetry env activate)` or `make ven
 Central settings live in `dt/utils/config.py` (StrEnum)  exposed as environment variables:
 
 - `KAFKA_URL`: Kafka bootstrap servers (default `localhost:9092`).
-- `INFLUX_*`: URL, token, org, bucket for InfluxDB. Tokens in source are placeholders; supply your own secrets via environment variables or a secure config.
+- `PG_DATABASE_URL`: PostgreSQL connection string (default `postgresql+psycopg://dt:dt@localhost:5432/dt`).
+- `DB_MIGRATIONS_DIR`: SQL migrations directory used by the database service (default `dt/data/database/migrations`).
+- `SQL_POOL_SIZE`: SQLAlchemy connection pool size (default `5`).
 - `FLASK_*_URL`: Base URLs consumed by cross-service clients (`DatabaseApiClient`, web dashboard, ...).
 - `MODELS_DIR`: Registry storage path (default `../data/models/`).
 - `PREPROCESSING_CONFIG_PATH`: YAML file describing sensor validation rules (default `dt/utils/preprocessing_config.yml`).
@@ -310,13 +312,16 @@ Keep credentials out of version control in production by using the `.env` file, 
    - Ensure `dt/utils/preprocessing_config.yml` lists each active sensor and that the database service exposes matching descriptors so the pipeline can resolve validation rules.
    - Processed payloads include `flags`, `dq_score`, `imputed`, and optional `raw_value`; confirm downstream consumers expect these fields.
 
-4. **Database service**  
+4. **Database service**
    - `make run-database` → runs `dt/data/database/app.py`.
-   - Subscribes to processed topics, persists payloads, and exposes REST endpoints:
+   - Subscribes to processed topics via Kafka bridge, persists measurements and alert events into PostgreSQL + TimescaleDB, and exposes REST endpoints:
      - `POST /bind_sensor` → register sensors (`SensorDescriptor`).
-     - `POST /data/timestamp` → query by time range (`DBTimestampQuery`).
-     - `POST /data/id` → fetch recent records by sensor ID (`DBIdQuery`).
-   - Default storage backend is InfluxDB for time-series data. Later will be added SQL.
+     - `GET /sensors` → list all registered sensors with metadata.
+     - `GET /actuators` → list all registered actuators.
+     - `GET /readings?window={raw|1h}&sensor_id=X&plant_id=Y&topic=Z&since=T1&until=T2` → query measurements with optional aggregation.
+     - `GET /alerts/history?plant_id=X&limit=N` → retrieve alert event history.
+   - Storage backend uses TimescaleDB hypertables for measurements with continuous aggregates (1h rollups), plus relational tables for sensors, plants, actuators, and alert lifecycle history.
+   - Runs SQL migrations automatically on startup (bootstrap schema and policies). Manual equivalent: `python scripts/run_sql_migration.py`.
 
 5. **Web dashboard**  
    - `make run-dashboard` → runs `dt/webapp/app.py`.
@@ -335,10 +340,10 @@ Keep credentials out of version control in production by using the `.env` file, 
 
 - `scripts/setup.sh`: Bootstraps Debian/Ubuntu host (Python, build tools, Java 17, Poetry, `poetry install`).
 - `scripts/setup_kafka.sh`: Idempotent KRaft broker installer (creates `/opt/kafka`, systemd unit, external/internal listeners).
-- `scripts/setup_influxdb.sh`: Installs and enables InfluxDB 2.x from the official apt repo.
+- `scripts/run_sql_migration.py`: Executes SQL migrations from `dt/data/database/migrations/` in order, tracking completion in `schema_migrations` table.
 - `scripts/kafka_manager.py`: CLI helper (`create`, `delete`, `list`, `describe`, `alter`, `config`, `setup_kafka`) built around `Topics`.
 - `scripts/hands-on-scripts/hardware/`: Quick sensor/actuator tests (I²C scan, BH1750 lux reader, DHT22, Adafruit Seesaw soil probe, relay/pump control).
-- `scripts/hands-on-scripts/software/`: Mini-clients for Kafka producer/consumer, InfluxDB write/read, Spark streaming example.
+- `scripts/hands-on-scripts/software/`: Mini-clients for Kafka producer/consumer, database queries, Spark streaming example.
 - `logs/`: Check runtime behaviour per-day (log files are auto-created).
 
 Grant execute permission where necessary (`chmod +x scripts/setup_kafka.sh`).
@@ -383,16 +388,17 @@ This repository is thoroughly documented to facilitate understanding and extensi
 ## TODO
 
 - ✅ Thoroughly document the entire repository, including Python code (numpydoc), JavaScript (JSDoc), and shell scripts.
-- ✅ Replace sensitive defaults in `dt/utils/config.py` with secure configuration management
-- Implement the data processing pipeline (consuming raw topics, enriching, publishing processed).
-- Add an SQL managed database for non-time-series data (sensor registry, action history, alerts, ...).
-- Configure the Downsampling task in InfluxDB for long-term data retention.
+- ✅ Replace sensitive defaults in `dt/utils/config.py` with secure configuration management.
+- ✅ Implement the data processing pipeline (consuming raw topics, enriching, publishing processed).
+- ✅ Migrate to PostgreSQL + TimescaleDB for unified time-series and relational storage.
 - Flesh out controller actuators and camera pipeline (currently placeholders).
 - Better interfacing of Sensors and Actuators to make it independent from the model used.
 - Close the loop with action commands (Kafka topic, REST endpoint, actuator control).
 - Integrate AI models and registry once analytics logic is ready (tie into Kafka or database events).
 - Enhance the web dashboard with more visualisations, historical queries, alert visualisation, and actuator controls, model status.
-- Document production-grade deployment (systemd units, docker-compose, TLS for Kafka/Influx).
+- Configure dashboard-driven adjustments for retention and aggregation policies.
+- Document migration path to managed PostgreSQL services (AWS RDS, Azure Database, etc.).
+- Document production-grade deployment (systemd units, docker-compose, TLS for Kafka/PostgreSQL).
 - Extend the test suite beyond dataclasses (e.g., messaging mocks, storage integrations).
 
 ---

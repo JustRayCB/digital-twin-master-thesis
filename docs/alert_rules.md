@@ -5,7 +5,7 @@
 Alert rules are defined in `dt/utils/alert_rules.yml` and control how the alert
 engine service evaluates processed sensor data to generate alerts. The alert
 engine consumes data from `dt.sensors.processed.*` Kafka topics and publishes
-alert lifecycle events to the `dt.alerts` topic.
+alert history events with `AlertStatus` to the `dt.alerts` topic.
 
 ## Configuration Location
 
@@ -135,7 +135,7 @@ persistence_count: 3
 ```
 - First violation: IGNORED (state tracked, no alert)
 - Second violation: IGNORED (state tracked, no alert)
-- Third violation: CREATED (alert fires!)
+- Third violation: ACTIVE (alert fires)
 - If condition clears before reaching threshold, counter resets
 
 ### Cooldown Timer
@@ -147,9 +147,9 @@ The `cooldown_seconds` parameter prevents alert fatigue by suppressing repeated 
 cooldown_seconds: 300  # 5 minutes
 ```
 - Alert fires at T=0
-- Condition persists at T=60: SUPPRESSED (no new alert)
-- Condition persists at T=120: SUPPRESSED (still in cooldown)
-- Condition persists at T=400: UPDATED (alert fires again after cooldown)
+- Condition persists at T=60: IGNORED (no new alert during cooldown)
+- Condition persists at T=120: IGNORED (still in cooldown)
+- Condition persists at T=400: ACTIVE (alert publishes again after cooldown)
 
 **Note:** Cooldown applies per unique alert_id (`{rule_id}:{source}`). Different sensors trigger independent alerts.
 
@@ -228,16 +228,14 @@ Monitors all sensors for low data quality, triggers immediately, with 2-minute c
 
 ## Alert Lifecycle
 
-When a rule triggers, the alert engine manages alert lifecycle through these states:
+When a rule triggers, the alert engine tracks alerts with `AlertStatus`:
 
-1. **IGNORED**: Condition met but below persistence threshold (state tracked, no event published)
-2. **CREATED**: Persistence threshold reached, alert created (event published to Kafka)
-3. **SUPPRESSED**: Condition persists within cooldown period (state updated, no event published)
-4. **UPDATED**: Condition persists after cooldown expires (event published to Kafka)
-5. **ACKNOWLEDGED**: Alert acknowledged via REST API (event published with actor)
-6. **CLEARED**: Alert cleared via REST API (event published, state removed)
+1. **IGNORED**: Condition met but below persistence threshold or within cooldown (state tracked, no event published)
+2. **ACTIVE**: Persistence threshold reached or re-trigger after cooldown (event published to Kafka)
+3. **ACKNOWLEDGED**: Alert acknowledged via REST API (event published with actor)
+4. **CLEARED**: Alert cleared via REST API (event published, state removed)
 
-Only CREATED, UPDATED, ACKNOWLEDGED, and CLEARED events are published to the `dt.alerts` Kafka topic.
+Only ACTIVE, ACKNOWLEDGED, and CLEARED statuses are published to the `dt.alerts` Kafka topic.
 
 ## REST API Integration
 
@@ -266,7 +264,7 @@ These submissions bypass rule evaluation and are immediately registered with the
 
 1. **Check source name**: Ensure `source` matches topic short name exactly (`temperature` not `TEMPERATURE`)
 2. **Verify persistence count**: Rule may be IGNORED if not enough consecutive violations
-3. **Check cooldown**: Alert may be SUPPRESSED if within cooldown period
+3. **Check cooldown**: Alert may be IGNORED if within cooldown period
 4. **Inspect logs**: Alert engine logs all evaluation results and state transitions
 
 ### Alert Fatigue

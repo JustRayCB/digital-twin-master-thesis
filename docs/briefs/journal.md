@@ -122,7 +122,7 @@
   2. **Persistence Mechanism**: Require N consecutive violations before creating alert (configurable per rule). Prevents transient spikes from generating alerts. Counter resets if condition clears, ensuring we only alert on sustained problems.
   3. **Cooldown Timers**: After alert fires, suppress repeated alerts for configurable cooldown period (default 300s). Once cooldown expires, alert can fire again if condition persists. Acknowledgments don't prevent future alerts - they're informational state only.
   4. **In-Memory State**: Registry maintains alert state in memory for fast lookups and updates. Trade-off: state lost on restart, but gain simplicity and speed for MVP. Database persistence layer planned for audit/action store phase.
-  5. **Lifecycle Events**: Publish all state transitions (CREATED, UPDATED, ACKNOWLEDGED, CLEARED) to Kafka for audit trail and downstream consumption. SUPPRESSED and IGNORED events not published to reduce noise.
+  5. **Lifecycle Events**: Publish alert history with `AlertStatus` (ACTIVE for creates/updates, ACKNOWLEDGED, CLEARED) to Kafka for audit trail and downstream consumption; IGNORED (cooldown/persistence cases) is not published to reduce noise.
   6. **REST API Design**: Separate endpoints for submission (POST /alerts/submit), acknowledgment (POST /alerts/<id>/acknowledge with actor), clearing (POST /alerts/<id>/clear), and listing (GET /alerts/active, GET /alert-rules). API accepts external submissions from AI/control modules, enabling them to raise alerts without duplicating logic.
   7. **Configuration Format**: YAML-based rules with typed validation (severity, condition types, evaluation stages). Support 4 condition types for MVP: threshold (with operators), range (min/max bounds), dq_score, validation_flag. Easy to extend with new condition types later.
 - **Result**: Implemented `dt.alerts` package with 122 passing tests. Full TDD approach: rule loader, evaluator, registry, publisher, API, consumer service, and integration tests. Service successfully evaluates rules against processed sensor streams and maintains alert state with persistence/cooldown logic.
@@ -135,3 +135,100 @@
   - Add notification workers consuming dt.alerts topic (email, SMS, push notifications)
   - Wire alert service into dashboard UI for real-time display and acknowledgment
 - MEM-DRIFT: none
+## 2025-11-05 — Storage architecture overhaul kickoff
+- Hypothesis: A unified PostgreSQL + TimescaleDB storage layer with explicit SQL migrations will simplify operations and support time-series features while preserving flexibility.
+- Experiment: Assessed DB choice and architecture (TimescaleStorage and migrations). Identified risks (Pi resources, schema evolution, aggregate refresh timing, Influx cutover) and documented mitigations.
+- Result: Architecture and risk profile validated; forward-only versioned SQL approach selected with a lightweight runner and history table.
+- Decision: Proceed with TDD phases from the storage plan; run manual SQL migrations via the runner during deploy; install PG/Timescale on the Pi.
+- MEM-DRIFT: none
+## 2025-11-05 — Bootstrap Timescale and refactor service bootstrap
+- Hypothesis: Introducing an app factory and dependency-injected storage will make the DB service testable and ready for Timescale without side effects.
+- Experiment: Added PG/Timescale setup script; created `timescale_storage.py` skeleton with injected engine; wrote smoke tests for `create_app`; refactored `app.py` to `create_app` + `setup_bridge`; made Influx optional to decouple tests.
+- Result: All bootstrap tests pass; Flask routes register via the factory; storage injection works; Kafka bridge setup is isolated.
+- Decision: Adopt factory + DI pattern for the database service and continue to Phase 3 with Timescale-focused work.
+- MEM-DRIFT: none
+
+## 2025-11-08 — Phase 3: Normalized schema design for alert events
+- Hypothesis: Normalizing alert event context and omitting `event_type` and audit timestamps will improve extensibility and clarity without losing information.
+- Experiment: Authored `001_init.sql` with normalized relations and hypertable/aggregates/policies; implemented `MigrationRunner` and CLI; updated system patterns; fixed SQL syntax; registered pytest marker; propagated `plant_id` through SensorDescriptor and call sites.
+- Result: Migrations run cleanly; schema stands up; tests are pristine; ready to implement the repository in Phase 4.
+- Decision: Adopt the normalized alert schema; keep `event_type`/created/updated timestamps out; proceed to repository implementation next.
+- MEM-DRIFT: Plan updated to reflect normalized schema; `systemPatterns.md` documents the schema and migration process.
+
+## 2025-11-25 — Storage architecture completed (PostgreSQL + TimescaleDB)
+- **Context**: Two-database overhead (Influx + planned SQL) was too high; needed unified storage with a managed-DB path.
+- **Hypothesis**: PostgreSQL + TimescaleDB can handle time-series and relational data with manageable ops.
+- **Experiment**: Added PG/Timescale config; enabled Timescale; defined schema in `001_init.sql` (Hypercore `sensor_readings`, 1h CAGG, retention); built `TimescaleStorage`; expanded REST (readings/sensors/actuators/alerts); Kafka bridge persists measurements and alerts; dropped policy tooling; updated docs; ran full tests.
+- **Result**: Unified PG/Timescale storage in place; tests pass; simple Flask→storage wiring with pooling.
+- **Decisions**: 1h CAGG only; policies fixed in migration (Hypercore set, no scheduled columnstore policy); keep direct storage calls (db service later if needed); alert schema stays normalized.
+- **Trade-offs**: 1h-only aggregates; policies hardcoded; direct coupling acceptable now.
+- **Migration path**: Point `PG_DATABASE_URL` to managed PG; reuse schema; document backup/restore later.
+- MEM-DRIFT: Docs updated; plan marked Phase 8 complete.
+
+## 2025-11-30 — Alert definitions persisted before publishing
+- Context: Alert engine definition alignment (Task 2) needed pre-publish persistence for both sensor and external alerts.
+- Decision: RuleEvaluator now returns (AlertDefinition, AlertEvent) tuples; publisher persists definitions via the database API `/alerts/definitions` (DatabaseApiClient) before sending Kafka events; external/ACK/CLEAR paths build definitions too; storage guard remains as a safety net.
+- Result: Added DB API endpoint for idempotent definition upserts; AlertPublisher gates publish on successful definition persistence; tests updated across evaluator, publisher, API, registry flows.
+- MEM-DRIFT: Documented in `systemPatterns.md` (definition upsert contract and `/alerts/definitions` endpoint).
+## 2025-12-02 — Alert API contract alignment
+- Hypothesis: The REST surface should mirror the alert_key + plant_id contract used by the alert engine and Kafka payloads to avoid drift across services.
+- Experiment: Reviewed submit/ACK/CLEAR flows and synchronized tests to the minimal AlertHistoryEvent payload (ack/clear) and alert_key-based submissions with persistence/cooldown validation.
+- Result: API tests now assert alert_key, plant_id, correlation_id propagation for ACK/CLEAR; integration flow verifies reading snapshots on sensor events; REST docs refreshed to match the contract.
+- Decision: Keep ACK/CLEAR payloads minimal (no metadata) and rely on registry state to populate plant_id/source/severity/message/correlation_id; treat persistence/cooldown validation as part of submit.
+- MEM-DRIFT: Updated `systemPatterns.md` REST API section to match the alert_key-based contract.
+
+## 2025-12-24 — Database service runs SQL migrations on startup
+- Context: DB schema initialization relied on `scripts/run_sql_migration.py`, but the database service could be started without applying migrations.
+- Decision: Run `MigrationRunner` automatically on database service startup and stop the service on migration failure.
+- Rationale: Minimize operator steps and prevent the service from running against an uninitialized schema.
+- MEM-DRIFT: `systemPatterns.md` and `README.md` must reflect startup migrations as the default path (runner remains available for manual use).
+
+## 2025-12-25 — Circular import in preprocessing config tests
+- Hypothesis: Import-time side effects in package `__init__.py` and cross-layer adapter hooks create a circular import between `dt.communication` and `dt.data.preprocess`.
+- Experiment: Reproduced failure by importing `dt.communication.adapters` and `dt.data.preprocess.config.manager`; traced the cycle through `dt/communication/__init__.py`, adapter registry eager instantiation, and `dt/data/preprocess/core/__init__.py` re-exports.
+- Result: Confirmed two root causes: (1) package `__init__.py` files importing heavy submodules at import time, and (2) `GenericAdapter` importing preprocessing config types to register structure hooks.
+- Decision: Keep `dt/communication/__init__.py`, `dt/data/preprocess/core/__init__.py`, and `dt/data/preprocess/config/__init__.py` import-free; move preprocessing config structure-hook registration into `dt.data.preprocess.config.serialization` and call it from `ConfigurationManager` before parsing YAML.
+- MEM-DRIFT: none
+
+## 2025-12-25 — Preprocessing pipeline config/schema alignment
+- Context: Preprocessing tests failed after the refactor to the unified preprocessing YAML schema and modular pipeline.
+- Root cause: The code and tests still referenced removed modules (`dt.data.preprocess.config.profiles`, `...config.preprocessing_config`, `...configuration.preprocessing_config`) and several processors still assumed the old `SensorConfig` shape (top-level `range/roc/stuck`) and old `ConfigurationManager` strategy APIs.
+- Fix: Added `IdentityCalibrationConfig` to the config schema and serialization hooks so `strategy: identity` loads correctly; updated validation/imputation/smoothing processors to use the new schema (`sensor_config.validation.*`) and current `ConfigurationManager` strategy methods; updated tests to match the new architecture.
+- Result: `pytest -m "not requires_timescale"` is green locally; TimescaleDB integration tests still require Docker access.
+- MEM-DRIFT: none
+
+## 2025-12-27 — Split Kafka bridge out of webapp app
+- Context: `dt/webapp/app.py` was accumulating Kafka bridge and payload-shaping logic alongside Flask app wiring.
+- Decision: Extract Kafka subscription and Socket.IO forwarding logic (plus payload shaping and cache helpers) into `dt/webapp/consumer.py`; keep Flask/Socket.IO app creation and connection handlers in `dt/webapp/app.py`.
+- Result: Webapp tests remain green after the refactor.
+
+## 2025-12-27 — Best-effort scheduling for collector loop
+- Context: `dt/collector/main.py` polled in a tight loop with a fixed sleep, even though sensors have independent `read_interval` values.
+- Root cause: Collector scheduling was not using next-due timing; additionally, importing `dt.collector` in a non-RPi environment failed due to eager `board` imports and a stale `SensorData` type import in `SensorManager`.
+- Decision: Add a best-effort scheduler (`SensorManager.seconds_until_next_read`) and make collector imports lazy when `board` is unavailable so unit tests can run off-device.
+- Result: `dt/collector/main.py` now sleeps until the next sensor is due; added unit tests for scheduling without requiring Kafka/DB connections.
+- Notes: Ray approved skipping GitHub issue/PR linking for this task.
+## 2025-12-27 — Alert tests cleanup approach
+- Hypothesis: Standardizing alert tests around real classes and shared fixtures will keep intent clear while reducing mocks and duplication.
+- Experiment: Drafted testing guidelines and refactored `tests/alerts/` to use real registry/evaluator/publisher behavior with small fakes at boundaries.
+- Result: Alert tests now rely on shared fixtures and recording fakes for Kafka/publishing, with NumPy-style docstrings and clearer assertions.
+- Decision: Continue folder-by-folder test refactors using the same pattern and update guidelines as needed.
+- MEM-DRIFT: none
+## 2025-12-27 — Alert tests with container-backed dependencies
+- Hypothesis: Replacing alert test fakes with Kafka/PostgreSQL containers will better reflect production behavior and align with testing guidelines.
+- Experiment: Updated alert tests to use Kafka and TimescaleDB testcontainers, a live database service, and Kafka consumers for assertions.
+- Result: Alert API, publisher, service, and integration tests now exercise real Kafka publishing and definition persistence with fewer test doubles.
+- Decision: Prefer container-backed fixtures for alert tests that cross service boundaries; keep pure unit tests for rules/registry.
+- MEM-DRIFT: none
+## 2025-12-28 — Adapter test refactor guidelines
+- Hypothesis: Consistent docstrings, fixtures, and comments will improve test clarity without changing behavior.
+- Experiment: Added docs/testing.md guidelines, refactored tests/communication/adapters with shared fixtures and clearer assertions, and ran targeted pytest.
+- Result: Adapter tests are more readable and reusable; pytest `tests/communication/adapters` passed (60 tests).
+- Decision: Apply the guidelines folder-by-folder, starting with adapters and continuing with remaining test suites.
+- MEM-DRIFT: none
+## 2025-12-28 — Storage backend documentation drift
+- Hypothesis: Storage backend references should align across briefs and code.
+- Experiment: Reviewed `dt/data/database` implementation and compared `docs/briefs/projectbrief.md` with `docs/briefs/systemPatterns.md` and `docs/briefs/techStack.md`.
+- Result: `docs/briefs/projectbrief.md` still references InfluxDB, while code and other briefs describe PostgreSQL + TimescaleDB.
+- Decision: Propose updating `docs/briefs/projectbrief.md` to reflect PostgreSQL + TimescaleDB as the storage backend.
+- MEM-DRIFT: `docs/briefs/projectbrief.md` storage section mentions InfluxDB vs current PostgreSQL + TimescaleDB (propose PR update to `docs/briefs/projectbrief.md`).

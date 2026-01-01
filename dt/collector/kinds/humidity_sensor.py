@@ -2,7 +2,7 @@ from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
 from dt.collector.kinds.dht22_sensor import DHT22Singleton
-from dt.communication import Topics
+from dt.communication.topics import Topics
 
 
 class HumiditySensor(Sensor):
@@ -51,7 +51,3 @@ class HumiditySensor(Sensor):
             # Errors happen fairly often, DHT's are hard to read, just keep going
             self.logger.error(f"Failed to read humidity: {error.args[0]}")
             return -1
-
-    @override
-    def process_data(self, raw_data: float) -> float:
-        return raw_data if raw_data is not None else -1

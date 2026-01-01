@@ -3,14 +3,24 @@
 import pytest
 import yaml
 
-from dt.alerts.config.alert_rule import (AlertRule, ConditionType,
-                                         EvaluationStage, SeverityLevel)
-from dt.alerts.config.manager import build_alert_rule_manager
+from dt.alerts.rules import AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.alerts.rule_manager import build_alert_rule_manager
 
 
 @pytest.fixture
 def sample_rules_yaml(tmp_path):
-    """Create a sample alert rules YAML file."""
+    """Create a sample alert rules YAML file.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory for test files.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the alert rules YAML file.
+    """
     config = {
         "alert_rules": [
             {
@@ -65,7 +75,18 @@ def sample_rules_yaml(tmp_path):
 
 
 def test_load_well_formed_config(sample_rules_yaml):
-    """Test successful loading of a well-formed configuration."""
+    """Test successful loading of a well-formed configuration.
+
+    Parameters
+    ----------
+    sample_rules_yaml : pathlib.Path
+        Path to the alert rules YAML file.
+
+    Returns
+    -------
+    None
+        The assertions raise if rule loading regresses.
+    """
     rules = build_alert_rule_manager(str(sample_rules_yaml)).rules
 
     assert len(rules) == 3
@@ -84,7 +105,18 @@ def test_load_well_formed_config(sample_rules_yaml):
 
 
 def test_invalid_severity_raises_error(tmp_path):
-    """Test that invalid severity level raises descriptive error."""
+    """Test that invalid severity level raises descriptive error.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory for test files.
+
+    Returns
+    -------
+    None
+        The assertions raise if validation regresses.
+    """
     config = {
         "alert_rules": [
             {
@@ -108,7 +140,18 @@ def test_invalid_severity_raises_error(tmp_path):
 
 
 def test_invalid_condition_type_raises_error(tmp_path):
-    """Test that invalid condition type raises descriptive error."""
+    """Test that invalid condition type raises descriptive error.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory for test files.
+
+    Returns
+    -------
+    None
+        The assertions raise if validation regresses.
+    """
     config = {
         "alert_rules": [
             {
@@ -132,7 +175,18 @@ def test_invalid_condition_type_raises_error(tmp_path):
 
 
 def test_invalid_evaluation_stage_raises_error(tmp_path):
-    """Test that invalid evaluation stage raises descriptive error."""
+    """Test that invalid evaluation stage raises descriptive error.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory for test files.
+
+    Returns
+    -------
+    None
+        The assertions raise if validation regresses.
+    """
     config = {
         "alert_rules": [
             {
@@ -156,7 +210,18 @@ def test_invalid_evaluation_stage_raises_error(tmp_path):
 
 
 def test_missing_required_fields_raises_error(tmp_path):
-    """Test that missing required fields produces error."""
+    """Test that missing required fields produces error.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory for test files.
+
+    Returns
+    -------
+    None
+        The assertions raise if validation regresses.
+    """
     config = {
         "alert_rules": [
             {
@@ -174,7 +239,18 @@ def test_missing_required_fields_raises_error(tmp_path):
 
 
 def test_override_hook_merges_correctly(sample_rules_yaml):
-    """Test that override hook merges dynamic overrides with loaded rules."""
+    """Test that override hook merges dynamic overrides with loaded rules.
+
+    Parameters
+    ----------
+    sample_rules_yaml : pathlib.Path
+        Path to the alert rules YAML file.
+
+    Returns
+    -------
+    None
+        The assertions raise if override merging regresses.
+    """
     # Create manager and load base rules
     manager = build_alert_rule_manager(str(sample_rules_yaml))
 

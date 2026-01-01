@@ -4,11 +4,17 @@ import time
 from abc import ABC, abstractmethod
 from typing import Callable
 
-# import paho.mqtt.client as mqtt # Uncomment this line if paho-mqtt is installed
 from kafka import KafkaConsumer, KafkaProducer
 from typing_extensions import override
 
-from dt.communication.dataclasses import JsonSerializable, RawSensorData
+from dt.communication.adapters import dump, load
+from dt.communication.dataclasses import ProcessedSensorData, RawSensorData
+from dt.communication.dataclasses.alerts.alert_record import (
+    AlertHistoryEvent,
+    ExternalAlertEvent,
+    SensorAlertEvent,
+)
+from dt.communication.topics import Topics
 from dt.utils import get_logger
 
 
@@ -38,7 +44,7 @@ class MessagingService(ABC):
         pass
 
     @abstractmethod
-    def publish(self, topic: str, payload: JsonSerializable, **kwargs) -> bool:
+    def publish(self, topic: str, payload, **kwargs) -> bool:
         """Publish a message to a topic.
 
         Parameters
@@ -76,150 +82,6 @@ class MessagingService(ABC):
             True if the subscription is successful, False otherwise.
         """
         pass
-
-
-# class MQTTService(MessagingService):
-#     """An MQTT-based implementation of the `MessagingService`.
-#
-#     This class provides a client for interacting with an MQTT broker.
-#
-#     Parameters
-#     ----------
-#     hostname : str, optional
-#         The hostname or IP address of the MQTT broker, by default "localhost".
-#     port : int, optional
-#         The port number of the MQTT broker, by default 1883.
-#     id : str, optional
-#         The client ID to use for the MQTT connection, by default "digital_twin".
-#     """
-#
-#     def __init__(
-#         self, hostname: str = "localhost", port: int = 1883, id: str = "digital_twin"
-#     ) -> None:
-#         self.client = mqtt.Client(client_id=id)
-#         self.hostname = hostname
-#         self.port = port
-#         self.topic_callbacks: dict[str, list[Callable]] = {}
-#         self.logger = get_logger(__name__)
-#
-#         # Set up callbacks
-#         self.client.on_connect = self._on_connect
-#         self.client.on_message = self._on_message
-#         self.client.on_disconnect = self._on_disconnect
-#
-#     @override
-#     def connect(self):
-#         """Connect to the MQTT broker"""
-#         try:
-#             self.client.connect(self.hostname, self.port)
-#             self.client.loop_start()  # Start the background thread
-#             self.logger.info(f"Connected to MQTT broker at {self.hostname}:{self.port}")
-#             return True
-#         except Exception as e:
-#             self.logger.error(f"Failed to connect to MQTT broker: {e}")
-#             return False
-#
-#     @override
-#     def disconnect(self):
-#         """Disconnect from the MQTT broker"""
-#         self.client.loop_stop()
-#         self.client.disconnect()
-#         self.logger.info("Disconnected from MQTT broker")
-#
-#     @override
-#     def publish(self, topic: str, payload: RawSensorData, qos: int = 1):
-#         """Publish a message to a topic.
-#
-#         Parameters
-#         ----------
-#         topic : str
-#             The topic to publish the message to.
-#         payload : SensorData
-#             The data to be sent as the message payload.
-#         qos : int, optional
-#             The Quality of Service level to use, by default 1.
-#
-#         Returns
-#         -------
-#         bool
-#             True if the message is published successfully, False otherwise.
-#         """
-#         try:
-#             message = payload.to_json()
-#             result = self.client.publish(topic, message, qos=qos)
-#             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-#                 self.logger.debug(f"Published to {topic}: {payload}")
-#                 return True
-#             else:
-#                 self.logger.error(f"Failed to publish to {topic}: {mqtt.error_string(result.rc)}")
-#                 return False
-#         except Exception as e:
-#             self.logger.error(f"Error publishing message: {e}")
-#             return False
-#
-#     @override
-#     def subscribe(self, topic: str, callback: Callable, qos: int = 1):
-#         """Subscribe to a topic with a callback function.
-#
-#         Parameters
-#         ----------
-#         topic : str
-#             The topic to subscribe to.
-#         callback : Callable
-#             The function to call when a message is received.
-#         qos : int, optional
-#             The Quality of Service level to use, by default 1.
-#
-#         Returns
-#         -------
-#         bool
-#             True if the subscription is successful, False otherwise.
-#         """
-#         self.topic_callbacks.setdefault(topic, []).append(callback)
-#         result = self.client.subscribe(topic, qos)
-#         if result == mqtt.MQTT_ERR_SUCCESS:
-#             self.logger.info(f"Subscribed to {topic}")
-#             return True
-#         self.logger.error(f"Failed to subscribe to {topic}")
-#         return False
-#
-#     def _on_connect(self, client, userdata, flags, rc):
-#         """Callback for when client connects to the broker"""
-#         if rc == 0:
-#             self.logger.info("Connected to MQTT Broker")
-#             # Re-subscribe to all topics
-#             for topic in self.topic_callbacks:
-#                 self.client.subscribe(topic)
-#         else:
-#             self.logger.error(f"Failed to connect to broker with code {rc}")
-#
-#     def _on_message(self, client, userdata, msg):
-#         """Callback for when a message is received"""
-#         try:
-#             topic = msg.topic
-#             payload_str = msg.payload.decode()
-#             if not RawSensorData.validate_json(payload_str):
-#                 self.logger.error(f"Received malformed JSON on {topic}")
-#                 return
-#             payload = RawSensorData.from_json(payload_str)
-#
-#             self.logger.debug(f"Received message on {topic}: {payload}")
-#
-#             # Call the appropriate callback for this topic
-#             if topic in self.topic_callbacks:
-#                 for callback in self.topic_callbacks[topic]:
-#                     callback(payload)
-#                 # self.topic_callbacks[topic](payload)
-#         except json.JSONDecodeError:
-#             self.logger.error(f"Received malformed JSON on {msg.topic}")
-#         except Exception as e:
-#             self.logger.error(f"Error processing message: {e}")
-#
-#     def _on_disconnect(self, client, userdata, rc):
-#         """Callback for when client disconnects from the broker"""
-#         if rc != 0:
-#             self.logger.warning(f"Unexpected disconnect from broker: {rc}")
-#
 
 
 class KafkaService(MessagingService):
@@ -282,13 +144,13 @@ class KafkaService(MessagingService):
         self.logger.info("Disconnected from Kafka")
 
     @override
-    def publish(self, topic: str, payload: RawSensorData, **kwargs) -> bool:
+    def publish(self, topic: str, payload, **kwargs) -> bool:
         try:
             if not self.producer:
                 self.logger.error("Not connected to Kafka")
                 return False
 
-            future = self.producer.send(topic, payload.to_dict())
+            future = self.producer.send(topic, dump("generic", payload))
             future.get(timeout=10)  # Wait for acknowledgment
             self.logger.debug(f"Published to {topic}: {payload}")
             return True
@@ -335,15 +197,29 @@ class KafkaService(MessagingService):
                         topic = tp.topic
                         for message in messages:
                             try:
-                                if not RawSensorData.validate_json(json.dumps(message.value)):
-                                    self.logger.error(f"Received malformed data on {topic}")
-                                    continue
+                                # Determine message type based on topic
+                                if topic == Topics.ALERTS:
+                                    # Deserialize as AlertHistoryEvent (with duck-typing for subclasses)
+                                    raw_data = message.value
+                                    # Duck-type to determine alert event subclass
+                                    if "reading" in raw_data:
+                                        data = load("generic", SensorAlertEvent, raw_data)
+                                    elif "metadata" in raw_data:
+                                        data = load("generic", ExternalAlertEvent, raw_data)
+                                    else:
+                                        data = load("generic", AlertHistoryEvent, raw_data)
+
+                                elif "processed" in topic:
+                                    # Deserialize as ProcessedSensorData
+                                    data = load("generic", ProcessedSensorData, message.value)
+                                else:
+                                    # Deserialize as RawSensorData
+                                    data = load("generic", RawSensorData, message.value)
 
                                 # Execute callbacks for this topic
                                 if topic in self.topic_callbacks:
                                     for callback in self.topic_callbacks.get(topic, []):
-                                        sensor_data = RawSensorData.from_dict(message.value)
-                                        callback(sensor_data)
+                                        callback(data)
                             except Exception as e:
                                 self.logger.error(f"Error processing message: {e}")
                 else:

@@ -5,197 +5,113 @@ It performs two primary functions:
 
 1.  Messaging Bridge: It sets up a Kafka client that subscribes to various
     sensor data topics. When a message is received, it is forwarded to the
-    configured storage backend (e.g., InfluxDB) for persistence.
+    configured storage backend (e.g., TimescaleDB) for persistence.
 
 2.  REST API: It exposes a set of HTTP endpoints for interacting with the
     database. This includes endpoints for binding new sensors and querying
     historical sensor data by time range or sensor ID.
 """
 
-import uuid
-
-from flask import Flask, jsonify, request
+from flask import Flask
 from flask_cors import CORS
 
-from dt.communication import MessagingService, Topics
-from dt.communication.dataclasses import (
-    DBIdQuery,
-    DBTimestampQuery,
-    RawSensorData,
-    SensorDescriptor,
-)
-from dt.communication.messaging_service import KafkaService
-from dt.data.database import InfluxDBStorage, Storage
+from dt.data.database.api import create_database_blueprint
+from dt.data.database.consumer import setup_bridge
+from dt.data.database.migrations.runner import MigrationRunner
+from dt.data.database.storage import Storage
 from dt.utils import Config, get_logger
 
-app = Flask(__name__)
-CORS(app)
 logger = get_logger(__name__)
-storage: Storage = InfluxDBStorage(
-    url=Config.INFLUX_URL,
-    token=Config.INFLUX_TOKEN,
-    org=Config.INFLUX_ORG,
-    bucket=Config.INFLUX_BUCKET,
-)
 
 
-# Handle Messaging Service's message from SensorManager and forward to web client via socketio
-def forward_to_database(payload: RawSensorData):
-    """Callback function for the messaging service.
-
-    This function is called by the Kafka consumer whenever a message is
-    received on a subscribed sensor topic. It takes the SensorData payload
-    and inserts it into the storage backend.
+def run_startup_migrations(db_url: str, migrations_dir: str) -> None:
+    """Run SQL migrations required by the database service.
 
     Parameters
     ----------
-    payload : SensorData
-        The sensor data received from the messaging service.
+    db_url : str
+        PostgreSQL connection URL (SQLAlchemy-style URLs are accepted).
+    migrations_dir : Path | str | None
+        Directory containing SQL migration files. Defaults to the repo migrations directory.
     """
-    logger.info(f"Received message from Broker: {payload.value} at {payload.timestamp}")
-    storage.insert_data(payload)
+    if not db_url:
+        raise ValueError("PG_DATABASE_URL not configured")
+
+    if "postgresql+psycopg" in db_url:
+        db_url = db_url.replace("postgresql+psycopg", "postgresql")
+
+    runner = MigrationRunner(migrations_dir=migrations_dir, db_url=db_url)
+    runner.run_migrations()
 
 
-def setup_bridge():
-    """Set up the messaging bridge to the database.
+def create_app(config, storage: Storage) -> Flask:
+    """Create and configure the Flask application with dependency-injected storage.
 
-    This function initializes a Kafka client, connects to the broker, and
-    subscribes to all processed sensor data topics. The `forward_to_database`
-    function is used as the callback to handle incoming messages.
+    This factory function creates a Flask app instance, registers the database
+    blueprint, and wires the provided storage backend.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object containing application settings.
+    storage : Storage
+        Storage backend instance.
 
     Returns
     -------
-    MessagingService
-        The initialized and connected messaging service client. This is
-        returned to prevent it from being garbage-collected, which would
-        close the connection.
+    Flask
+        Configured Flask application instance.
     """
-    logger.info("Setting up messaging bridge")
-    unique_id = f"database_{uuid.uuid4().hex[:8]}"
-    client: MessagingService = KafkaService(
-        host=Config.KAFKA_URL, client_id=unique_id, group_id="database_consumer_group"
-    )
-    if not client.connect():
-        logger.error("Failed to connect to Messaging Service's broker")
-        raise ConnectionError("Failed to connect to messaging broker")
+    if storage is None:
+        raise ValueError("Storage instance is required")
 
-    # Subscribe to all processed sensor topics
-    for topic in Topics.list_sensor_topics():
-        client.subscribe(topic.processed, forward_to_database)
+    app = Flask(__name__)
+    CORS(app)
 
-    # Return the client so it doesn't go out of scope
-    return client
+    # Store config and storage in app context
+    app.config["STORAGE"] = storage
+    app.config["DT_CONFIG"] = config
 
+    logger.info(f"Creating Flask app with storage: {type(storage).__name__}")
 
-@app.route("/bind_sensor", methods=["POST"])
-def bind_sensor():
-    """API endpoint to bind a sensor to the database.
+    # Register Blueprint
+    db_bp = create_database_blueprint(storage)
+    app.register_blueprint(db_bp)
 
-    This endpoint expects a JSON payload representing a SensorDescriptor.
-    It validates the payload and, if valid, registers the sensor with the
-    storage backend.
-
-    Returns
-    -------
-    flask.Response
-        A JSON response indicating the status of the operation and the
-        assigned `sensor_id`, or an error message.
-
-    """
-    logger.info("Binding sensor to the database")
-
-    sensor_data = request.get_json()
-    if not SensorDescriptor.validate_json(sensor_data):
-        logger.error(f"Invalid JSON data to bind sensor {sensor_data}")
-
-        return jsonify({"error": "Invalid JSON data"}), 400
-    sensor = SensorDescriptor.from_json(sensor_data)
-
-    storage.bind_sensors(sensor)
-    logger.info(f"Sensor bound successfully: {sensor}")
-    return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor.sensor_id}), 200
-
-
-@app.route("/sensors", methods=["GET"])
-def list_sensors():
-    """Return all registered sensors."""
-
-    logger.info("Listing registered sensors")
-    descriptors = storage.list_sensors()
-    return jsonify([descriptor.to_dict() for descriptor in descriptors])
-
-
-@app.route("/data/timestamp", methods=["POST"])
-def get_data_by_timeframe():
-    """API endpoint to get data within a specific time range.
-
-    This endpoint expects a JSON payload representing a `DBTimestampQuery`.
-    It queries the storage backend for data of a specific type within the
-    given time range and returns the data.
-
-    Returns
-    -------
-    flask.Response
-        A JSON response containing a list of data points, where each point
-        is a dictionary with "value" and "time" keys.
-    """
-    logger.info("Getting data from timestamp")
-
-    request_data = request.get_json()
-    if not DBTimestampQuery.validate_json(request_data):
-        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
-        return jsonify({"error": "Invalid JSON data"}), 400
-    query = DBTimestampQuery.from_json(request_data)
-
-    data: list[RawSensorData] = storage.get_data_by_timeframe(
-        data_type=query.data_type,
-        since=query.since,
-        until=query.until,
-    )
-    shrank_data = [d.shrink_data() for d in data]
-    logger.info(f"Found {len(data)} data points")
-    return jsonify(shrank_data)
-
-
-@app.route("/data/id", methods=["POST"])
-def get_sensor_data_from_id():
-    """API endpoint to get recent data for a specific sensor ID.
-
-    This endpoint expects a JSON payload representing a DBIdQuery. It
-    fetches a limited number of the most recent data points for the given
-    sensor ID.
-
-    Returns
-    -------
-    flask.Response
-        A JSON response containing a list of `SensorData` objects.
-    """
-    logger.info("Getting data from sensor id")
-
-    request_data = request.get_json()
-    if not DBIdQuery.validate_json(request_data):
-        logger.error(f"Invalid JSON data to get data from id {request_data}")
-        return jsonify({"error": "Invalid JSON data"}), 400
-    query = DBIdQuery.from_json(request_data)
-
-    data: list[RawSensorData] = storage.get_data(sensor_id=query.sensor_id, limit=query.limit)
-
-    logger.info(f"Found {len(data)} data points")
-    return jsonify(data)
+    return app
 
 
 if __name__ == "__main__":
     import os
 
+    from dt.data.database import TimescaleStorage
+    from dt.utils import Config
+
     # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     debug_mode = True
 
-    msg_client = None
-
+    # Ensure schema is initialized before starting the service
     if debug_mode and in_reloader:
-        msg_client = setup_bridge()
+        run_startup_migrations(
+            db_url=Config.PG_DATABASE_URL, migrations_dir=Config.DB_MIGRATIONS_DIR
+        )
     elif not debug_mode:
-        msg_client = setup_bridge()
+        run_startup_migrations(
+            db_url=Config.PG_DATABASE_URL, migrations_dir=Config.DB_MIGRATIONS_DIR
+        )
+
+    # Initialize storage backend (TimescaleDB)
+    storage = TimescaleStorage()
+
+    # Create Flask app using factory
+    app = create_app(config=Config, storage=storage)
+
+    # Setup Kafka bridge
+    msg_client = None
+    if debug_mode and in_reloader:
+        msg_client = setup_bridge(config=Config, storage=storage)
+    elif not debug_mode:
+        msg_client = setup_bridge(config=Config, storage=storage)
 
     app.run(host="0.0.0.0", port=5001, debug=debug_mode)

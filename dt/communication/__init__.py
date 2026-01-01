@@ -1,9 +1,5 @@
-from .dataclasses import DBIdQuery as DBIdQuery
-from .dataclasses import DBTimestampQuery as DBTimestampQuery
-from .dataclasses import RawSensorData as RawSensorData
-from .dataclasses import SensorDescriptor as SensorDescriptor
-from .db_client import DatabaseApiClient as DatabaseApiClient
-from .messaging_service import KafkaService as KafkaService
-from .messaging_service import MessagingService as MessagingService
-# from .messaging_service import MQTTService as MQTTService
-from .topics import Topics as Topics
+"""Communication layer package.
+
+Avoid importing submodules here to prevent import-time side effects and circular imports.
+Import concrete modules directly, e.g. `dt.communication.messaging_service`.
+"""

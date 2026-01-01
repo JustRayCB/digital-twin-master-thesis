@@ -1,187 +1,449 @@
 """Tests for alert event publisher."""
 
-from unittest.mock import Mock
-
 import pytest
 
-from dt.alerts.config.alert_rule import SeverityLevel
-from dt.alerts.state.models import AlertLifecycleEvent
-from dt.communication.dataclasses.alerts import CandidateAlert
-from dt.communication import Topics
+from dt.alerts.publisher import AlertPublisher
+from dt.alerts.rules import SeverityLevel
+from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.alerts.alert_record import (
+    AlertDefinition,
+    AlertStatus,
+    ExternalAlertEvent,
+    SensorAlertEvent,
+)
+from dt.communication.dataclasses.alerts.alert_type import AlertType
+from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
+from dt.communication.topics import Topics
+from tests.alerts.conftest import collect_alert_events, poll_alert_event
+
+pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
 
 @pytest.fixture
-def mock_messaging_service():
-    """Create a mock MessagingService."""
-    mock = Mock()
-    mock.publish = Mock(return_value=True)
-    return mock
+def sensor_alert_event(sample_sensor):
+    """Create a sensor alert event backed by a registered sensor.
 
+    Parameters
+    ----------
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
 
-@pytest.fixture
-def publisher(mock_messaging_service):
-    """Create AlertPublisher with mocked messaging service."""
-    from dt.alerts.engine.publisher import AlertPublisher
-
-    return AlertPublisher(mock_messaging_service, plant_id=1)
-
-
-@pytest.fixture
-def sample_candidate():
-    """Create a sample candidate alert."""
-    return CandidateAlert(
-        alert_id="temp_high:temperature",
-        rule_id="temp_high",
-        source="temperature",
+    Returns
+    -------
+    SensorAlertEvent
+        Sensor alert event tied to a persisted sensor.
+    """
+    reading = ProcessedSensorData(
+        plant_id=sample_sensor.plant_id,
+        sensor_id=sample_sensor.id,
+        timestamp=1234567890.0,
+        value=38.0,
+        unit="°C",
+        topic=Topics.TEMPERATURE,
+        correlation_id="test-corr-123",
+        flags={ValidationFlag.VALID: True},
+        dq_score=1.0,
+        imputed=False,
+    )
+    return SensorAlertEvent(
+        alert_key="temp_high:temperature",
+        plant_id=sample_sensor.plant_id,
+        timestamp=1234567890.0,
+        status=AlertStatus.ACTIVE,
         severity=SeverityLevel.WARNING,
         message="Temperature exceeds 35°C (actual: 38°C)",
         correlation_id="test-corr-123",
-        payload={"value": 38.0, "sensor_id": 101, "timestamp": 1234567890.0},
+        reading=reading,
+        threshold_op=">",
+        threshold_value=35.0,
+    )
+
+
+@pytest.fixture
+def alert_definition(sample_sensor):
+    """Create a sensor alert definition backed by a registered sensor.
+
+    Parameters
+    ----------
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+
+    Returns
+    -------
+    AlertDefinition
+        Alert definition tied to a persisted sensor.
+    """
+    return AlertDefinition(
+        alert_key="temp_high:temperature",
+        plant_id=sample_sensor.plant_id,
+        sensor_id=sample_sensor.id,
+        source="temperature",
+        rule_id="temp_high",
+        rule_name="Temp High",
+        kind=AlertType.SENSOR,
         persistence_count=1,
         cooldown_seconds=300,
     )
 
 
-def test_publish_created_event(publisher, mock_messaging_service, sample_candidate):
-    """Test publishing CREATED lifecycle event."""
-    publisher.publish(AlertLifecycleEvent.CREATED, sample_candidate)
+def test_publish_created_event(publisher, alerts_consumer, sensor_alert_event, alert_definition):
+    """Test publishing CREATED lifecycle event.
 
-    # Verify publish was called on messaging service
-    mock_messaging_service.publish.assert_called_once()
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sensor_alert_event : SensorAlertEvent
+        Sample sensor alert event payload.
+    alert_definition : AlertDefinition
+        Sample alert definition for persistence.
 
-    # Extract the call arguments
-    call_args = mock_messaging_service.publish.call_args
-    topic = call_args[0][0]
-    alert_message = call_args[0][1]
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    publisher.publish(alert_definition, sensor_alert_event)
 
-    # Verify correct topic
-    assert topic == Topics.ALERTS
-
-    # Verify AlertMessage envelope structure
-    assert alert_message.event == "created"
-    assert alert_message.alert_id == sample_candidate.alert_id
-    assert alert_message.plant_id == 1
-    assert alert_message.actor is None
-
-    # Verify full alert details are preserved
-    assert alert_message.alert is not None
-    assert alert_message.alert.alert_id == sample_candidate.alert_id
-    assert alert_message.alert.rule_id == sample_candidate.rule_id
-    assert alert_message.alert.source == sample_candidate.source
-    assert alert_message.alert.severity == sample_candidate.severity
-    assert alert_message.alert.message == sample_candidate.message
-    assert alert_message.alert.correlation_id == sample_candidate.correlation_id
-    assert alert_message.alert.payload == sample_candidate.payload
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
+    assert alert_message.status == AlertStatus.ACTIVE
+    assert alert_message.alert_key == sensor_alert_event.alert_key
+    assert alert_message.plant_id == sensor_alert_event.plant_id
+    # Verify it's a SensorAlertEvent with reading
+    assert isinstance(alert_message, SensorAlertEvent)
+    assert alert_message.reading.value == 38.0
 
 
-def test_publish_updated_event(publisher, mock_messaging_service, sample_candidate):
-    """Test publishing UPDATED lifecycle event."""
-    publisher.publish(AlertLifecycleEvent.UPDATED, sample_candidate)
+def test_publish_updated_event(publisher, alerts_consumer, sensor_alert_event, alert_definition):
+    """Test publishing UPDATED lifecycle event.
 
-    # Verify publish was called
-    assert mock_messaging_service.publish.called
-    call_args = mock_messaging_service.publish.call_args
-    alert_message = call_args[0][1]
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sensor_alert_event : SensorAlertEvent
+        Sample sensor alert event payload.
+    alert_definition : AlertDefinition
+        Sample alert definition for persistence.
+
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    publisher.publish(alert_definition, sensor_alert_event)
+
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
 
     # Verify event data is correct
-    assert alert_message.event == "updated"
-    assert alert_message.alert_id == sample_candidate.alert_id
-    assert alert_message.alert is not None
+    assert alert_message.status == AlertStatus.ACTIVE
+    assert alert_message.alert_key == sensor_alert_event.alert_key
 
 
-def test_publish_acknowledged_event(publisher, mock_messaging_service):
-    """Test publishing ACKNOWLEDGED lifecycle event with alert_id and actor."""
-    alert_id = "test_alert_123"
+def test_publish_acknowledged_event(publisher, alerts_consumer, sample_sensor):
+    """Test publishing ACKNOWLEDGED lifecycle event with alert and actor.
+
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
     actor = "user@example.com"
 
-    publisher.publish(AlertLifecycleEvent.ACKNOWLEDGED, alert_id, actor=actor)
-
-    # Verify publish was called
-    assert mock_messaging_service.publish.called
-    call_args = mock_messaging_service.publish.call_args
-    topic = call_args[0][0]
-    alert_message = call_args[0][1]
-
-    # Verify correct topic
-    assert topic == Topics.ALERTS
-
-    # Verify AlertMessage structure for lifecycle event
-    assert alert_message.event == "acknowledged"
-    assert alert_message.alert_id == alert_id
-    assert alert_message.actor == actor
-    assert alert_message.alert is None  # No full alert details for lifecycle events
-
-
-def test_publish_cleared_event(publisher, mock_messaging_service):
-    """Test publishing CLEARED lifecycle event with alert_id."""
-    alert_id = "test_alert_456"
-
-    publisher.publish(AlertLifecycleEvent.CLEARED, alert_id, actor=None)
-
-    # Verify publish was called
-    assert mock_messaging_service.publish.called
-    call_args = mock_messaging_service.publish.call_args
-    alert_message = call_args[0][1]
-
-    # Verify AlertMessage structure
-    assert alert_message.event == "cleared"
-    assert alert_message.alert_id == alert_id
-    assert alert_message.actor is None
-    assert alert_message.alert is None
-
-
-def test_publish_multiple_events(publisher, mock_messaging_service, sample_candidate):
-    """Test publishing multiple events in sequence."""
-    # Create alert
-    publisher.publish(AlertLifecycleEvent.CREATED, sample_candidate)
-
-    # Update alert
-    publisher.publish(AlertLifecycleEvent.UPDATED, sample_candidate)
-
-    # Acknowledge alert
-    publisher.publish(
-        AlertLifecycleEvent.ACKNOWLEDGED, sample_candidate.alert_id, actor="test_user"
+    alert_event = SensorAlertEvent(
+        alert_key="test_alert_123",
+        plant_id=sample_sensor.plant_id,
+        timestamp=1234567890.0,
+        status=AlertStatus.ACKNOWLEDGED,
+        severity=SeverityLevel.WARNING,
+        message="Ack me",
+        correlation_id="ack-corr",
+        acknowledged_by=actor,
+        reading=ProcessedSensorData(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=1234567890.0,
+            value=10.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="ack-corr",
+            flags={},
+            dq_score=1.0,
+            imputed=False,
+        ),
     )
 
-    # Verify all three calls were made
-    assert mock_messaging_service.publish.call_count == 3
+    definition = AlertDefinition(
+        alert_key=alert_event.alert_key,
+        plant_id=alert_event.plant_id,
+        sensor_id=alert_event.reading.sensor_id,
+        source=alert_event.reading.topic.short_name,
+        rule_id="test_alert_123",
+        rule_name="Ack me",
+        kind=AlertType.SENSOR,
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+
+    publisher.publish(definition, alert_event)
+
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
+    assert alert_message.status == AlertStatus.ACKNOWLEDGED
+    assert alert_message.alert_key == "test_alert_123"
+    assert alert_message.acknowledged_by == actor
+    assert alert_message.acknowledged_ts is not None
 
 
-def test_publish_with_external_submission(publisher, mock_messaging_service):
-    """Test publishing alert from external submission (no rule_id)."""
-    external_candidate = CandidateAlert(
-        alert_id="manual_alert_001",
-        rule_id=None,  # External submissions don't have rule_id
-        source="manual",
+def test_publish_raises_when_definition_persist_fails(
+    publisher, alerts_consumer, sample_sensor, alert_definition
+):
+    """Publisher should stop and raise when definition persistence fails.
+
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+    alert_definition : AlertDefinition
+        Alert definition tied to a persisted sensor.
+
+    Returns
+    -------
+    None
+        The assertions raise if failure handling regresses.
+    """
+    invalid_definition = AlertDefinition(
+        alert_key="bad_def:temperature",
+        plant_id=sample_sensor.plant_id + 9999,
+        sensor_id=None,
+        source="external",
+        rule_id=None,
+        rule_name=None,
+        kind=AlertType.EXTERNAL,
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+    alert_event = SensorAlertEvent(
+        alert_key=invalid_definition.alert_key,
+        plant_id=invalid_definition.plant_id,
+        timestamp=1234567890.0,
+        status=AlertStatus.ACTIVE,
+        severity=SeverityLevel.WARNING,
+        message="Invalid definition",
+        correlation_id="bad-def-1",
+        reading=ProcessedSensorData(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=1234567890.0,
+            value=10.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="bad-def-1",
+            flags={},
+            dq_score=1.0,
+            imputed=False,
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        publisher.publish(invalid_definition, alert_event)
+
+    assert poll_alert_event(alerts_consumer, timeout_seconds=1.0) is None
+
+
+def test_publish_cleared_event(publisher, alerts_consumer, sample_sensor):
+    """Test publishing CLEARED lifecycle event with alert.
+
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sample_sensor : SensorDescriptor
+        Registered sensor descriptor from the test database.
+
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    alert_event = SensorAlertEvent(
+        alert_key="test_alert_456",
+        plant_id=sample_sensor.plant_id,
+        timestamp=1234567890.0,
+        status=AlertStatus.CLEARED,
+        severity=SeverityLevel.WARNING,
+        message="Clear me",
+        correlation_id="clear-corr",
+        reading=ProcessedSensorData(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=1234567890.0,
+            value=10.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="clear-corr",
+            flags={},
+            dq_score=1.0,
+            imputed=False,
+        ),
+    )
+
+    definition = AlertDefinition(
+        alert_key=alert_event.alert_key,
+        plant_id=alert_event.plant_id,
+        sensor_id=alert_event.reading.sensor_id,
+        source=alert_event.reading.topic.short_name,
+        rule_id="test_alert_456",
+        rule_name="Clear me",
+        kind=AlertType.SENSOR,
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+
+    publisher.publish(definition, alert_event)
+
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
+
+    # Verify AlertMessage structure
+    assert alert_message.status == AlertStatus.CLEARED
+    assert alert_message.alert_key == "test_alert_456"
+    assert alert_message.cleared_ts is not None
+
+
+def test_publish_multiple_events(publisher, alerts_consumer, sensor_alert_event, alert_definition):
+    """Test publishing multiple events in sequence.
+
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sensor_alert_event : SensorAlertEvent
+        Sample sensor alert event payload.
+    alert_definition : AlertDefinition
+        Sample alert definition for persistence.
+
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    # Create alert
+    publisher.publish(alert_definition, sensor_alert_event)
+
+    # Update alert
+    publisher.publish(alert_definition, sensor_alert_event)
+
+    # Acknowledge alert
+    sensor_alert_event.status = AlertStatus.ACKNOWLEDGED
+    sensor_alert_event.acknowledged_by = "dummy_user"
+    publisher.publish(alert_definition, sensor_alert_event)
+
+    events = collect_alert_events(alerts_consumer, count=3, timeout_seconds=5.0)
+    assert len(events) == 3
+
+
+def test_publish_with_external_submission(publisher, alerts_consumer, sample_plant_id):
+    """Test publishing alert from external submission (no rule_name).
+
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sample_plant_id : int
+        Plant identifier from the test database.
+
+    Returns
+    -------
+    None
+        The assertions raise if publishing regresses.
+    """
+    external_candidate = ExternalAlertEvent(
+        alert_key="manual_alert_001",
+        plant_id=sample_plant_id,
+        timestamp=1234567890.0,
+        status=AlertStatus.ACTIVE,
         severity=SeverityLevel.CRITICAL,
         message="Manual alert submitted by user",
         correlation_id="ext-corr-789",
-        payload={"submission_type": "external", "timestamp": 1234567890.0},
+        metadata={"submission_type": "external", "timestamp": "1234567890.0"},
+    )
+
+    definition = AlertDefinition(
+        alert_key="manual_alert_001",
+        plant_id=sample_plant_id,
+        sensor_id=None,
+        source="external",
+        rule_id=None,
+        rule_name=None,
+        kind=AlertType.EXTERNAL,
         persistence_count=1,
         cooldown_seconds=300,
     )
 
-    publisher.publish(AlertLifecycleEvent.CREATED, external_candidate)
+    publisher.publish(definition, external_candidate)
 
-    # Verify publish was called
-    assert mock_messaging_service.publish.called
-    call_args = mock_messaging_service.publish.call_args
-    alert_message = call_args[0][1]
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
 
     # Verify event data preserves all context
-    assert alert_message.alert_id == "manual_alert_001"
-    assert alert_message.alert is not None
-    assert alert_message.alert.rule_id is None
-    assert alert_message.alert.severity == SeverityLevel.CRITICAL
+    assert alert_message.alert_key == "manual_alert_001"
+    assert alert_message.severity == SeverityLevel.CRITICAL
+    # Verify it's an ExternalAlertEvent with metadata
+    assert isinstance(alert_message, ExternalAlertEvent)
+    assert alert_message.metadata["submission_type"] == "external"
 
 
-def test_publish_preserves_correlation_id(publisher, mock_messaging_service, sample_candidate):
-    """Test that correlation ID is preserved in published events."""
-    publisher.publish(AlertLifecycleEvent.CREATED, sample_candidate)
+def test_publish_preserves_correlation_id(
+    publisher, alerts_consumer, sensor_alert_event, alert_definition
+):
+    """Test that correlation ID is preserved in published events.
 
-    call_args = mock_messaging_service.publish.call_args
-    alert_message = call_args[0][1]
+    Parameters
+    ----------
+    publisher : AlertPublisher
+        Publisher instance under test.
+    alerts_consumer : KafkaConsumer
+        Kafka consumer subscribed to the alerts topic.
+    sensor_alert_event : SensorAlertEvent
+        Sample sensor alert event payload.
+    alert_definition : AlertDefinition
+        Sample alert definition for persistence.
+
+    Returns
+    -------
+    None
+        The assertions raise if correlation IDs regress.
+    """
+    publisher.publish(alert_definition, sensor_alert_event)
+
+    alert_message = poll_alert_event(alerts_consumer)
+    assert alert_message is not None
 
     # Verify correlation_id is preserved in the alert details
-    assert alert_message.alert is not None
-    assert alert_message.alert.correlation_id == sample_candidate.correlation_id
+    assert alert_message.correlation_id == sensor_alert_event.correlation_id

@@ -1,7 +1,9 @@
 import time
 
-from dt.communication import DatabaseApiClient, KafkaService, MessagingService, Topics
-from dt.utils import SensorData
+from dt.communication.dataclasses import RawSensorData
+from dt.communication.db_client import DatabaseApiClient
+from dt.communication.messaging_service import KafkaService, MessagingService
+from dt.communication.topics import Topics
 from dt.utils.exceptions import BadSensorBindingException
 from dt.utils.logger import get_logger
 
@@ -51,7 +53,7 @@ class SensorManager:
         sensor : Sensor
             The sensor object to be added.
         """
-        # self.bind_sensor(sensor) # TODO: Uncomment when binding is stable
+        self.bind_sensor(sensor)  # TODO: Uncomment when binding is stable
         self.sensors[sensor.name] = sensor
         self.logger.info(f"Added sensor {sensor.name} to the SensorManager.")
 
@@ -92,7 +94,45 @@ class SensorManager:
             self.logger.info(f"Removed sensor {sensor_name} from the SensorManager.")
             del self.sensors[sensor_name]
 
-    def read_all_sensors(self) -> dict[str, SensorData]:
+    def seconds_until_next_read(
+        self, current_time: float | None = None, default_sleep_seconds: float = 1.0
+    ) -> float:
+        """Return seconds until the next sensor is due for a reading.
+
+        This supports best-effort scheduling in a single-threaded loop by allowing the
+        caller to sleep until the earliest next-due time across all sensors.
+
+        Parameters
+        ----------
+        current_time : float | None, optional
+            The current time in seconds since the epoch. If None, the current system time
+            will be used. Default is None.
+        default_sleep_seconds : float, optional
+            The default number of seconds to return if there are no sensors managed. Default is 1.0.
+
+        Returns
+        -------
+        float
+            The number of seconds until the next sensor is due for a reading.
+        """
+        if not self.sensors:
+            return default_sleep_seconds
+
+        now = current_time if current_time is not None else time.time()
+        seconds_until_due: list[float] = []
+        for sensor in self.sensors.values():
+            if sensor.last_read_time == -1:  # Never read before
+                return 0.0  # Read immediately
+
+            # Calculate when the sensor is next due for a reading
+            due_at = sensor.last_read_time + sensor.read_interval
+            # Append the time until due to the list
+            seconds_until_due.append(max(0.0, due_at - now))
+
+        # Return the minimum time until the next due reading
+        return min(seconds_until_due) if seconds_until_due else default_sleep_seconds
+
+    def read_all_sensors(self) -> dict[str, RawSensorData]:
         """Read data from all sensors that are due for a reading.
 
         This method iterates through all managed sensors, checks if a new
@@ -105,7 +145,7 @@ class SensorManager:
             A dictionary containing the data from all sensors that were read,
             keyed by sensor name.
         """
-        data: dict[str, SensorData] = {}
+        data: dict[str, RawSensorData] = {}
         for sensor_name, sensor in self.sensors.items():
             current_time = time.time()
             if sensor.needs_data(current_time):

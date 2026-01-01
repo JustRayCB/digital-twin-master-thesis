@@ -3,12 +3,13 @@
 Subscribes to processed sensor topics and drives rule evaluation.
 """
 
-from dt.alerts.engine.evaluator import RuleEvaluator
-from dt.alerts.engine.publisher import AlertPublisher
-from dt.alerts.state.models import AlertLifecycleEvent
-from dt.alerts.state.registry import AlertRegistry
-from dt.communication import MessagingService, Topics
+from dt.alerts.evaluator import RuleEvaluator
+from dt.alerts.publisher import AlertPublisher
+from dt.alerts.registry import AlertRegistry
+from dt.communication.messaging_service import MessagingService
+from dt.communication.topics import Topics
 from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.alerts.alert_record import AlertStatus
 from dt.utils import get_logger
 
 
@@ -92,17 +93,20 @@ class AlertEngineService:
             The processed sensor data to evaluate.
         """
         # Evaluate rules against payload
-        candidates = self.evaluator.evaluate(payload)
+        triggered_alerts = self.evaluator.evaluate(payload)
 
-        # Process each candidate alert
-        for candidate in candidates:
+        # Process each triggered alert
+        for definition, alert_event in triggered_alerts:
             # Register with registry using rule's persistence and cooldown settings
-            event = self.registry.register(candidate)
+            status = self.registry.register(
+                alert_event, definition.persistence_count, definition.cooldown_seconds
+            )
+            alert_event.status = status
 
-            # Publish lifecycle events for CREATED and UPDATED
-            if event in (AlertLifecycleEvent.CREATED, AlertLifecycleEvent.UPDATED):
-                self.publisher.publish(event, candidate)
+            # Publish lifecycle events for CREATED and UPDATED (ACTIVE) states
+            if status == AlertStatus.ACTIVE:
+                self.publisher.publish(definition, alert_event)
                 self.logger.info(
-                    f"Published {event.value} alert: {candidate.alert_id} "
-                    f"(severity: {candidate.severity.value})"
+                    f"Published alert: {alert_event.alert_key} "
+                    f"(severity: {alert_event.severity.value})"
                 )

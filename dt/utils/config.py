@@ -10,11 +10,14 @@ class Config(StrEnum):
 
     KAFKA_URL = os.getenv("KAFKA_URL", "localhost:9092")  # Kafka broker URL
 
-    # Database configuration
-    INFLUX_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")  # InfluxDB URL
-    INFLUX_TOKEN = os.getenv("INFLUXDB_TOKEN", "my-influxdb-token")  # InfluxDB token
-    INFLUX_ORG = os.getenv("INFLUXDB_ORG", "dt-ulb")  # InfluxDB organization
-    INFLUX_BUCKET = os.getenv("INFLUXDB_BUCKET", "dt-ulb-bucket")  # InfluxDB bucket
+    # PostgreSQL + TimescaleDB configuration
+    PG_DATABASE_URL = os.getenv(
+        "PG_DATABASE_URL", "postgresql+psycopg://dt:dt@localhost:5432/dt"
+    )  # PostgreSQL connection URL
+    SQL_POOL_SIZE = os.getenv("SQL_POOL_SIZE", "5")  # SQLAlchemy connection pool size
+    DB_MIGRATIONS_DIR = os.getenv(
+        "DB_MIGRATIONS_DIR", "dt/data/database/migrations"
+    )  # Migrations directory
 
     # Flask server URLs
     FLASK_DASHBOARD_URL = os.getenv(

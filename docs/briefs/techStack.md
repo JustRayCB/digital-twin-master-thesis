@@ -50,20 +50,21 @@ for its ability to perform complex computations (like windowed aggregations,
 anomaly detection) in real-time and because it can scale beyond the single Pi
 if needed by distributing jobs.
 
-For data storage, the system utilizes **InfluxDB**, a time-series database
-optimized for sensor data. InfluxDB stores historical sensor readings and makes
-queries efficient (e.g., retrieving the last 24 hours of moisture readings). It
-is deployed on the Pi (or a server) to archive all incoming processed data with
-timestamps. Additionally, a relational database is used as an **Action & Audit
-log store**: initially SQLite for development, with plans to move to PostgreSQL
-in production. This relational store keeps records of system actions, alerts,
-and configuration changes, enabling complex queries like "who triggered this
-action and why" for accountability.
+For data storage, the system utilizes **PostgreSQL with TimescaleDB extension**,
+providing unified storage for both time-series measurements and relational domain data.
+TimescaleDB hypertables store sensor measurements with automatic partitioning, continuous
+aggregates (1h rollups), compression policies, and configurable retention (default
+30 days for raw data). The same PostgreSQL database hosts relational tables for sensors,
+plants, actuators, experiments, and alert lifecycle history, eliminating the operational
+complexity of managing separate InfluxDB and SQL-backed instances. Connection pooling via
+SQLAlchemy Core ensures efficient resource usage on the Raspberry Pi. The unified storage
+design provides a clear migration path to managed PostgreSQL services (AWS RDS, Azure
+Database, etc.) without code changes—only the `PG_DATABASE_URL` configuration needs updating.
 
 It's worth noting that **Java 17** is required on the system to run Kafka and
-Spark, and the setup scripts ensure these services (Kafka broker, InfluxDB) are
-installed and configured on the Pi. The project provides setup scripts
-(setup_kafka.sh, setup_influxdb.sh) and uses a Makefile for common tasks
+Spark, and the setup scripts ensure these services (Kafka broker, PostgreSQL with
+TimescaleDB) are installed and configured on the Pi. The project provides setup scripts
+(setup_kafka.sh, setup_postgresql.sh) and uses a Makefile for common tasks
 (running modules, etc.) to streamline environment setup.
 
 ## System Architecture
@@ -81,11 +82,14 @@ module/process under a top-level package dt/. For example:
   in Active Context below), and then publishes **processed** sensor data back to
   another Kafka topic for downstream consumers. This module is implemented with
   PySpark to leverage structured streaming for data handling.
-- The **Data Storage** service
-  (dt/data/database/app.py) consumes the processed data and stores it into
-  InfluxDB in near real-time. It also provides a REST API for querying historical
-  data (so that other services or the web dashboard can request data without
-  speaking directly to the database).
+- The **Data Storage** service (dt/data/database/app.py) consumes processed data
+  and alert events from Kafka, storing them into PostgreSQL with TimescaleDB
+  hypertables in near real-time. Flask routes call `TimescaleStorage` directly without
+  an intermediate service layer, keeping the architecture simple and avoiding
+  premature abstraction. The service exposes a REST API for querying historical data
+  (measurements, alerts, sensor/actuator metadata) so that other services or the web
+  dashboard can request data without speaking directly to the database. Connection
+  pooling via SQLAlchemy Core ensures efficient resource usage on the Raspberry Pi.
 - The **Alert Engine** service (dt/alerts/app.py) provides centralized alert
   management and rule evaluation. It subscribes to processed sensor data topics via
   Kafka, evaluates configured alert rules (thresholds, ranges, data quality checks),
