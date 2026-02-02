@@ -3,9 +3,10 @@ import time
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from unittest.mock import Mock, patch
+from typing import Any
 
 import pytest
+import yaml
 
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.db_client import DatabaseApiClient
@@ -14,7 +15,6 @@ from dt.communication.topics import Topics
 from dt.data.database.app import create_app
 from dt.data.database.migrations.runner import MigrationRunner
 from dt.data.database.timescale_storage import TimescaleStorage
-from dt.data.preprocess.core.state import StateProvider
 from dt.utils import Config
 
 
@@ -106,19 +106,6 @@ sensors:
     return str(config_file)
 
 
-@pytest.fixture
-def mock_db_client():
-    """Mock the DatabaseApiClient to avoid external dependencies."""
-    with patch("dt.data.preprocess.config.manager.DatabaseApiClient") as mock:
-        mock.return_value.list_sensors.return_value = []
-        yield mock
-
-
-@pytest.fixture
-def mock_state_provider():
-    """Create a mock state provider."""
-    return Mock(spec=StateProvider)
-
 
 @pytest.fixture
 def sample_reading():
@@ -166,6 +153,30 @@ def base_config() -> dict[str, object]:
     }
 
 
+@pytest.fixture
+def config_manager_defaults() -> dict[str, object]:
+    """Base configuration used for ConfigurationManager tests."""
+    return {
+        "system": {
+            "windows": {"small_sec": 60, "medium_sec": 300, "big_sec": 1000},
+            "weights": {"range_ok": 0.4, "roc_ok": 0.4, "stuck_ok": 0.2},
+        },
+        "templates": {},
+        "sensors": {},
+    }
+
+
+@pytest.fixture
+def config_writer(tmp_path: Path):
+    """Persist preprocessing configuration to a temporary file for tests."""
+    def _write(config: dict[str, Any], filename: str = "preprocess_config.yml") -> str:
+        config_path = tmp_path / filename
+        config_path.write_text(yaml.safe_dump(config))
+        return str(config_path)
+
+    return _write
+
+
 @pytest.fixture(scope="module")
 def spark_session():
     """Provide a Spark session configured for local streaming tests."""
@@ -188,7 +199,7 @@ def spark_session():
 
 
 @pytest.fixture(scope="module")
-def postgres_container(spark_session):
+def postgres_container():
     """Start a PostgreSQL container with TimescaleDB extension."""
     try:
         from testcontainers.postgres import PostgresContainer
@@ -223,7 +234,7 @@ def timescale_storage(db_engine):
 
 
 @pytest.fixture(scope="module")
-def database_service_url(spark_session, timescale_storage):
+def database_service_url(timescale_storage):
     """Run the Flask database service backed by the Timescale test container."""
     from werkzeug.serving import make_server
 

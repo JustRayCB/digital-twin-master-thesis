@@ -7,12 +7,11 @@ from pyspark.sql import SparkSession
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.topics import Topics
 
-from tests.data.preprocess.stream_harness import (
+from tests.data.preprocess.pipeline.pipeline_runner import (
     DEFAULT_TEMPLATE_KEY,
     make_event,
     register_sensors,
     run_pipeline,
-    write_config,
 )
 
 
@@ -20,13 +19,14 @@ def test_range_violation_triggers_imputation(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
+    config_writer,
     configure_preprocess_db_client,
     sensor_registry,
 ) -> None:
     """Out-of-range readings are imputed using the last valid reading."""
     sensors = register_sensors(sensor_registry, ["greenhouse.temperature"])
     sensor = sensors["greenhouse.temperature"]
-    config_path = write_config(tmp_path, base_config)
+    config_path = config_writer(base_config)
 
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -68,13 +68,14 @@ def test_range_violation_without_history_emits_dropped_record(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
+    config_writer,
     configure_preprocess_db_client,
     sensor_registry,
 ) -> None:
     """Range violations without history emit an invalid record instead of imputing."""
     sensors = register_sensors(sensor_registry, ["greenhouse.temperature"])
     sensor = sensors["greenhouse.temperature"]
-    config_path = write_config(tmp_path, base_config)
+    config_path = config_writer(base_config)
 
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -109,6 +110,7 @@ def test_rate_of_change_violation_triggers_imputation(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
+    config_writer,
     configure_preprocess_db_client,
     sensor_registry,
 ) -> None:
@@ -118,7 +120,7 @@ def test_rate_of_change_violation_triggers_imputation(
 
     config = copy.deepcopy(base_config)
     config["templates"][DEFAULT_TEMPLATE_KEY]["validation"]["roc"] = {"max_per_minute": 1.0}
-    config_path = write_config(tmp_path, config)
+    config_path = config_writer(config)
 
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -160,6 +162,7 @@ def test_stuck_detection_flags_flatline(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
+    config_writer,
     configure_preprocess_db_client,
     sensor_registry,
 ) -> None:
@@ -169,7 +172,7 @@ def test_stuck_detection_flags_flatline(
 
     config = copy.deepcopy(base_config)
     config["templates"][DEFAULT_TEMPLATE_KEY]["validation"]["stuck"] = {"max_flat_seconds": 30}
-    config_path = write_config(tmp_path, config)
+    config_path = config_writer(config)
 
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [
@@ -201,13 +204,14 @@ def test_valid_reading_passes_through(
     spark_session: SparkSession,
     base_config: dict[str, Any],
     tmp_path,
+    config_writer,
     configure_preprocess_db_client,
     sensor_registry,
 ) -> None:
     """Valid readings pass with full score and no imputation."""
     sensors = register_sensors(sensor_registry, ["greenhouse.temperature"])
     sensor = sensors["greenhouse.temperature"]
-    config_path = write_config(tmp_path, base_config)
+    config_path = config_writer(base_config)
 
     base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     events = [

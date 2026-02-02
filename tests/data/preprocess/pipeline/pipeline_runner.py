@@ -2,8 +2,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-
-import yaml
 from pyspark.sql import DataFrame, Row, SparkSession
 
 from dt.communication.adapters import load
@@ -21,13 +19,6 @@ def register_sensors(sensor_registry: dict[str, Any], names: list[str]) -> dict[
     """Register sensors in the Timescale-backed database service for tests."""
     register = sensor_registry["register"]
     return {name: register(name) for name in names}
-
-
-def write_config(workspace: Path, config: dict[str, Any]) -> str:
-    """Persist the provided preprocessing configuration to disk."""
-    config_path = workspace / "preprocess_config.yml"
-    config_path.write_text(yaml.safe_dump(config))
-    return str(config_path)
 
 
 def make_event(
@@ -94,4 +85,3 @@ def run_pipeline(
             pass
         shutil.rmtree(checkpoint, ignore_errors=True)
         shutil.rmtree(input_dir, ignore_errors=True)
-

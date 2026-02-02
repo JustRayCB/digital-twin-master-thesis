@@ -1,250 +1,374 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
-from pyspark.sql.streaming.state import GroupState
+import pandas as pd
+import pytest
+from pyspark.sql import Row, SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
+from pyspark.sql.types import DoubleType, IntegerType, StructField, StructType
 
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
-from dt.data.preprocess.core.state import FlatlineRecord, SensorState, SparkStateProvider, StateProvider
 from dt.communication.topics import Topics
+from dt.data.preprocess.core.state import SensorState, SparkStateProvider
 
-
-class DummyProvider(StateProvider):
-    """Pure-Python implementation used to assert StateProvider contract semantics."""
-
-    def __init__(self) -> None:
-        self._last_valid: dict[int, RawSensorData] = {}
-        self._flatlines: dict[int, FlatlineRecord] = {}
-        self._history: dict[int, list[RawSensorData]] = {}
-
-    def get_last_valid(self, sensor_id: int) -> RawSensorData | None:
-        return self._last_valid.get(sensor_id)
-
-    def update(self, sensor_id: int, reading: RawSensorData) -> None:
-        self._last_valid[sensor_id] = reading
-        history = self._history.setdefault(sensor_id, [])
-        history.append(reading)
-
-    def record_flatline(self, sensor_id: int, value: float, timestamp: float) -> None:
-        self._flatlines[sensor_id] = FlatlineRecord(value=value, timestamp=timestamp)
-
-    def get_flatline(self, sensor_id: int) -> FlatlineRecord | None:
-        return self._flatlines.get(sensor_id)
-
-    def get_recent_history(
-        self, sensor_id: int, window_seconds: float, reference_timestamp: float
-    ) -> list[RawSensorData]:
-        history = self._history.get(sensor_id, [])
-        cutoff = reference_timestamp - window_seconds
-        trimmed = [row for row in history if row.timestamp >= cutoff]
-        self._history[sensor_id] = trimmed
-        return trimmed
-
-
-def _make_reading(sensor_id: int, value: float) -> RawSensorData:
-    """Construct a raw reading to exercise state provider behaviour."""
-    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
-    return RawSensorData(
-        plant_id=1,
-        sensor_id=sensor_id,
-        timestamp=base_time,
-        value=value,
-        unit="C",
-        topic=Topics.TEMPERATURE,
-        correlation_id=f"reading-{sensor_id}",
-    )
-
-
-def test_dummy_provider_tracks_last_valid_reading() -> None:
-    """Dummy provider should persist the latest accepted reading."""
-    provider = DummyProvider()
-    reading = _make_reading(sensor_id=42, value=21.5)
-
-    provider.update(sensor_id=42, reading=reading)
-
-    retrieved = provider.get_last_valid(42)
-    assert retrieved is reading
-
-
-def test_dummy_provider_records_flatline_metadata() -> None:
-    """Dummy provider should store flatline metadata for later retrieval."""
-    provider = DummyProvider()
-    reading = _make_reading(sensor_id=77, value=19.2)
-
-    provider.record_flatline(sensor_id=77, value=reading.value, timestamp=reading.timestamp)
-
-    record = provider.get_flatline(77)
-    assert record is not None
-    assert record.value == reading.value
-    assert record.timestamp == reading.timestamp
-
-
-def test_dummy_provider_returns_recent_history_window() -> None:
-    """Dummy provider should return the recent window respecting cutoffs."""
-    provider = DummyProvider()
-    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
-    readings = [
-        _make_reading(sensor_id=18, value=10.0),
-        RawSensorData(
-            plant_id=1,
-            sensor_id=18,
-            timestamp=base_time + 5,
-            value=11.0,
-            unit="C",
-            topic=Topics.TEMPERATURE,
-            correlation_id="reading-18-1",
-        ),
+OUTPUT_SCHEMA = StructType(
+    [
+        StructField("plant_id", IntegerType(), nullable=False),
+        StructField("sensor_id", IntegerType(), nullable=False),
+        StructField("last_value", DoubleType(), nullable=True),
+        StructField("history_len", IntegerType(), nullable=False),
+        StructField("flatline_value", DoubleType(), nullable=True),
+        StructField("flatline_timestamp", DoubleType(), nullable=True),
     ]
-    for item in readings:
-        provider.update(sensor_id=item.sensor_id, reading=item)
+)
 
-    history = provider.get_recent_history(
-        sensor_id=18,
-        window_seconds=10,
-        reference_timestamp=base_time + 7,
+
+def _make_event(
+    plant_id: int,
+    sensor_id: int,
+    timestamp: float,
+    value: float,
+    unit: str,
+    topic: Topics,
+    correlation_id: str,
+) -> Row:
+    return Row(
+        plant_id=int(plant_id),
+        sensor_id=int(sensor_id),
+        timestamp=float(timestamp),
+        value=float(value),
+        unit=str(unit),
+        topic=topic.value,
+        correlation_id=correlation_id,
     )
 
-    assert len(history) == 2
+
+def _run_stateful_stream(
+    spark_session: SparkSession,
+    workspace: Path,
+    events: list[Row],
+    max_history_length: int,
+    window_seconds: float,
+    record_flatline: bool = False,
+) -> list[dict[str, float | int | None]]:
+    return _run_stateful_stream_batches(
+        spark_session=spark_session,
+        workspace=workspace,
+        event_batches=[events],
+        max_history_length=max_history_length,
+        window_seconds=window_seconds,
+        record_flatline=record_flatline,
+    )[-1]
 
 
-class _FakeGroupState(GroupState):
-    """Minimal stub implementing the portion of GroupState used in unit tests."""
+def _run_stateful_stream_batches(
+    spark_session: SparkSession,
+    workspace: Path,
+    event_batches: list[list[Row]],
+    max_history_length: int,
+    window_seconds: float,
+    record_flatline: bool = False,
+) -> list[list[dict[str, float | int | None]]]:
+    input_dir = workspace / "state_input"
+    checkpoint_dir = workspace / "state_checkpoint"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    def __init__(self, initial_payload: tuple[object, ...] = ()) -> None:
-        self._payload = initial_payload
-        self._defined = initial_payload is not None
+    raw_schema = RawSensorData.get_spark_schema()
+    raw_stream = spark_session.readStream.schema(raw_schema).parquet(str(input_dir))
+    watermarked = raw_stream.withColumn(
+        "event_time", F.to_timestamp(F.from_unixtime(F.col("timestamp")))
+    ).withWatermark("event_time", "1 hour")
 
-    @property
-    def get(self) -> tuple[object, ...]:
-        return self._payload
+    def apply_state(
+        key: tuple[int, int],
+        pdf_iter: "iter[pd.DataFrame]",
+        state: GroupState,
+    ) -> "iter[pd.DataFrame]":
+        if state.hasTimedOut:
+            state.remove()
+            payload = {
+                "plant_id": key[0],
+                "sensor_id": key[1],
+                "last_value": None,
+                "history_len": 0,
+                "flatline_value": None,
+                "flatline_timestamp": None,
+            }
+            return iter([pd.DataFrame([payload])])
 
-    def update(self, payload: tuple[object, ...]) -> None:
-        if not isinstance(payload, tuple):
-            raise TypeError("Expected tuple payload")
-        self._payload = payload
+        provider = SparkStateProvider(
+            group_state=state,
+            sensor_id=key[1],
+            max_history_length=max_history_length,
+        )
+        readings: list[RawSensorData] = []
+        for pdf in pdf_iter:
+            if pdf.empty:
+                continue
+            for row in pdf.to_dict(orient="records"):
+                row.pop("event_time", None)
+                readings.append(RawSensorData(**row))
 
+        readings.sort(key=lambda reading: reading.timestamp)
+        for reading in readings:
+            provider.update(reading.sensor_id, reading)
 
-def test_spark_state_provider_initializes_from_group_state() -> None:
-    """SparkStateProvider should hydrate its state from the incoming payload."""
-    reading = _make_reading(sensor_id=12, value=20.5)
-    seed_state = SensorState(
-        last_valid=reading,
-        flatline=FlatlineRecord(value=20.5, timestamp=reading.timestamp),
-    )
-    group_state = _FakeGroupState(initial_payload=seed_state.to_payload())
+        last = provider.get_last_valid(key[1])
+        if record_flatline and last is not None:
+            provider.record_flatline(last.sensor_id, last.value, last.timestamp)
+        flatline = provider.get_flatline(key[1])
 
-    provider = SparkStateProvider(group_state=group_state, sensor_id=reading.sensor_id)
+        history = provider.get_recent_history(
+            sensor_id=key[1],
+            window_seconds=window_seconds,
+            reference_timestamp=last.timestamp if last is not None else 0.0,
+        )
 
-    last_valid = provider.get_last_valid(sensor_id=reading.sensor_id)
-    assert last_valid is not None
-    assert last_valid.value == reading.value
-    flatline = provider.get_flatline(sensor_id=reading.sensor_id)
-    assert flatline is not None
-    assert flatline.value == 20.5
+        payload = {
+            "plant_id": key[0],
+            "sensor_id": key[1],
+            "last_value": last.value if last is not None else None,
+            "history_len": len(history),
+            "flatline_value": flatline.value if flatline is not None else None,
+            "flatline_timestamp": flatline.timestamp if flatline is not None else None,
+        }
+        return iter([pd.DataFrame([payload])])
 
-
-def test_spark_state_provider_persists_updates() -> None:
-    """SparkStateProvider should persist updates back to Spark."""
-    group_state = _FakeGroupState()
-    provider = SparkStateProvider(group_state=group_state, sensor_id=88)
-    reading = _make_reading(sensor_id=88, value=19.7)
-
-    provider.update(sensor_id=88, reading=reading)
-
-    persisted_tuple = group_state.get
-    assert persisted_tuple is not None
-    persisted_state = SensorState.from_payload(persisted_tuple)
-    assert persisted_state.last_valid is not None
-    assert persisted_state.last_valid.value == reading.value
-    assert persisted_state.flatline is None
-
-
-def test_spark_state_provider_records_flatline_in_group_state() -> None:
-    """SparkStateProvider should record flatline metadata in Spark's storage."""
-    group_state = _FakeGroupState()
-    provider = SparkStateProvider(group_state=group_state, sensor_id=88)
-
-    provider.record_flatline(sensor_id=88, value=11.3, timestamp=123.4)
-
-    persisted_tuple = group_state.get
-    assert persisted_tuple is not None
-    persisted_state = SensorState.from_payload(persisted_tuple)
-    flatline = persisted_state.flatline
-    assert flatline is not None
-    assert flatline.value == 11.3
-    assert flatline.timestamp == 123.4
-
-
-def test_spark_state_provider_tracks_recent_history() -> None:
-    """SparkStateProvider should return history trimmed to the requested window."""
-    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
-    group_state = _FakeGroupState()
-    provider = SparkStateProvider(group_state=group_state, sensor_id=55)
-    first = RawSensorData(
-        plant_id=1,
-        sensor_id=55,
-        timestamp=base_time - 30,
-        value=17.0,
-        unit="C",
-        topic=Topics.TEMPERATURE,
-        correlation_id="reading-55-0",
-    )
-    second = RawSensorData(
-        plant_id=1,
-        sensor_id=55,
-        timestamp=base_time - 5,
-        value=21.0,
-        unit="C",
-        topic=Topics.TEMPERATURE,
-        correlation_id="reading-55-1",
-    )
-
-    provider.update(sensor_id=55, reading=first)
-    provider.update(sensor_id=55, reading=second)
-
-    history = provider.get_recent_history(
-        sensor_id=55,
-        window_seconds=20,
-        reference_timestamp=base_time,
+    processed = watermarked.groupBy("plant_id", "sensor_id").applyInPandasWithState(
+        apply_state,
+        outputStructType=OUTPUT_SCHEMA,
+        stateStructType=SensorState.get_spark_schema(),
+        outputMode="update",
+        timeoutConf=GroupStateTimeout.EventTimeTimeout,
     )
 
-    assert len(history) == 1
-    assert history[0].value == second.value
+    query_name = "state_provider_results"
+    query = (
+        processed.writeStream.format("memory")
+        .queryName(query_name)
+        .outputMode("update")
+        .option("checkpointLocation", str(checkpoint_dir))
+        .start()
+    )
+
+    results: list[list[dict[str, float | int | None]]] = []
+    try:
+        for batch in event_batches:
+            if batch:
+                spark_session.createDataFrame(batch, raw_schema).write.mode("append").parquet(
+                    str(input_dir)
+                )
+            query.processAllAvailable()
+            rows = spark_session.sql(f"SELECT * FROM {query_name}").collect()
+            results.append([row.asDict() for row in rows])
+        return results
+    finally:
+        query.stop()
+        try:
+            spark_session.catalog.dropTempView(query_name)
+        except Exception:
+            pass
 
 
-def test_spark_state_provider_trims_persisted_history() -> None:
-    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp()
-    group_state = _FakeGroupState()
-    provider = SparkStateProvider(group_state=group_state, sensor_id=91)
-    samples = [
-        RawSensorData(
+def test_state_provider_persists_last_valid_and_history(spark_session, tmp_path) -> None:
+    """SparkStateProvider should persist last_valid and trim history."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
             plant_id=1,
-            sensor_id=91,
-            timestamp=base_time - 120,
-            value=10.0,
+            sensor_id=101,
+            timestamp=(base_time.timestamp() + offset),
+            value=20.0 + offset,
             unit="C",
             topic=Topics.TEMPERATURE,
-            correlation_id="reading-91-0",
-        ),
-        RawSensorData(
-            plant_id=1,
-            sensor_id=91,
-            timestamp=base_time - 10,
-            value=12.0,
-            unit="C",
-            topic=Topics.TEMPERATURE,
-            correlation_id="reading-91-1",
-        ),
+            correlation_id=f"reading-{offset}",
+        )
+        for offset in (0, 10, 20)
     ]
-    for item in samples:
-        provider.update(sensor_id=91, reading=item)
 
-    history = provider.get_recent_history(
-        sensor_id=91,
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=2,
+        window_seconds=3600,
+    )
+
+    assert len(results) == 1
+    row = results[0]
+    assert row["last_value"] == 40.0
+    assert row["history_len"] == 2
+
+
+def test_state_provider_trims_history_window(spark_session, tmp_path) -> None:
+    """SparkStateProvider should trim history based on the requested window."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=202,
+            timestamp=(base_time.timestamp() + offset),
+            value=10.0 + offset,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id=f"reading-{offset}",
+        )
+        for offset in (0, 120)
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=5,
         window_seconds=30,
-        reference_timestamp=base_time,
     )
 
-    assert len(history) == 1
-    persisted_tuple = group_state.get
-    assert persisted_tuple is not None
-    persisted_state = SensorState.from_payload(persisted_tuple)
-    assert len(persisted_state.history) == 1
+    assert len(results) == 1
+    row = results[0]
+    assert row["last_value"] == 130.0
+    assert row["history_len"] == 1
+
+
+def test_state_provider_records_flatline_metadata(spark_session, tmp_path) -> None:
+    """SparkStateProvider should persist flatline metadata in state."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=303,
+            timestamp=base_time.timestamp(),
+            value=18.5,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="reading-0",
+        )
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=5,
+        window_seconds=60,
+        record_flatline=True,
+    )
+
+    assert len(results) == 1
+    row = results[0]
+    assert row["flatline_value"] == 18.5
+    assert row["flatline_timestamp"] == pytest.approx(base_time.timestamp())
+
+
+@pytest.mark.parametrize(
+    ("max_history_length", "expected_length"),
+    [(0, 0), (1, 1)],
+)
+def test_state_provider_history_cap_edges(
+    spark_session, tmp_path, max_history_length: int, expected_length: int
+) -> None:
+    """History should respect small max_history_length values."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=606,
+            timestamp=base_time.timestamp() + offset,
+            value=10.0 + offset,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id=f"reading-{offset}",
+        )
+        for offset in (0, 5, 10)
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=max_history_length,
+        window_seconds=3600,
+    )
+
+    row = results[0]
+    assert row["last_value"] == 20.0
+    assert row["history_len"] == expected_length
+
+
+def test_state_provider_includes_window_boundary(spark_session, tmp_path) -> None:
+    """Events exactly on the window boundary should be retained."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=707,
+            timestamp=base_time.timestamp(),
+            value=5.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="reading-0",
+        ),
+        _make_event(
+            plant_id=1,
+            sensor_id=707,
+            timestamp=base_time.timestamp() + 10,
+            value=6.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="reading-10",
+        ),
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=5,
+        window_seconds=10,
+    )
+
+    row = results[0]
+    assert row["history_len"] == 2
+    assert row["last_value"] == 6.0
+
+
+
+
+def test_state_provider_overwrites_flatline_record() -> None:
+    """Flatline metadata should be replaced by the latest record."""
+    state = SensorState()
+    state.record_flatline(value=1.0, timestamp=100.0)
+    state.record_flatline(value=2.0, timestamp=200.0)
+
+    assert state.flatline.value == 2.0
+    assert state.flatline.timestamp == 200.0
+
+
+def test_state_provider_first_reading_history_contains_current(spark_session, tmp_path) -> None:
+    """The first reading should appear in recent history."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=911,
+            timestamp=base_time.timestamp(),
+            value=9.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="reading-0",
+        )
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=5,
+        window_seconds=3600,
+    )
+
+    row = results[0]
+    assert row["last_value"] == 9.0
+    assert row["history_len"] == 1
