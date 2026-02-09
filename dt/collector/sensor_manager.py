@@ -150,11 +150,11 @@ class SensorManager:
             current_time = time.time()
             if sensor.needs_data(current_time):
                 data[sensor.name] = sensor.read()
-                topic: Topics = sensor.topic
+                topic = sensor.topic.raw
                 self.messaging_service.publish(
-                    topic.processed, data[sensor.name]  # TODO: replace processed with raw
+                    topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
-                self.logger.info(f"Published data from {sensor_name} to {topic.processed}.")
+                self.logger.info(f"Published data from {sensor_name} to {topic}.")
                 self.logger.debug(f"Data: {data[sensor.name]}")
 
         return data
