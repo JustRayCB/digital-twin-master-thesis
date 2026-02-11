@@ -20,7 +20,6 @@ class Topics(StrEnum):
     LIGHT_INTENSITY = PREFIX_SENSOR + "light_intensity"
     CAMERA_IMAGE = PREFIX_SENSOR + "camera_image"
     ALERTS = "dt.alerts"
-    ACTIONS = "dt.actions"
 
     @classmethod
     def list_topics(cls) -> list["Topics"]:
@@ -31,7 +30,7 @@ class Topics(StrEnum):
         list[Topics]
             A list of all topics
         """
-        return [topic for topic in cls if topic != PREFIX_SENSOR]
+        return list(cls)
 
     @classmethod
     def list_sensor_topics(cls) -> list["Topics"]:
@@ -42,7 +41,7 @@ class Topics(StrEnum):
         list[Topics]
             A list of all sensor-related topics
         """
-        return [topic for topic in cls if PREFIX_SENSOR in topic]
+        return [topic for topic in cls if topic.value.startswith(PREFIX_SENSOR)]
 
     @property
     def raw(self) -> str:

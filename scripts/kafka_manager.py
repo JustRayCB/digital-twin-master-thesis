@@ -34,7 +34,7 @@ import argparse
 import subprocess
 import sys
 
-from dt.communication import Topics
+from dt.communication.topics import Topics
 
 # Configuration
 KAFKA_DIR = "/opt/kafka"  # Match your installation directory
@@ -260,16 +260,13 @@ class KafkaManager:
     def setup_kafka(self):
         """Set up all Kafka topics required for the digital twin project.
 
-        This creates raw and processed topics for each sensor, as well as topics
-        for alerts, commands, and health status.
+        This creates raw and processed topics for each sensor, as well as the
+        alerts topic.
         """
-        for topic in Topics.list_topics():
+        for topic in Topics.list_sensor_topics():
             self.create_topic(topic_name=topic.raw, partitions=2, replication_factor=1)
             self.create_topic(topic_name=topic.processed, partitions=2, replication_factor=1)
-        self.create_topic(topic_name="alerts", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="commands", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="commands-response", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="health-status", partitions=1, replication_factor=1)
+        self.create_topic(topic_name=str(Topics.ALERTS), partitions=1, replication_factor=1)
 
 
 def parse_config_option(config_str):
