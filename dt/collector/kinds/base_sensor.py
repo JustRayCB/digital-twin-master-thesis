@@ -3,8 +3,9 @@ from abc import ABC, abstractmethod
 
 import board
 
-from dt.communication.topics import Topics
 from dt.communication.dataclasses import RawSensorData, SensorDescriptor
+from dt.communication.topics import Topics
+from dt.utils.ids import new_correlation_id
 from dt.utils.logger import get_logger
 
 Pin = int
@@ -131,7 +132,7 @@ class Sensor(ABC):
             value=raw_value,
             unit=self.unit,
             topic=self.topic,
-            correlation_id="abc-123",  # TODO: Add correlation ID (UUID)
+            correlation_id=new_correlation_id(),
         )
 
         return data
