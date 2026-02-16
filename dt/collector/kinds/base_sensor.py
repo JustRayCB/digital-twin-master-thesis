@@ -1,8 +1,6 @@
 import time
 from abc import ABC, abstractmethod
 
-import board
-
 from dt.communication.dataclasses import RawSensorData, SensorDescriptor
 from dt.communication.topics import Topics
 from dt.utils.ids import new_correlation_id
@@ -105,7 +103,7 @@ class Sensor(ABC):
             time - self.last_read_time >= self.read_interval if self.last_read_time != -1 else True
         )
 
-    def read(self) -> RawSensorData:
+    def read(self) -> RawSensorData | None:
         """Read data from the sensor and return it as a RawSensorData object.
 
         This method reads the raw data from the sensor, processes it, updates
@@ -114,14 +112,19 @@ class Sensor(ABC):
 
         Returns
         -------
-        RawSensorData
-            A dataclass object containing the sensor data and metadata.
+        RawSensorData | None
+            A dataclass object containing the sensor data and metadata, or None
+            when the sensor does not return a value.
         """
         current_time = time.time()
         raw_value = self.read_sensor()
 
-        self.last_data = raw_value
         self.last_read_time = current_time
+        if raw_value is None:
+            self.logger.error(f"Failed to read {self.name}: no data returned")
+            return None
+
+        self.last_data = raw_value
 
         # assert self.id != -1, "Sensor ID not set"
 
@@ -138,15 +141,15 @@ class Sensor(ABC):
         return data
 
     @abstractmethod
-    def read_sensor(self) -> float:
+    def read_sensor(self) -> float | None:
         """Read the raw value from the sensor.
 
         This is an abstract method that must be implemented by subclasses.
 
         Returns
         -------
-        float
-            The raw value read from the sensor.
+        float | None
+            The raw value read from the sensor, or None if no data is available.
         """
         raise NotImplementedError(f"Method read_sensor not implemented for {self.name}")
 

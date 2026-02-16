@@ -137,7 +137,7 @@ class SensorManager:
 
         This method iterates through all managed sensors, checks if a new
         reading is needed based on the current time and the sensor's read
-        interval, reads the data, and publishes it.
+        interval, reads the data, and publishes it when a value is returned.
 
         Returns
         -------
@@ -149,7 +149,12 @@ class SensorManager:
         for sensor_name, sensor in self.sensors.items():
             current_time = time.time()
             if sensor.needs_data(current_time):
-                data[sensor.name] = sensor.read()
+                reading = sensor.read()
+                if reading is None:
+                    self.logger.warning(f"Skipping publish for {sensor_name}: no data returned.")
+                    continue
+
+                data[sensor.name] = reading
                 topic = sensor.topic.raw
                 self.messaging_service.publish(
                     topic, data[sensor.name]
