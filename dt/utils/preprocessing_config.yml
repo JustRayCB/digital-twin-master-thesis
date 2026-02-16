@@ -89,7 +89,7 @@ templates:
     units: "%"
     # accuracy: 40 # +-2% (40 is 2% of 2000)
     validation:
-      range: { min: 0, max: 2000 } # Need to be calibrated to 0-100%
+      range: { min: 0, max: 100 } # Calibrated to percent (0-100)
       roc: { max_per_minute: 100 }
       stuck: { max_flat_seconds: 600 } # 10 minutes
     imputation:
@@ -99,12 +99,14 @@ templates:
       # decay window for gentle fallback if baseline provided in future
       decay_seconds: 300
       baseline: null
-    calibration: # TODO: Calibrate the sensor.
-      strategy: identity
+    calibration:
+      strategy: affine
+      scale: 0.07692307692307693 #100/1300
+      offset: 0.0
     normalization:
       strategy: min_max
       input_min: 0.0
-      input_max: 2000.0
+      input_max: 100.0
       output_min: 0.0
       output_max: 1.0
       clip: true
