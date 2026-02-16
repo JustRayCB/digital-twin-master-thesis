@@ -23,6 +23,8 @@ class ReadingsQuery:
             self.plant_id = int(self.plant_id)
         if self.topic is not None:
             self.topic = str(self.topic)
+            if self.topic.startswith("dt.sensors."):
+                self.topic = self.topic.split(".")[-1]
         if self.since is not None:
             self.since = float(self.since)
         if self.until is not None:
