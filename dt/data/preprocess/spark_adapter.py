@@ -39,8 +39,8 @@ class SparkStreamingAdapter:
         Configuration manager for pipeline construction.
     """
 
-    STATE_TIMEOUT_SECONDS = int(Config.SPARK_STATE_TIMEOUT_SECONDS)
-    WATERMARK_INTERVAL = Config.SPARK_WATERMARK_INTERVAL
+    STATE_TIMEOUT_SECONDS = int(Config.SPARK_STATE_TIMEOUT_SECONDS.value)
+    WATERMARK_INTERVAL = Config.SPARK_WATERMARK_INTERVAL.value
 
     def __init__(self, config_manager: ConfigurationManager) -> None:
         """Initialize the Spark adapter.

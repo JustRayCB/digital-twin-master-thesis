@@ -25,10 +25,14 @@ def _build_topic_map() -> dict[str, str]:
 
 def _build_spark_session() -> SparkSession:
     """Initialise a Spark session with reasonable defaults."""
-    builder = SparkSession.builder.appName(Config.SPARK_APP_NAME).master(Config.SPARK_MASTER)
-    builder = builder.config("spark.sql.shuffle.partitions", Config.SPARK_SQL_SHUFFLE_PARTITIONS)
-    builder = builder.config("spark.default.parallelism", Config.SPARK_DEFAULT_PARALLELISM)
-    builder = builder.config("spark.sql.adaptive.enabled", Config.SPARK_AQE_ENABLED)
+    builder = SparkSession.builder.appName(Config.SPARK_APP_NAME.value).master(
+        Config.SPARK_MASTER.value
+    )
+    builder = builder.config(
+        "spark.sql.shuffle.partitions", Config.SPARK_SQL_SHUFFLE_PARTITIONS.value
+    )
+    builder = builder.config("spark.default.parallelism", Config.SPARK_DEFAULT_PARALLELISM.value)
+    builder = builder.config("spark.sql.adaptive.enabled", Config.SPARK_AQE_ENABLED.value)
     session = builder.getOrCreate()
     session.sparkContext.setLogLevel(Config.SPARK_LOG_LEVEL)
     return session
@@ -48,7 +52,7 @@ def _read_raw_events(
         .option("subscribePattern", topic_pattern)
         .option("startingOffsets", starting_offsets)
         .option("failOnDataLoss", "false")
-        .option("maxOffsetsPerTrigger", Config.SPARK_MAX_OFFSETS_PER_TRIGGER)
+        .option("maxOffsetsPerTrigger", Config.SPARK_MAX_OFFSETS_PER_TRIGGER.value)
         .load()
     )
     payload = kafka_stream.selectExpr("CAST(value AS STRING) AS payload")
@@ -113,7 +117,7 @@ def main() -> None:
             .option("kafka.bootstrap.servers", kafka_bootstrap)
             .option("checkpointLocation", checkpoint_dir)
             .outputMode("update")
-            .trigger(processingTime=Config.SPARK_TRIGGER_INTERVAL)
+            .trigger(processingTime=Config.SPARK_TRIGGER_INTERVAL.value)
             .start()
         )
         query.awaitTermination()
