@@ -81,6 +81,8 @@ class ControllerService:
         self._sensor_values: OrderedDict[tuple[int, str], float] = OrderedDict()
         self._last_fired_limit = 10_000
         self._sensor_value_limit = 10_000
+        self._registered_plants: list[dict[str, Any]] = []
+        self._get_registered_plants()
 
     def get_mode(self, plant_id: int) -> ControlMode:
         if plant_id not in self._mode_cache:
@@ -174,7 +176,7 @@ class ControllerService:
                     time.sleep(0.5)
                     continue
 
-                for plant in self.database_client.list_plants():
+                for plant in self._registered_plants:
                     self.evaluate_time_triggers(plant["id"], last_check, now)
 
                 last_check = now
@@ -416,6 +418,9 @@ class ControllerService:
 
     def _initial_last_check_time(self) -> datetime:
         return datetime.now(self._timezone) - timedelta(minutes=1)
+
+    def _get_registered_plants(self) -> None:
+        self._registered_plants = self.database_client.list_plants()
 
     def _enforce_cache_limits(self) -> None:
         while len(self._last_fired) > self._last_fired_limit:
