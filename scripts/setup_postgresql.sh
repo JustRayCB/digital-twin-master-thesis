@@ -38,7 +38,7 @@ fi
 echo "[2/7] Installing PostgreSQL and TimescaleDB packages"
 sudo apt-get update -y
 # Install meta package; it will select the correct PG version (e.g., 16/18)
-sudo apt-get install -y timescaledb-2-postgresql postgresql-client
+sudo apt-get install -y timescaledb-2-postgresql-18 postgresql-client-18
 
 echo "[3/7] Running timescaledb-tune (auto-yes)"
 if command -v timescaledb-tune >/dev/null 2>&1; then

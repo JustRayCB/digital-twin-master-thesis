@@ -2,13 +2,13 @@
 # Digital Twin Makefile
 # =========================
 # Edit these if your module paths differ.
-PY            := poetry run python
-WEB ?= dt/webapp/app.py
-COLLECTOR ?= dt/collector/main.py
-CONTROLLER ?= dt/controller/app.py
-DB ?= dt/data/database/app.py
-PREPROCESS ?= dt/data/preprocess/main.py
-ALERTS ?= dt/alerts/app.py
+PY            := poetry run python -m
+WEB ?= dt.webapp.app
+COLLECTOR ?= dt.collector.main
+CONTROLLER ?= dt.controller.app
+DB ?= dt.data.database.app
+PREPROCESS ?= dt.data.preprocess.main
+ALERTS ?= dt.alerts.app
 
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
@@ -96,7 +96,7 @@ run-preprocessing:
 	$(PY) $(PREPROCESS)
 
 run-alert-engine:
-	$(PY) -m dt.alerts.app
+	$(PY) $(ALERTS)
 
 run-alert-api-only:
 	$(PY) -c "from dt.alerts.app import create_app; app=create_app(start_consumer=False); app.run(host='0.0.0.0', port=5003)"
