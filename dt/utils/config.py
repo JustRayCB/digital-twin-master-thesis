@@ -38,10 +38,32 @@ class Config(StrEnum):
     )  # Default checkpoint directory for the preprocessing job
 
     MAX_STATE_HISTORY_LENGTH = os.getenv(
-        "MAX_STATE_HISTORY_LENGTH", "256"
+        "MAX_STATE_HISTORY_LENGTH", "64"
     )  # Max length of state history
     SPARK_LOG_LEVEL = os.getenv("SPARK_LOG_LEVEL", "WARN")  # Spark log level
     SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "dt-preprocessing-app")  # Spark application name
+    SPARK_MASTER = os.getenv("SPARK_MASTER", "local[2]")  # Spark master URL
+    SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv(
+        "SPARK_SQL_SHUFFLE_PARTITIONS", "2"
+    )  # Shuffle partitions
+    SPARK_DEFAULT_PARALLELISM = os.getenv(
+        "SPARK_DEFAULT_PARALLELISM", "2"
+    )  # Default parallelism
+    SPARK_AQE_ENABLED = os.getenv(
+        "SPARK_AQE_ENABLED", "false"
+    )  # Adaptive query execution
+    SPARK_MAX_OFFSETS_PER_TRIGGER = os.getenv(
+        "SPARK_MAX_OFFSETS_PER_TRIGGER", "500"
+    )  # Kafka offsets per trigger
+    SPARK_TRIGGER_INTERVAL = os.getenv(
+        "SPARK_TRIGGER_INTERVAL", "5 seconds"
+    )  # Processing time trigger
+    SPARK_WATERMARK_INTERVAL = os.getenv(
+        "SPARK_WATERMARK_INTERVAL", "10 minutes"
+    )  # Watermark delay
+    SPARK_STATE_TIMEOUT_SECONDS = os.getenv(
+        "SPARK_STATE_TIMEOUT_SECONDS", "600"
+    )  # Group state timeout (seconds)
     SPARK_STARTING_OFFSETS = os.getenv(
         "STARTING_OFFSETS", "latest"
     )  # Kafka starting offsets for streaming

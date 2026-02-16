@@ -25,7 +25,11 @@ def _build_topic_map() -> dict[str, str]:
 
 def _build_spark_session() -> SparkSession:
     """Initialise a Spark session with reasonable defaults."""
-    session = SparkSession.builder.appName(Config.SPARK_APP_NAME).getOrCreate()
+    builder = SparkSession.builder.appName(Config.SPARK_APP_NAME).master(Config.SPARK_MASTER)
+    builder = builder.config("spark.sql.shuffle.partitions", Config.SPARK_SQL_SHUFFLE_PARTITIONS)
+    builder = builder.config("spark.default.parallelism", Config.SPARK_DEFAULT_PARALLELISM)
+    builder = builder.config("spark.sql.adaptive.enabled", Config.SPARK_AQE_ENABLED)
+    session = builder.getOrCreate()
     session.sparkContext.setLogLevel(Config.SPARK_LOG_LEVEL)
     return session
 
@@ -44,6 +48,7 @@ def _read_raw_events(
         .option("subscribePattern", topic_pattern)
         .option("startingOffsets", starting_offsets)
         .option("failOnDataLoss", "false")
+        .option("maxOffsetsPerTrigger", Config.SPARK_MAX_OFFSETS_PER_TRIGGER)
         .load()
     )
     payload = kafka_stream.selectExpr("CAST(value AS STRING) AS payload")
@@ -108,6 +113,7 @@ def main() -> None:
             .option("kafka.bootstrap.servers", kafka_bootstrap)
             .option("checkpointLocation", checkpoint_dir)
             .outputMode("update")
+            .trigger(processingTime=Config.SPARK_TRIGGER_INTERVAL)
             .start()
         )
         query.awaitTermination()
