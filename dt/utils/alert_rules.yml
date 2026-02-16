@@ -49,17 +49,31 @@ alert_rules:
     persistence_count: 1
     cooldown_seconds: 600
 
+  - rule_id: humidity_warning
+    name: High Humidity Warning
+    description: "Humidity exceeds {threshold}%"
+    severity: warning
+    evaluation_stage: processed
+    source: humidity
+    condition:
+      type: threshold
+      operator: ">"
+      threshold: 70.0
+    persistence_count: 3
+    cooldown_seconds: 300
+
+
   # Soil moisture range example
   - rule_id: moisture_low
     name: Low Soil Moisture
-    description: "Soil moisture below {min_value}%"
+    description: "Soil moisture below {threshold}%"
     severity: warning
     evaluation_stage: processed
     source: soil_moisture
     condition:
-      type: range
-      min_value: 20.0
-      max_value: null
+      type: threshold
+      operator: < 
+      threshold: 40
     persistence_count: 3
     cooldown_seconds: 600
 
