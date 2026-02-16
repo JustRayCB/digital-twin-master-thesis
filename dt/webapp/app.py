@@ -20,6 +20,7 @@ It has the following key responsibilities:
 """
 
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from flask import Flask, render_template
@@ -27,9 +28,11 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 import dt.webapp.consumer as consumer
+from dt.communication.controller_client import ControllerClient
 from dt.communication.db_client import DatabaseApiClient
 from dt.utils import get_logger
 from dt.webapp.api import create_webapp_blueprint
+from dt.webapp.ui import create_ui_blueprint, default_ui_dir
 
 # Global SocketIO instance (initialized in create_app)
 socketio = SocketIO(cors_allowed_origins="*")
@@ -54,7 +57,7 @@ dashboard_data = {
     "soil_setpoint": 25,
     "soil_moisture": 25,
     # Real-time Monitoring Data (placeholders)
-    "monitoring_period": "1h",
+    "monitoring_period": "24h",
     "temp_history": [],
     "humidity_history": [],
     "soil_history": [],
@@ -69,7 +72,12 @@ dashboard_data = {
 }
 
 
-def create_app(start_consumer: bool = True, db_client: Optional[DatabaseApiClient] = None) -> Flask:
+def create_app(
+    start_consumer: bool = True,
+    db_client: Optional[DatabaseApiClient] = None,
+    controller_client: Optional[ControllerClient] = None,
+    ui_dir: Optional[Path] = None,
+) -> Flask:
     """Create and configure the Flask application.
 
     Parameters
@@ -78,6 +86,11 @@ def create_app(start_consumer: bool = True, db_client: Optional[DatabaseApiClien
         Whether to start the Kafka consumer background thread, by default True.
     db_client : DatabaseApiClient | None, optional
         Dependency injection for the database client. If None, a new one is created.
+    controller_client : ControllerClient | None, optional
+        Dependency injection for the controller client. If None, a new one is created.
+    ui_dir : Path | None, optional
+        Directory containing a built UI (expects `index.html` plus assets). If None,
+        defaults to `dt/webapp/static/ui`.
 
     Returns
     -------
@@ -94,9 +107,16 @@ def create_app(start_consumer: bool = True, db_client: Optional[DatabaseApiClien
     if db_client is None:
         db_client = DatabaseApiClient()
 
+    if controller_client is None:
+        controller_client = ControllerClient()
+
     # Register API Blueprint
-    api_bp = create_webapp_blueprint(db_client)
+    api_bp = create_webapp_blueprint(db_client, controller_client)
     app.register_blueprint(api_bp)
+
+    # Register UI Blueprint
+    resolved_ui_dir = default_ui_dir() if ui_dir is None else ui_dir
+    app.register_blueprint(create_ui_blueprint(resolved_ui_dir))
 
     # Routes
     @app.route("/")

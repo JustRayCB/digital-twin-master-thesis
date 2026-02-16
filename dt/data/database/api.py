@@ -10,6 +10,13 @@ from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import SensorDescriptor
+from dt.communication.dataclasses.controller import (
+    ActionCommand,
+    CompiledRoutineRules,
+    ControlMode,
+    RoutineCreate,
+    RoutineUpdate,
+)
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
 from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
 from dt.data.database.storage import Storage
@@ -87,6 +94,163 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         actuators = storage.list_actuators()
         logger.info(f"Found {len(actuators)} actuators")
         return jsonify(actuators)
+
+    @bp.route("/plants", methods=["GET"])
+    def list_plants():
+        """Return all registered plants."""
+        logger.info("Listing plants")
+        plants = storage.list_plants()
+        logger.info(f"Found {len(plants)} plants")
+        return jsonify(plants)
+
+    @bp.route("/bind_actuator", methods=["POST"])
+    def bind_actuator():
+        """Register an actuator and return its assigned ID."""
+        logger.info("Binding actuator to the database")
+
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        try:
+            plant_id = int(payload["plant_id"])
+            name = str(payload["name"])
+            relay_channel = int(payload["relay_channel"])
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error(f"Invalid actuator payload: {exc}")
+            return jsonify({"error": "Invalid actuator payload"}), 400
+
+        actuator_id = storage.register_actuator(plant_id, name, relay_channel)
+        return jsonify({"status": "Actuator bound successfully", "actuator_id": actuator_id}), 200
+
+    @bp.route("/actions/log", methods=["POST"])
+    def log_action_execution():
+        """Upsert an action execution status record."""
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        try:
+            action = load("generic", ActionCommand, payload["action"])
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error(f"Invalid action logging payload: {exc}")
+            return jsonify({"error": "Invalid action logging payload"}), 400
+
+        if action.status is None:
+            return jsonify({"error": "Invalid action logging payload"}), 400
+
+        storage.log_action_execution(action=action)
+        return jsonify({"status": "ok"}), 200
+
+    # ---------------------------------------------------------------------- #
+    # Controller data
+    # ---------------------------------------------------------------------- #
+    @bp.route("/controller/mode", methods=["GET"])
+    def get_controller_mode():
+        """Get controller mode for a plant."""
+        plant_id = request.args.get("plant_id", type=int)
+        if not plant_id:
+            return jsonify({"error": "plant_id is required"}), 400
+
+        mode = storage.get_mode(plant_id)
+        return jsonify(dump("generic", mode))
+
+    @bp.route("/controller/mode", methods=["PUT"])
+    def set_controller_mode():
+        """Set controller mode for a plant."""
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        try:
+            mode = load("generic", ControlMode, payload)
+        except Exception as exc:
+            logger.error(f"Invalid controller mode payload: {exc}")
+            return jsonify({"error": "Invalid controller mode payload"}), 400
+
+        storage.set_mode(mode)
+        return jsonify({"status": "ok"}), 200
+
+    @bp.route("/controller/routines", methods=["GET"])
+    def list_controller_routines():
+        """List routines for a plant."""
+        plant_id = request.args.get("plant_id", type=int)
+        if not plant_id:
+            return jsonify({"error": "plant_id is required"}), 400
+
+        routines = storage.get_routines(plant_id)
+        return jsonify([dump("generic", routine) for routine in routines])
+
+    @bp.route("/controller/routines", methods=["POST"])
+    def create_controller_routine():
+        """Create a new routine."""
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        try:
+            routine = load("generic", RoutineCreate, payload["routine"])
+            compiled_json = load("generic", CompiledRoutineRules, payload["compiled_json"])
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error(f"Invalid routine payload: {exc}")
+            return jsonify({"error": "Invalid routine payload"}), 400
+
+        routine_id = storage.create_routine(routine, compiled_json)
+        return jsonify({"id": routine_id, "status": "created"}), 201
+
+    @bp.route("/controller/routines/<int:routine_id>", methods=["PUT"])
+    def update_controller_routine(routine_id: int):
+        """Update a routine."""
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        try:
+            updates = load("generic", RoutineUpdate, payload)
+        except Exception as exc:
+            logger.error(f"Invalid routine update payload: {exc}")
+            return jsonify({"error": "Invalid routine update payload"}), 400
+
+        storage.update_routine(routine_id, updates)
+        return jsonify({"status": "updated"}), 200
+
+    @bp.route("/controller/routines/<int:routine_id>", methods=["DELETE"])
+    def delete_controller_routine(routine_id: int):
+        """Delete a routine."""
+        storage.delete_routine(routine_id)
+        return jsonify({"status": "deleted"}), 200
+
+    @bp.route("/controller/actions/history", methods=["GET"])
+    def get_controller_action_history():
+        """Get action execution history."""
+        plant_id = request.args.get("plant_id", type=int)
+        limit = request.args.get("limit", default=50, type=int)
+
+        if not plant_id:
+            return jsonify({"error": "plant_id is required"}), 400
+
+        history = storage.get_action_history(plant_id, limit)
+        return jsonify([dump("generic", item) for item in history])
 
     @bp.route("/alerts/definitions", methods=["POST"])
     def ensure_alert_definition():

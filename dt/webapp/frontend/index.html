@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital Twin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Indie+Flower&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="https://cdn.plot.ly/plotly-3.0.0.min.js" charset="utf-8"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "desk": "#fdfbf7",
+              "ink": "#1c1917",
+              "cozy-lavender": "#dcd6f7",
+              "cozy-peach": "#ffdac1",
+              "cozy-mint": "#e2f0cb",
+              "cozy-yellow": "#fdfd96",
+              "cozy-blue": "#c7cee3",
+              "cozy-white": "#ffffff",
+              "pop-red": "#ff6961",
+            },
+            fontFamily: {
+              "retro": ["'VT323'", "monospace"],
+              "sans": ["'Space Grotesk'", "sans-serif"],
+              "handwriting": ["'Indie Flower'", "cursive"],
+            },
+            boxShadow: {
+              'hard': '4px 4px 0px 0px #1c1917',
+              'hard-sm': '2px 2px 0px 0px #1c1917',
+              'hard-lg': '8px 8px 0px 0px #1c1917',
+              'hard-xl': '12px 12px 0px 0px #1c1917',
+            },
+            borderWidth: {
+              '3': '3px',
+            },
+            backgroundImage: {
+                'grid-pattern': "radial-gradient(#1c1917 1px, transparent 1px)",
+            },
+            backgroundSize: {
+                'grid-sm': '20px 20px',
+            },
+            animation: {
+              'bounce-slow': 'bounce 3s infinite',
+              'wobble': 'wobble 1s ease-in-out infinite',
+            },
+            keyframes: {
+              wobble: {
+                '0%, 100%': { transform: 'rotate(-3deg)' },
+                '50%': { transform: 'rotate(3deg)' },
+              }
+            }
+          },
+        },
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

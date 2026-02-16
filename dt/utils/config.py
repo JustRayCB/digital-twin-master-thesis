@@ -50,3 +50,12 @@ class Config(StrEnum):
     ALERT_RULES_PATH = os.getenv(
         "ALERT_RULES_PATH", "dt/utils/alert_rules.yml"
     )  # Path to alert rules configuration file
+
+    # CONTROLLER CONFIGURATION
+    ACTUATOR_POLICIES_PATH = os.getenv(
+        "ACTUATOR_POLICIES_PATH", "dt/utils/actuator_policies.yml"
+    )  # Path to actuator policies configuration file
+    FLASK_CONTROLLER_URL = os.getenv(
+        "FLASK_CONTROLLER_URL", "http://localhost:5004/"
+    )  # Controller service URL
+    TIMEZONE = os.getenv("TIMEZONE", "Europe/Brussels")  # Timezone for scheduling

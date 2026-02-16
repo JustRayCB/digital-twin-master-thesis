@@ -6,6 +6,14 @@ from dt.communication.dataclasses import (
     ProcessedSensorData,
     SensorDescriptor,
 )
+from dt.communication.dataclasses.controller import ActionCommand
+from dt.communication.dataclasses.controller import (
+    CompiledRoutineRules,
+    ControlMode,
+    Routine,
+    RoutineCreate,
+    RoutineUpdate,
+)
 from dt.communication.dataclasses.queries import (
     ActiveAlertsQuery,
     AlertHistoryQuery,
@@ -229,6 +237,120 @@ class Storage(ABC):
         -------
         list[AlertHistoryEvent]
             List of the latest history event for each active alert.
+        """
+        pass
+
+    @abstractmethod
+    def get_mode(self, plant_id: int) -> ControlMode:
+        """Get the current control mode for a plant.
+
+        Parameters
+        ----------
+        plant_id : int
+            The ID of the plant.
+
+        Returns
+        -------
+        ControlMode
+            The control mode configuration.
+        """
+        pass
+
+    @abstractmethod
+    def set_mode(self, mode: ControlMode) -> None:
+        """Set the control mode for a plant.
+
+        Parameters
+        ----------
+        mode : ControlMode
+            Updated control mode configuration.
+        """
+        pass
+
+    @abstractmethod
+    def get_routines(self, plant_id: int) -> list[Routine]:
+        """Get all routines for a plant.
+
+        Parameters
+        ----------
+        plant_id : int
+            The ID of the plant.
+
+        Returns
+        -------
+        list[Routine]
+            List of routines.
+        """
+        pass
+
+    @abstractmethod
+    def create_routine(self, routine: RoutineCreate, compiled: CompiledRoutineRules) -> int:
+        """Create a new routine.
+
+        Parameters
+        ----------
+        routine : RoutineCreate
+            The routine data.
+        compiled : CompiledRoutineRules
+            Compiled rules to persist alongside the authoring graph.
+
+        Returns
+        -------
+        int
+            The ID of the newly created routine.
+        """
+        pass
+
+    @abstractmethod
+    def update_routine(self, routine_id: int, updates: RoutineUpdate) -> None:
+        """Update a routine.
+
+        Parameters
+        ----------
+        routine_id : int
+            The ID of the routine to update.
+        updates : RoutineUpdate
+            The fields to update.
+        """
+        pass
+
+    @abstractmethod
+    def delete_routine(self, routine_id: int) -> None:
+        """Delete a routine.
+
+        Parameters
+        ----------
+        routine_id : int
+            The ID of the routine to delete.
+        """
+        pass
+
+    @abstractmethod
+    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+        """Get action execution history for a plant.
+
+        Parameters
+        ----------
+        plant_id : int
+            The ID of the plant.
+        limit : int, optional
+            Maximum number of records to return, by default 50.
+
+        Returns
+        -------
+        list[ActionCommand]
+            List of action execution records.
+        """
+        pass
+
+    @abstractmethod
+    def log_action_execution(self, action: ActionCommand) -> None:
+        """Log an action execution (upsert).
+
+        Parameters
+        ----------
+        action : ActionCommand
+            The action command.
         """
         pass
 

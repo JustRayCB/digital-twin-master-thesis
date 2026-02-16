@@ -6,7 +6,7 @@ readings, alert history, and alert definition upserts.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Type
+from typing import Any, Type
 
 import requests
 
@@ -18,11 +18,15 @@ from dt.communication.dataclasses.alerts.alert_record import (
     ExternalAlertEvent,
     SensorAlertEvent,
 )
-from dt.communication.dataclasses.queries import (
-    ActiveAlertsQuery,
-    AlertHistoryQuery,
-    ReadingsQuery,
+from dt.communication.dataclasses.controller import (
+    ActionCommand,
+    CompiledRoutineRules,
+    ControlMode,
+    Routine,
+    RoutineCreate,
+    RoutineUpdate,
 )
+from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
 from dt.utils import Config, get_logger
 
 
@@ -80,6 +84,164 @@ class DatabaseApiClient:
         except requests.RequestException as exc:
             self.logger.error(f"Error listing actuators: {exc}")
             raise RuntimeError(f"Failed to list actuators: {exc}") from exc
+
+    def bind_actuator(self, plant_id: int, name: str, relay_channel: int) -> int:
+        """Register an actuator with the database."""
+        payload = {"plant_id": plant_id, "name": name, "relay_channel": relay_channel}
+        try:
+            response = requests.post(
+                f"{self.base_url}/bind_actuator",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            body = response.json()
+            return int(body.get("actuator_id", -1))
+        except requests.RequestException as exc:
+            self.logger.error(f"Error binding actuator: {exc}")
+            raise RuntimeError(f"Failed to bind actuator: {exc}") from exc
+
+    def list_plants(self) -> list[dict[str, Any]]:
+        """Return all registered plants."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/plants",
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error listing plants: {exc}")
+            raise RuntimeError(f"Failed to list plants: {exc}") from exc
+
+    def log_action_execution(self, action: ActionCommand) -> None:
+        """Persist action execution status."""
+        if action.status is None:
+            raise ValueError("ActionCommand.status is required to log execution")
+        payload = {"action": dump("generic", action)}
+        try:
+            response = requests.post(
+                f"{self.base_url}/actions/log",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error logging action execution: {exc}")
+            raise RuntimeError(f"Failed to log action execution: {exc}") from exc
+
+    # ---------------------------------------------------------------------- #
+    # Controller data
+    # ---------------------------------------------------------------------- #
+    def get_mode(self, plant_id: int) -> ControlMode:
+        """Fetch controller mode for a plant."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/controller/mode",
+                params={"plant_id": plant_id},
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            return load("generic", ControlMode, response.json())
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching controller mode: {exc}")
+            raise RuntimeError(f"Failed to fetch controller mode: {exc}") from exc
+
+    def set_mode(self, mode: ControlMode) -> None:
+        """Persist controller mode."""
+        try:
+            response = requests.put(
+                f"{self.base_url}/controller/mode",
+                json=dump("generic", mode),
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error setting controller mode: {exc}")
+            raise RuntimeError(f"Failed to set controller mode: {exc}") from exc
+
+    def get_routines(self, plant_id: int) -> list[Routine]:
+        """Fetch routines for a plant."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/controller/routines",
+                params={"plant_id": plant_id},
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return [load("generic", Routine, item) for item in payload]
+        except requests.RequestException as exc:
+            self.logger.error(f"Error listing routines: {exc}")
+            raise RuntimeError(f"Failed to list routines: {exc}") from exc
+
+    def create_routine(self, routine: RoutineCreate, compiled: CompiledRoutineRules) -> int:
+        """Create a new routine and return its ID."""
+        payload = {
+            "routine": dump("generic", routine),
+            "compiled_json": dump("generic", compiled),
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/controller/routines",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            return int(response.json().get("id", -1))
+        except requests.RequestException as exc:
+            self.logger.error(f"Error creating routine: {exc}")
+            raise RuntimeError(f"Failed to create routine: {exc}") from exc
+
+    def update_routine(self, routine_id: int, updates: RoutineUpdate) -> None:
+        """Update an existing routine."""
+        try:
+            response = requests.put(
+                f"{self.base_url}/controller/routines/{routine_id}",
+                json=dump("generic", updates),
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error updating routine: {exc}")
+            raise RuntimeError(f"Failed to update routine: {exc}") from exc
+
+    def delete_routine(self, routine_id: int) -> None:
+        """Delete a routine."""
+        try:
+            response = requests.delete(
+                f"{self.base_url}/controller/routines/{routine_id}",
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error deleting routine: {exc}")
+            raise RuntimeError(f"Failed to delete routine: {exc}") from exc
+
+    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+        """Fetch action execution history."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/controller/actions/history",
+                params={"plant_id": plant_id, "limit": limit},
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return [load("generic", ActionCommand, item) for item in payload]
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching action history: {exc}")
+            raise RuntimeError(f"Failed to fetch action history: {exc}") from exc
 
     # ---------------------------------------------------------------------- #
     # Readings

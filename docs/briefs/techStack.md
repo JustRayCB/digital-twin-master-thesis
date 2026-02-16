@@ -114,6 +114,10 @@ module/process under a top-level package dt/. For example:
   sensor readings, recent alerts, and system status, and in future will allow
   user controls (like triggering manual actuator overrides or uploading new model
   configurations) and plant state visualization.
+  The dashboard backend exposes `/api/*` endpoints for the UI and serves a built
+  Svelte single-page app under `/ui/` (built with Vite from `dt/webapp/frontend`
+  into `dt/webapp/static/ui`). The UI uses Tailwind CSS (via CDN in the frontend
+  entry HTML) for styling.
 
 Communication between these components is largely asynchronous and
 event-driven, thanks to Kafka. For instance, the Data Collector doesn't need to

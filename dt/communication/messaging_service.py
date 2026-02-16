@@ -9,6 +9,7 @@ from typing_extensions import override
 
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import ProcessedSensorData, RawSensorData
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertHistoryEvent,
     ExternalAlertEvent,
@@ -212,6 +213,9 @@ class KafkaService(MessagingService):
                                 elif "processed" in topic:
                                     # Deserialize as ProcessedSensorData
                                     data = load("generic", ProcessedSensorData, message.value)
+                                elif topic == Topics.ACTIONS:
+                                    # Deserialize as ActionCommand
+                                    data = load("generic", ActionCommand, message.value)
                                 else:
                                     # Deserialize as RawSensorData
                                     data = load("generic", RawSensorData, message.value)

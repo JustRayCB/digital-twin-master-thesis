@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS sensors (
     status VARCHAR(50) NOT NULL DEFAULT 'active',
 
     PRIMARY KEY (id),
-    CONSTRAINT fk_sensors_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+    CONSTRAINT fk_sensors_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+    CONSTRAINT uq_sensors_plant_name UNIQUE (plant_id, name)
 );
 
 -- Actuators table
@@ -40,8 +41,59 @@ CREATE TABLE IF NOT EXISTS actuators (
     status VARCHAR(50) NOT NULL DEFAULT 'active',
 
     PRIMARY KEY (id),
-    CONSTRAINT fk_actuators_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+    CONSTRAINT fk_actuators_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+    CONSTRAINT uq_actuators_plant_name UNIQUE (plant_id, name)
 
+);
+
+-- CONTROLLER MODES
+-- Stores the current operating mode of the controller for each plant.
+CREATE TABLE IF NOT EXISTS controller_modes (
+    plant_id INTEGER PRIMARY KEY,
+    ai_autopilot_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    owner TEXT CHECK (owner IN ('routine', 'ai')) NOT NULL DEFAULT 'routine',
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_controller_modes_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+);
+
+-- ROUTINES
+-- Stores user-defined automation routines created via Logic Builder.
+CREATE TABLE IF NOT EXISTS routines (
+    id SERIAL PRIMARY KEY,
+    plant_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    graph_json JSONB NOT NULL,    -- The raw graph structure from the UI
+    compiled_json JSONB,          -- The optimized structure for execution
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_routines_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+);
+
+-- ACTION EXECUTIONS
+-- Audit log of all attempted and executed actuator commands.
+CREATE TABLE IF NOT EXISTS action_executions (
+    id SERIAL PRIMARY KEY,
+    action_id VARCHAR(255) NOT NULL,
+    plant_id INTEGER NOT NULL,
+    actuator_id INTEGER NOT NULL,
+    routine_id INTEGER,           -- Nullable if source is AI or manual
+    source TEXT CHECK (source IN ('routine', 'ai', 'manual')) NOT NULL,
+    command TEXT NOT NULL,
+    duration FLOAT NOT NULL,      -- Requested duration in seconds
+    reason TEXT,
+    status TEXT CHECK (status IN ('accepted', 'rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
+    error_message TEXT,
+    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMPTZ,
+    correlation_id VARCHAR(255) NOT NULL,
+
+    CONSTRAINT fk_action_executions_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+    CONSTRAINT fk_action_executions_actuator FOREIGN KEY (actuator_id) REFERENCES actuators(id) ON DELETE CASCADE,
+    CONSTRAINT fk_action_executions_routine FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL,
+    CONSTRAINT uq_action_id_started_at_key UNIQUE (action_id, started_at)
 );
 
 -- Alert definitions table (invariant properties)
