@@ -41,7 +41,7 @@
     <div class="relative">
       <h1 class="font-retro text-6xl text-ink">Sensor Trends</h1>
       <p class="text-gray-500 mt-2 font-sans font-medium tracking-wide border-l-4 border-cozy-lavender pl-3">
-        Historical data for Monstera Study 03
+        Historical data for Basil Study
       </p>
     </div>
 

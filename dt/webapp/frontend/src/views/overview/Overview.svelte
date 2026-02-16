@@ -26,9 +26,9 @@
       <div class="absolute -top-6 -left-4 text-cozy-blue opacity-50 -z-10">
         <span class="material-symbols-outlined text-6xl rotate-[-10deg]">wb_cloudy</span>
       </div>
-      <h1 class="font-retro text-6xl text-ink">Monstera Study 03</h1>
+      <h1 class="font-retro text-6xl text-ink">Basil Study </h1>
       <p class="text-gray-500 mt-2 font-sans font-medium tracking-wide border-l-4 border-cozy-lavender pl-3">
-        Current Status: Happy & Growing
+        Current Status: Cold & Dying
       </p>
     </div>
 
@@ -71,7 +71,7 @@
 
       <div class="absolute bottom-4 left-6 right-6 flex justify-between items-end">
         <div class="font-handwriting text-ink text-2xl font-bold" style="transform: rotate(-1deg);">
-          My Workspace Buddy #2
+          My Workspace Buddy
         </div>
         <span class="font-retro text-gray-400">{$currentTime}</span>
       </div>

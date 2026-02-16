@@ -52,7 +52,7 @@
         <span class="material-symbols-outlined text-ink text-3xl">potted_plant</span>
       </div>
       <div class="flex flex-col">
-        <h2 class="font-retro text-4xl text-ink leading-none tracking-wide">LIVING TWIN</h2>
+        <h2 class="font-retro text-4xl text-ink leading-none tracking-wide">DIGITAL TWIN</h2>
         <div class="flex items-center gap-2 mt-1">
           <span
             class={[
@@ -95,7 +95,7 @@
       </button>
       <div
         class="size-12 border-2 border-ink rounded-full bg-cover bg-center shadow-hard-sm overflow-hidden"
-        style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBCYYIJypQxK9egOofn3Iq86V6-Wa5ovAZcpA3srrIHzJTb7_50E_ptFF9nNz5xHN2Iq0jaDuRmL8-NckQ3M0THyCI3UwMnrldiN-Bsh8VAZwrrU4RydqQJVqr4bbPOxdTL0apb2o6qUdxEBf02U65U_TH-uNWWfkaaWCqZw_FXbyQL4NXFBQEPJJWWUnl8prK2wUn8cXLF2vhet_ZqDowPSG9oP3PdAGWC_y2Eg1SyUuY2xeW7uIt1WtAh_hUnQj25lGfHjOMEtzE");'
+        style='background-image: url("https://cdn-icons-png.flaticon.com/512/3135/3135715.png");'
       ></div>
     </div>
   </div>
