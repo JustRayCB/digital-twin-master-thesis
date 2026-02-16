@@ -2,8 +2,13 @@ from time import sleep
 
 import board
 
-from dt.collector import (HumiditySensor, LightSensor, SensorManager,
-                          SoilMoistureSensor, TemperatureSensor)
+from dt.collector import (
+    HumiditySensor,
+    LightSensor,
+    SensorManager,
+    SoilMoistureSensor,
+    TemperatureSensor,
+)
 from dt.utils import get_logger
 
 
@@ -29,10 +34,10 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisture_sensor = SoilMoistureSensor("sensors.basil.stemma.001.soil_moisture", 5, board.D1)
-    temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 5, board.D17)
-    humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 5, board.D17)
-    light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 5, board.D3)
+    moisture_sensor = SoilMoistureSensor("sensors.basil.stemma.001.soil_moisture", 19, board.D1)
+    temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 7, board.D17)
+    humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 17, board.D17)
+    light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 15, board.D3)
 
     sensor_manager.add_sensor(moisture_sensor)
     sensor_manager.add_sensor(temperature_sensor)
