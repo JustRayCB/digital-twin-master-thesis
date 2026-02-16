@@ -12,7 +12,7 @@ from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.core.context import ProcessingContext
 from dt.data.preprocess.core.pipeline import PipelineBuilder
 from dt.data.preprocess.core.state import SensorState, SparkStateProvider
-from dt.utils import get_logger
+from dt.utils import Config, get_logger
 from dt.utils.exceptions.drop_reading import DropReadingException
 
 logger = get_logger(__name__)
