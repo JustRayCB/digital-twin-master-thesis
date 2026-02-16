@@ -27,7 +27,7 @@ class DHT22Singleton:
 
     _instance: Optional["DHT22Singleton"] = None
     _sensor: adafruit_dht.DHT22 | None = None
-    _pin: board.pin | None = None
+    _pin: int | None = None
 
     @classmethod
     def get_instance(cls, pin=None):

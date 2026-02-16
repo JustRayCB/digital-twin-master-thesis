@@ -46,11 +46,11 @@ class Sensor(ABC):
         The logger for this sensor instance.
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin, plant_id: int = -1) -> None:
+    def __init__(self, name: str, read_interval: int, pin: int, plant_id: int = -1) -> None:
         self.sensor_id: int = -1  # Assigned by the database
         self.plant_id: int = plant_id
         self.name: str = name
-        self.pin: board.Pin = pin
+        self.pin: int = pin
         self.read_interval: int = read_interval
         self._unit: str = ""
 
