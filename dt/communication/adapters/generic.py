@@ -9,6 +9,8 @@ from typing import Any, TypeVar
 import cattrs
 from typing_extensions import override
 
+from dt.communication.topics import Topics
+
 from .base import SerializationAdapter
 
 T = TypeVar("T")
@@ -24,6 +26,16 @@ class GenericAdapter(SerializationAdapter):
     def __init__(self) -> None:
         """Initialize the adapter with cattrs converter and hooks."""
         self._converter = cattrs.Converter()
+        self._converter.register_structure_hook(Topics, self._structure_topic)
+
+    @staticmethod
+    def _structure_topic(value, _type) -> Topics:
+        if isinstance(value, Topics):
+            return value
+        try:
+            return Topics(value)
+        except ValueError:
+            return Topics.from_short_name(str(value))
 
     def register_structure_hook(self, target_type, hook) -> None:
         """Register a custom structure hook on the underlying converter."""

@@ -6,7 +6,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
 
 from dt.communication.adapters import load
-from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
+from dt.communication.dataclasses.processed_sensor_data import (
+    ProcessedSensorData, ValidationFlag)
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.core.context import ProcessingContext
@@ -39,9 +40,6 @@ class SparkStreamingAdapter:
         Configuration manager for pipeline construction.
     """
 
-    STATE_TIMEOUT_SECONDS = int(Config.SPARK_STATE_TIMEOUT_SECONDS.value)
-    WATERMARK_INTERVAL = Config.SPARK_WATERMARK_INTERVAL.value
-
     def __init__(self, config_manager: ConfigurationManager) -> None:
         """Initialize the Spark adapter.
 
@@ -53,9 +51,7 @@ class SparkStreamingAdapter:
         self._config_manager = config_manager
         self._pipeline_builder = PipelineBuilder(config_manager)
 
-    def setup_watermark(
-        self, raw_events: DataFrame, interval: str = WATERMARK_INTERVAL
-    ) -> DataFrame:
+    def setup_watermark(self, raw_events: DataFrame, interval: str) -> DataFrame:
         """
         Set up event-time watermarking for late data handling.
 
@@ -117,7 +113,7 @@ class SparkStreamingAdapter:
         config_broadcast = sc.broadcast(self._config_manager)
 
         logger.info("Setting up event-time watermarking...")
-        watermarked = self.setup_watermark(raw_events, self.WATERMARK_INTERVAL)
+        watermarked = self.setup_watermark(raw_events, Config.SPARK_WATERMARK_INTERVAL)
 
         def process_sensor_group(
             key: tuple,
@@ -194,7 +190,7 @@ class SparkStreamingAdapter:
         )
 
         if latest_timestamp is not None:
-            timeout_ms = int((latest_timestamp + self.STATE_TIMEOUT_SECONDS) * 1000.0)
+            timeout_ms = int((latest_timestamp + int(Config.SPARK_STATE_TIMEOUT_SECONDS)) * 1000.0)
             group_state.setTimeoutTimestamp(timeout_ms)
 
         # Build output DataFrame

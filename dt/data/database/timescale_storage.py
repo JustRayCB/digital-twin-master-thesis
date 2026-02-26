@@ -6,22 +6,17 @@ from sqlalchemy import Connection, Engine, create_engine, text
 from typing_extensions import override
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import AggregatedReading, ProcessedSensorData, SensorDescriptor
+from dt.communication.dataclasses import (AggregatedReading,
+                                          ProcessedSensorData,
+                                          SensorDescriptor)
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
-from dt.communication.dataclasses.controller import (
-    ActionCommand,
-    CompiledRoutineRules,
-    ControlMode,
-    Routine,
-    RoutineCreate,
-    RoutineUpdate,
-)
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+    AlertDefinition, AlertHistoryEvent, ExternalAlertEvent, SensorAlertEvent)
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ControlMode, Routine,
+                                                     RoutineUpdate)
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  ReadingsQuery)
 from dt.data.database.storage import Storage
 from dt.utils import Config, get_logger
 
@@ -118,14 +113,15 @@ class TimescaleStorage(Storage):
             return [load("db_row", Routine, row) for row in result]
 
     @override
-    def create_routine(self, routine: RoutineCreate, compiled: CompiledRoutineRules) -> int:
+    def create_routine(self, routine: RoutineUpdate) -> int:
         query = """
-            INSERT INTO routines (plant_id, name, enabled, graph_json, compiled_json)
-            VALUES (:plant_id, :name, :enabled, :graph_json, :compiled_json)
+            INSERT INTO routines (plant_id, name, enabled, graph, compiled_rules)
+            VALUES (:plant_id, :name, :enabled, :graph, :compiled_rules)
             RETURNING id
         """
         params = dump("db_row", routine)
-        params["compiled_json"] = json.dumps(dump("generic", compiled))
+        if params.get("compiled_rules") is None:
+            raise ValueError("compiled_rules is required to create a routine")
         with self._get_connection() as conn:
             new_id = self._get_id(conn.execute(text(query), params))
             self.logger.info(f"Created routine {new_id} for plant {routine.plant_id}")
@@ -136,7 +132,7 @@ class TimescaleStorage(Storage):
         fields = []
         params = {"id": routine_id}
         updates_data = dump("db_row", updates)
-        allowed_fields = {"plant_id", "name", "enabled", "graph_json", "compiled_json"}
+        allowed_fields = {"plant_id", "name", "enabled", "graph", "compiled_rules"}
         for key, value in updates_data.items():
             if value is None:
                 continue

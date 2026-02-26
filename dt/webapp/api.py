@@ -9,8 +9,11 @@ from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
 from dt.communication.controller_client import ControllerClient
-from dt.communication.dataclasses.controller import ActionDispatch, RoutineCreate, RoutineUpdate
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.controller import (ActionDispatch,
+                                                     RoutineUpdate)
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  ReadingsQuery)
 from dt.communication.db_client import DatabaseApiClient
 from dt.utils import get_logger
 
@@ -200,7 +203,7 @@ def create_webapp_blueprint(
         """Create routine."""
         data = request.json
         try:
-            routine_create = load("generic", RoutineCreate, data)
+            routine_create = load("generic", RoutineUpdate, data)
             new_id = controller_client.create_routine(routine_create)
             return jsonify({"id": new_id, "status": "created"}), 201
         except Exception as e:
@@ -242,11 +245,11 @@ def create_webapp_blueprint(
 
     @bp.route("/actions/history", methods=["GET"])
     def get_action_history():
-        """Get action history."""
-        plant_id = request.args.get("plant_id", type=int)
+        plant_id = request.args.get("plant_id", default=1, type=int)
         limit = request.args.get("limit", default=50, type=int)
         try:
-            return jsonify(controller_client.get_action_history(plant_id, limit))
+            actions = controller_client.get_action_history(plant_id, limit)
+            return jsonify([dump("generic", a) for a in actions])
         except Exception as e:
             logger.error(f"Error getting action history: {e}")
             return jsonify({"error": str(e)}), 500

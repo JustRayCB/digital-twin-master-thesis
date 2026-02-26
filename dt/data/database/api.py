@@ -10,13 +10,7 @@ from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import SensorDescriptor
-from dt.communication.dataclasses.controller import (
-    ActionCommand,
-    CompiledRoutineRules,
-    ControlMode,
-    RoutineCreate,
-    RoutineUpdate,
-)
+from dt.communication.dataclasses.controller import ActionCommand, ControlMode, RoutineUpdate
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
 from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
 from dt.data.database.storage import Storage
@@ -205,13 +199,17 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             return jsonify({"error": "Missing JSON payload"}), 400
 
         try:
-            routine = load("generic", RoutineCreate, payload["routine"])
-            compiled_json = load("generic", CompiledRoutineRules, payload["compiled_json"])
-        except (KeyError, TypeError, ValueError) as exc:
+            routine = load("generic", RoutineUpdate, payload)
+        except (TypeError, ValueError) as exc:
             logger.error(f"Invalid routine payload: {exc}")
             return jsonify({"error": "Invalid routine payload"}), 400
 
-        routine_id = storage.create_routine(routine, compiled_json)
+        if routine.plant_id is None or routine.name is None or routine.graph is None:
+            return jsonify({"error": "plant_id, name, and graph are required"}), 400
+        if routine.compiled_rules is None:
+            return jsonify({"error": "compiled_rules is required"}), 400
+
+        routine_id = storage.create_routine(routine)
         return jsonify({"id": routine_id, "status": "created"}), 201
 
     @bp.route("/controller/routines/<int:routine_id>", methods=["PUT"])

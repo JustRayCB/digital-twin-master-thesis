@@ -72,15 +72,11 @@ class AlertRuleManager:
 
         for rule_id, override_data in overrides.items():
             if rule_id in rules_dict:
-                rules_dict[rule_id] = self._apply_override(rules_dict[rule_id], override_data)
+                rules_dict[rule_id] = rules_dict[rule_id].override(override_data)
             else:
                 rules_dict[rule_id] = AlertRule.from_dict(override_data)
 
         return list(rules_dict.values())
-
-    def _apply_override(self, base_rule: AlertRule, override_data: dict[str, Any]) -> AlertRule:
-        """Apply override parameters to a base rule."""
-        return base_rule.override(override_data)
 
     @property
     def rules(self) -> list[AlertRule]:

@@ -10,6 +10,7 @@ Uses generic adapter for base serialization, then applies DB-specific transforma
 
 from dataclasses import fields
 from datetime import datetime
+import json
 from typing import Any, TypeVar, Union
 
 from typing_extensions import override
@@ -25,7 +26,6 @@ from dt.communication.dataclasses.controller import (
     ActionCommand,
     ControlMode,
     Routine,
-    RoutineCreate,
     RoutineUpdate,
 )
 from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
@@ -128,7 +128,7 @@ class DbRowAdapter(SerializationAdapter):
             # Flat dict for alert_history table
             pass  # Already correct from generic adapter
 
-        elif isinstance(obj, Routine | RoutineCreate | RoutineUpdate):
+        elif isinstance(obj, Routine | RoutineUpdate):
             data = self._dump_routine_payload(data)
 
         elif isinstance(obj, ControlMode):
@@ -202,10 +202,15 @@ class DbRowAdapter(SerializationAdapter):
             row_dict["cleared_ts"] = self._to_unix_timestamp(row_dict.get("cleared_ts"))
 
         elif cls == Routine:
-            graph_payload = row_dict.pop("graph_json", None)
-            compiled_payload = row_dict.get("compiled_json")
+            graph_payload = row_dict.pop("graph", None)
+            compiled_payload = row_dict.get("compiled_rules")
+            if isinstance(compiled_payload, str):
+                try:
+                    compiled_payload = json.loads(compiled_payload)
+                except json.JSONDecodeError:
+                    compiled_payload = None
             row_dict["graph"] = graph_payload
-            row_dict["compiled_json"] = compiled_payload
+            row_dict["compiled_rules"] = compiled_payload
 
             created_at = row_dict.get("created_at")
             if isinstance(created_at, datetime):
@@ -237,11 +242,16 @@ class DbRowAdapter(SerializationAdapter):
     def _dump_routine_payload(self, data: dict[str, Any]) -> dict[str, Any]:
         graph_payload = data.pop("graph", None)
         if graph_payload is not None:
-            data["graph_json"] = graph_payload
+            data["graph"] = json.dumps(graph_payload)
 
-        compiled_payload = data.get("compiled_json")
+        compiled_payload = data.get("compiled_rules")
         if compiled_payload is not None:
-            data["compiled_json"] = compiled_payload
+            if isinstance(compiled_payload, str):
+                try:
+                    compiled_payload = json.loads(compiled_payload)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("compiled_rules must be valid JSON") from exc
+            data["compiled_rules"] = json.dumps(compiled_payload)
 
         return data
 

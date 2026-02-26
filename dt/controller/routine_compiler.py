@@ -11,7 +11,6 @@ import networkx as nx
 from dt.communication.adapters import load
 from dt.communication.dataclasses.controller import (
     Action,
-    CompiledRoutineRules,
     CompiledRule,
     RoutineGraph,
     Trigger,
@@ -21,7 +20,7 @@ from dt.communication.dataclasses.controller import (
 class RoutineCompiler:
     """Compiler for Logic Builder routines."""
 
-    def validate(self, graph_json: Dict[str, Any] | RoutineGraph) -> None:
+    def validate(self, graph: Dict[str, Any] | RoutineGraph) -> None:
         """Validate the routine graph.
 
         Checks:
@@ -35,7 +34,7 @@ class RoutineCompiler:
             If the graph is invalid.
         """
         try:
-            graph = self._load_graph(graph_json)
+            graph = self._load_graph(graph)
         except Exception as exc:
             raise ValueError(f"Invalid graph schema: {exc}") from exc
 
@@ -62,11 +61,11 @@ class RoutineCompiler:
             if action_id not in reachable:
                 raise ValueError(f"Action {action_id} is not reachable from any trigger.")
 
-    def compile(self, graph_json: Dict[str, Any] | RoutineGraph) -> CompiledRoutineRules:
+    def compile(self, graph: Dict[str, Any] | RoutineGraph) -> list[CompiledRule]:
         """Compile the graph into a flat rule format for runtime evaluation."""
-        self.validate(graph_json)
+        self.validate(graph)
 
-        graph = self._load_graph(graph_json)
+        graph = self._load_graph(graph)
         graph_nx = self._build_nx(graph)
 
         triggers = [node for node in graph.nodes if node.kind == "trigger"]
@@ -97,7 +96,7 @@ class RoutineCompiler:
                     )
                 )
 
-        return CompiledRoutineRules(version="2", rules=rules)
+        return rules
 
     def _compile_trigger(self, trigger: Any) -> Trigger:
         if trigger.kind != "trigger" or trigger.trigger is None:
@@ -146,10 +145,10 @@ class RoutineCompiler:
             graph_nx.add_edge(edge.source, edge.target)
         return graph_nx
 
-    def _load_graph(self, graph_json: Dict[str, Any] | RoutineGraph) -> RoutineGraph:
-        if isinstance(graph_json, RoutineGraph):
-            return graph_json
-        return load("generic", RoutineGraph, graph_json)
+    def _load_graph(self, graph: Dict[str, Any] | RoutineGraph) -> RoutineGraph:
+        if isinstance(graph, RoutineGraph):
+            return graph
+        return load("generic", RoutineGraph, graph)
 
     def _validate_nodes(self, graph: RoutineGraph) -> None:
         for node in graph.nodes:

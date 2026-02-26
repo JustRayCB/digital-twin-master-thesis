@@ -64,8 +64,8 @@ CREATE TABLE IF NOT EXISTS routines (
     plant_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    graph_json JSONB NOT NULL,    -- The raw graph structure from the UI
-    compiled_json JSONB,          -- The optimized structure for execution
+    graph JSONB NOT NULL,    -- The raw graph structure from the UI
+    compiled_rules JSONB,         -- The optimized structure for execution
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 

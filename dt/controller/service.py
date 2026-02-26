@@ -19,11 +19,9 @@ from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.controller import (
     ActionCommand,
     ActionDispatch,
-    CompiledRoutineRules,
     CompiledRule,
     ControlMode,
     Routine,
-    RoutineCreate,
     RoutineGraph,
     RoutineUpdate,
 )
@@ -46,7 +44,7 @@ class CompiledRoutine:
     plant_id: int
     name: str
     created_at: Optional[datetime]
-    compiled: CompiledRoutineRules
+    compiled: list[CompiledRule]
 
 
 class ControllerService:
@@ -97,13 +95,28 @@ class ControllerService:
     def list_routines(self, plant_id: int) -> list[Routine]:
         return self.database_client.get_routines(plant_id)
 
-    def create_routine(self, payload: RoutineCreate) -> int:
+    def create_routine(self, payload: RoutineUpdate) -> int:
+        if payload.graph is None:
+            raise ValueError("graph is required")
+        if payload.name is None:
+            raise ValueError("name is required")
+        if payload.plant_id is None:
+            raise ValueError("plant_id is required")
+
         graph = payload.graph
         if not isinstance(graph, RoutineGraph):
             raise ValueError("Invalid graph schema: expected RoutineGraph")
         self._ensure_graph_matches_payload(graph, payload)
         compiled = self.compiler.compile(graph)
-        routine_id = self.database_client.create_routine(payload, compiled)
+
+        create_payload = RoutineUpdate(
+            plant_id=payload.plant_id,
+            name=payload.name,
+            enabled=payload.enabled if payload.enabled is not None else True,
+            graph=payload.graph,
+            compiled_rules=compiled,
+        )
+        routine_id = self.database_client.create_routine(create_payload)
         self.refresh(payload.plant_id)
         return routine_id
 
@@ -118,7 +131,7 @@ class ControllerService:
                 name=updates.name,
                 enabled=updates.enabled,
                 graph=updates.graph,
-                compiled_json=compiled,
+                compiled_rules=compiled,
             )
         self.database_client.update_routine(routine_id, updates)
         if updates.plant_id is not None:
@@ -195,7 +208,7 @@ class ControllerService:
 
         routines = self._get_compiled_routines(plant_id)
         for routine in routines:
-            for rule in routine.compiled.rules:
+            for rule in routine.compiled:
                 trigger = rule.trigger
                 if self.evaluator.trigger_matches(
                     trigger=trigger,
@@ -214,7 +227,7 @@ class ControllerService:
 
         routines = self._get_compiled_routines(plant_id)
         for routine in routines:
-            for rule in routine.compiled.rules:
+            for rule in routine.compiled:
                 trigger = rule.trigger
                 rule_id = str(rule.id)
                 if not rule_id:
@@ -363,16 +376,20 @@ class ControllerService:
         for routine in self.database_client.get_routines(plant_id):
             if not routine.enabled:
                 continue
-            compiled = routine.compiled_json
+            compiled = routine.compiled_rules
             if compiled is None:
                 continue
             if isinstance(compiled, str):
                 import json
 
                 compiled = json.loads(compiled)
-            if isinstance(compiled, dict):
-                compiled = load("generic", CompiledRoutineRules, compiled)
-            compiled_rules = compiled
+            compiled_rules: list[CompiledRule] = []
+            if isinstance(compiled, list):
+                for item in compiled:
+                    if isinstance(item, CompiledRule):
+                        compiled_rules.append(item)
+                    else:
+                        compiled_rules.append(load("generic", CompiledRule, item))
             routines.append(
                 CompiledRoutine(
                     routine_id=routine.id,
@@ -405,9 +422,7 @@ class ControllerService:
         current_date = now.date()
         return (current_date - created_date).days % every_days == 0
 
-    def _ensure_graph_matches_payload(
-        self, graph: RoutineGraph, payload: RoutineCreate | RoutineUpdate
-    ) -> None:
+    def _ensure_graph_matches_payload(self, graph: RoutineGraph, payload: RoutineUpdate) -> None:
         if payload.name is not None and graph.name != payload.name:
             raise ValueError("graph name does not match payload name")
         if payload.plant_id is not None and graph.plant_id != payload.plant_id:

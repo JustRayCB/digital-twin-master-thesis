@@ -56,6 +56,7 @@ class AlertCondition:
     @classmethod
     def from_dict(cls, condition_data: dict[str, Any]) -> "AlertCondition":
         """Create AlertCondition from dictionary data."""
+        # TODO: Use generic adapter with a special hook
         condition_type_str = condition_data["type"]
         try:
             condition_type = ConditionType(condition_type_str)
@@ -108,6 +109,7 @@ class AlertRule:
     @classmethod
     def from_dict(cls, rule_data: dict[str, Any]) -> "AlertRule":
         """Create AlertRule from dictionary data."""
+        # TODO: Use generic adapter with a special hook
 
         # Check for missing fields
         required_fields = {f.name for f in fields(cls)}
@@ -171,7 +173,3 @@ class AlertRule:
             "cooldown_seconds": override_data.get("cooldown_seconds", self.cooldown_seconds),
         }
         return AlertRule(**data)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert AlertRule to dictionary representation."""
-        return asdict(self)

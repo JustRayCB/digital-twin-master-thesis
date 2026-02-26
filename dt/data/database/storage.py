@@ -7,13 +7,7 @@ from dt.communication.dataclasses import (
     SensorDescriptor,
 )
 from dt.communication.dataclasses.controller import ActionCommand
-from dt.communication.dataclasses.controller import (
-    CompiledRoutineRules,
-    ControlMode,
-    Routine,
-    RoutineCreate,
-    RoutineUpdate,
-)
+from dt.communication.dataclasses.controller import ControlMode, Routine, RoutineUpdate
 from dt.communication.dataclasses.queries import (
     ActiveAlertsQuery,
     AlertHistoryQuery,
@@ -284,16 +278,13 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def create_routine(self, routine: RoutineCreate, compiled: CompiledRoutineRules) -> int:
+    def create_routine(self, routine: RoutineUpdate) -> int:
         """Create a new routine.
 
         Parameters
         ----------
-        routine : RoutineCreate
-            The routine data.
-        compiled : CompiledRoutineRules
-            Compiled rules to persist alongside the authoring graph.
-
+        routine : RoutineUpdate
+            The routine data including compiled rules.
         Returns
         -------
         int

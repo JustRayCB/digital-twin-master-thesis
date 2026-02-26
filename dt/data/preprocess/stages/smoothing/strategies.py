@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import cast
 
-from dt.data.preprocess.config.types import (
-    EWMASmoothingConfig,
-    PassThroughSmoothingConfig,
-    SmoothingConfig,
-)
+from dt.data.preprocess.config.types import (EWMASmoothingConfig,
+                                             PassThroughSmoothingConfig,
+                                             SmoothingConfig)
 from dt.data.preprocess.core.state import StateProvider
 
 
@@ -56,9 +54,8 @@ class EWMASmoothing(SmoothingStrategy):
         super().__init__(config)
         if not isinstance(self._config, EWMASmoothingConfig):
             raise TypeError("EWMASmoothing requires EWMASmoothingConfig")
-        
-        self._alpha = float(self.config.alpha)
-        if not 0 < self._alpha <= 1:
+
+        if not 0 < self.config.alpha <= 1:
             raise ValueError("EWMA requires 0 < alpha <= 1")
         self._smoothed: dict[int, float] = {}
 
@@ -89,7 +86,7 @@ class EWMASmoothing(SmoothingStrategy):
         if previous is None:
             smoothed = value
         else:
-            smoothed = self._alpha * value + (1.0 - self._alpha) * previous
+            smoothed = self.config.alpha * value + (1.0 - self.config.alpha) * previous
         self._smoothed[sensor_id] = smoothed
         return smoothed
 

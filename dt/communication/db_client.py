@@ -20,10 +20,8 @@ from dt.communication.dataclasses.alerts.alert_record import (
 )
 from dt.communication.dataclasses.controller import (
     ActionCommand,
-    CompiledRoutineRules,
     ControlMode,
     Routine,
-    RoutineCreate,
     RoutineUpdate,
 )
 from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
@@ -181,12 +179,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error listing routines: {exc}")
             raise RuntimeError(f"Failed to list routines: {exc}") from exc
 
-    def create_routine(self, routine: RoutineCreate, compiled: CompiledRoutineRules) -> int:
+    def create_routine(self, routine: RoutineUpdate) -> int:
         """Create a new routine and return its ID."""
-        payload = {
-            "routine": dump("generic", routine),
-            "compiled_json": dump("generic", compiled),
-        }
+        payload = dump("generic", routine)
         try:
             response = requests.post(
                 f"{self.base_url}/controller/routines",

@@ -13,7 +13,6 @@ from dt.communication.dataclasses.controller import (
     ActionCommand,
     ControlMode,
     Routine,
-    RoutineCreate,
     RoutineUpdate,
 )
 from dt.utils import Config, get_logger
@@ -80,7 +79,7 @@ class ControllerClient:
             self.logger.error(f"Error listing routines: {exc}")
             raise RuntimeError(f"Failed to list routines: {exc}") from exc
 
-    def create_routine(self, routine: RoutineCreate) -> int:
+    def create_routine(self, routine: RoutineUpdate) -> int:
         """Create a new routine. Returns the ID."""
         try:
             response = requests.post(

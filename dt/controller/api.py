@@ -6,12 +6,7 @@ Exposes endpoints for managing controller mode, routines, and actions.
 from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses.controller import (
-    ActionDispatch,
-    ControlMode,
-    RoutineCreate,
-    RoutineUpdate,
-)
+from dt.communication.dataclasses.controller import ActionDispatch, ControlMode, RoutineUpdate
 from dt.controller.service import ControllerService
 from dt.utils import get_logger
 
@@ -83,7 +78,7 @@ def create_controller_blueprint(service: ControllerService) -> Blueprint:
             return jsonify({"error": "JSON body required"}), 400
 
         try:
-            routine = load("generic", RoutineCreate, data)
+            routine = load("generic", RoutineUpdate, data)
             routine_id = service.create_routine(routine)
 
             return jsonify({"id": routine_id, "status": "created"}), 201

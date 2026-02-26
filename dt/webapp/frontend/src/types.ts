@@ -56,7 +56,7 @@ export type RoutineRecord = {
   name: string;
   enabled: boolean;
   graph?: unknown;
-  compiled_json?: unknown;
+  compiled_rules?: unknown;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -66,7 +66,7 @@ export type RoutineUpdatePayload = {
   name?: string;
   enabled?: boolean;
   graph?: unknown;
-  compiled_json?: unknown;
+  compiled_rules?: unknown;
 };
 
 export type ActionDispatchPayload = {

@@ -125,22 +125,6 @@ class CompiledRule:
 
 
 @dataclass
-class CompiledRoutineRules:
-    """Container for compiled routine execution rules.
-
-    Attributes
-    ----------
-    version : str
-        Format version for compiled representation.
-    rules : List[CompiledRule]
-        Executable rule set derived from the authoring graph.
-    """
-
-    version: str
-    rules: List[CompiledRule] = field(default_factory=list)
-
-
-@dataclass
 class Routine:
     """Persisted routine model.
 
@@ -156,8 +140,8 @@ class Routine:
         Whether the routine is active for execution.
     graph : RoutineGraph
         Authoring graph used by the web application.
-    compiled_json : Optional[CompiledRoutineRules]
-        Compiled execution representation derived from ``graph``.
+    compiled_rules : Optional[List[CompiledRule]]
+        Compiled execution rules derived from ``graph``.
     created_at : Optional[str]
         Creation timestamp string from persistence layer.
     updated_at : Optional[str]
@@ -169,31 +153,9 @@ class Routine:
     name: str
     enabled: bool
     graph: RoutineGraph
-    compiled_json: Optional[CompiledRoutineRules] = None
+    compiled_rules: Optional[List[CompiledRule]] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
-
-@dataclass
-class RoutineCreate:
-    """Payload used to create a routine.
-
-    Attributes
-    ----------
-    plant_id : int
-        Plant identifier where the routine is created.
-    name : str
-        Routine display name.
-    graph : RoutineGraph
-        Authoring graph to persist and compile.
-    enabled : bool
-        Initial enabled flag for the routine.
-    """
-
-    plant_id: int
-    name: str
-    graph: RoutineGraph
-    enabled: bool = True
 
 
 @dataclass
@@ -203,14 +165,14 @@ class RoutineUpdate:
     Attributes
     ----------
     plant_id : Optional[int]
-        Optional plant identifier update.
+        Optional plant identifier update (required for create).
     name : Optional[str]
-        Optional routine name update.
+        Optional routine name update (required for create).
     enabled : Optional[bool]
         Optional enabled flag update.
     graph : Optional[RoutineGraph]
-        Optional authoring graph update.
-    compiled_json : Optional[CompiledRoutineRules]
+        Optional authoring graph update (required for create).
+    compiled_rules : Optional[List[CompiledRule]]
         Optional compiled representation override.
     """
 
@@ -218,7 +180,7 @@ class RoutineUpdate:
     name: Optional[str] = None
     enabled: Optional[bool] = None
     graph: Optional[RoutineGraph] = None
-    compiled_json: Optional[CompiledRoutineRules] = None
+    compiled_rules: Optional[List[CompiledRule]] = None
 
 
 @dataclass

@@ -53,9 +53,8 @@ class MigrationRunner:
             return all_migrations
 
         applied = self._get_applied_migrations()
-        applied_names = {m for m in applied}
 
-        return [m for m in all_migrations if m.name not in applied_names]
+        return [m for m in all_migrations if m.name not in applied]
 
     def _discover_migrations(self) -> list[Migration]:
         """Discover all SQL migration files in the migrations directory.
@@ -85,15 +84,13 @@ class MigrationRunner:
         with psycopg.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 # Create migrations tracking table if it doesn't exist
-                cur.execute(
-                    f"""
+                cur.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.MIGRATIONS_TABLE} (
                         id SERIAL PRIMARY KEY,
                         migration_name VARCHAR(255) NOT NULL UNIQUE,
                         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     );
-                    """
-                )
+                    """)
                 conn.commit()
 
                 # Get all applied migrations
