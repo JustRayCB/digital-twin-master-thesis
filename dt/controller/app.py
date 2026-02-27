@@ -24,10 +24,10 @@ logger = get_logger(__name__)
 
 def _build_actuators(actuator_manager: ActuatorManager) -> None:
     plant_id = 1
-    pump = Pump(-1, "pump", plant_id, ActuatorConfig(pin=24))
-    light = Light(-1, "light", plant_id, ActuatorConfig(pin=22))
-    heater = Heater(-1, "heater", plant_id, ActuatorConfig(pin=23))
-    fan = Fan(-1, "fan", plant_id, ActuatorConfig(pin=27))
+    pump = Pump(-1, "pump", plant_id, 24)
+    light = Light(-1, "light", plant_id, 22)
+    heater = Heater(-1, "heater", plant_id, 23)
+    fan = Fan(-1, "fan", plant_id, 27)
 
     actuator_manager.add_actuator(pump, relay_channel=1)
     actuator_manager.add_actuator(light, relay_channel=2)

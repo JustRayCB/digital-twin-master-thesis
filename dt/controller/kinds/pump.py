@@ -6,13 +6,11 @@ from dt.controller.kinds.relay import RelayDriver
 class Pump(BaseActuator):
     """Water pump actuator."""
 
-    def __init__(
-        self, actuator_id: int, name: str, plant_id: int, config: ActuatorConfig
-    ):
+    def __init__(self, actuator_id: int, name: str, plant_id: int, pin: int):
         super().__init__(
             actuator_id=actuator_id,
             name=name,
             plant_id=plant_id,
-            driver=RelayDriver(name, config),
-            config=config,
+            driver=RelayDriver(name, pin),
+            pin=pin,
         )

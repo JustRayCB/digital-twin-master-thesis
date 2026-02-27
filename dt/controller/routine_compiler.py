@@ -4,23 +4,19 @@ Validates and compiles Logic Builder graphs into executable structures.
 Ensures DAG properties and trigger-to-action connectivity.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import networkx as nx
 
 from dt.communication.adapters import load
-from dt.communication.dataclasses.controller import (
-    Action,
-    CompiledRule,
-    RoutineGraph,
-    Trigger,
-)
+from dt.communication.dataclasses.controller import (Action, CompiledRule,
+                                                     RoutineGraph, Trigger)
 
 
 class RoutineCompiler:
     """Compiler for Logic Builder routines."""
 
-    def validate(self, graph: Dict[str, Any] | RoutineGraph) -> None:
+    def validate(self, graph: RoutineGraph) -> None:
         """Validate the routine graph.
 
         Checks:
@@ -33,10 +29,6 @@ class RoutineCompiler:
         ValueError
             If the graph is invalid.
         """
-        try:
-            graph = self._load_graph(graph)
-        except Exception as exc:
-            raise ValueError(f"Invalid graph schema: {exc}") from exc
 
         graph_nx = self._build_nx(graph)
 
@@ -61,11 +53,10 @@ class RoutineCompiler:
             if action_id not in reachable:
                 raise ValueError(f"Action {action_id} is not reachable from any trigger.")
 
-    def compile(self, graph: Dict[str, Any] | RoutineGraph) -> list[CompiledRule]:
+    def compile(self, graph: RoutineGraph) -> list[CompiledRule]:
         """Compile the graph into a flat rule format for runtime evaluation."""
         self.validate(graph)
 
-        graph = self._load_graph(graph)
         graph_nx = self._build_nx(graph)
 
         triggers = [node for node in graph.nodes if node.kind == "trigger"]
@@ -144,11 +135,6 @@ class RoutineCompiler:
         for edge in graph.edges:
             graph_nx.add_edge(edge.source, edge.target)
         return graph_nx
-
-    def _load_graph(self, graph: Dict[str, Any] | RoutineGraph) -> RoutineGraph:
-        if isinstance(graph, RoutineGraph):
-            return graph
-        return load("generic", RoutineGraph, graph)
 
     def _validate_nodes(self, graph: RoutineGraph) -> None:
         for node in graph.nodes:

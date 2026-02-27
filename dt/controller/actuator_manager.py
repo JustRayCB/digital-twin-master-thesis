@@ -4,7 +4,8 @@ import threading
 import time
 from typing import Dict
 
-from dt.communication.dataclasses.controller import ActionCommand, ActuatorConfig
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ActuatorConfig)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import MessagingService
 from dt.communication.topics import Topics
@@ -160,7 +161,7 @@ class ActuatorManager:
         self.logger.info(f"Action {action.action_id} COMPLETED")
         action.status = "completed"
         self.database_client.log_action_execution(action)
-        self.messaging_service.publish(Topics.ACTIONS, action)
+        # self.messaging_service.publish(Topics.ACTIONS, action)
         with self.lock:
             self.active_executions.pop(action.actuator_id, None)
             self.last_completed[action.actuator_id] = time.time()

@@ -9,22 +9,16 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
-from dt.communication.adapters import load
 from dt.communication.dataclasses import ProcessedSensorData
-from dt.communication.dataclasses.controller import (
-    ActionCommand,
-    ActionDispatch,
-    CompiledRule,
-    ControlMode,
-    Routine,
-    RoutineGraph,
-    RoutineUpdate,
-)
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ActionDispatch,
+                                                     CompiledRule, ControlMode,
+                                                     Routine, RoutineGraph,
+                                                     RoutineUpdate)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService, MessagingService
 from dt.communication.topics import Topics
@@ -38,42 +32,27 @@ from dt.utils import Config, get_logger
 logger = get_logger(__name__)
 
 
-@dataclass
-class CompiledRoutine:
-    routine_id: int
-    plant_id: int
-    name: str
-    created_at: Optional[datetime]
-    compiled: list[CompiledRule]
-
-
 class ControllerService:
     """Controller runtime service."""
 
     def __init__(
         self,
         database_client: DatabaseApiClient,
-        messaging_service: Optional[MessagingService] = None,
-        policy_manager: Optional[PolicyManager] = None,
-        actuator_manager: Optional[ActuatorManager] = None,
-        compiler: Optional[RoutineCompiler] = None,
-        evaluator: Optional[RoutineEvaluator] = None,
+        messaging_service: MessagingService,
+        policy_manager: PolicyManager,
+        actuator_manager: ActuatorManager,
     ):
         self.database_client = database_client
-        self.messaging_service = messaging_service or KafkaService(
-            host=Config.KAFKA_URL,
-            client_id="controller_service",
-            group_id="controller_group",
-        )
-        self.policy_manager = policy_manager or PolicyManager()
+        self.messaging_service = messaging_service
+        self.policy_manager = policy_manager
         self.actuator_manager = actuator_manager
-        self.compiler = compiler or RoutineCompiler()
-        self.evaluator = evaluator or RoutineEvaluator()
+        self.compiler = RoutineCompiler()
+        self.evaluator = RoutineEvaluator()
         self._running = False
         self._scheduler_thread: Optional[threading.Thread] = None
         self._timezone = ZoneInfo(Config.TIMEZONE)
 
-        self._routine_cache: Dict[int, list[CompiledRoutine]] = {}
+        self._routine_cache: Dict[int, list[Routine]] = {}
         self._mode_cache: Dict[int, ControlMode] = {}
         self._last_fired: OrderedDict[tuple[int, str], str] = OrderedDict()
         self._sensor_values: OrderedDict[tuple[int, str], float] = OrderedDict()
@@ -96,12 +75,10 @@ class ControllerService:
         return self.database_client.get_routines(plant_id)
 
     def create_routine(self, payload: RoutineUpdate) -> int:
-        if payload.graph is None:
-            raise ValueError("graph is required")
-        if payload.name is None:
-            raise ValueError("name is required")
-        if payload.plant_id is None:
-            raise ValueError("plant_id is required")
+        if None in (payload.graph, payload.name, payload.plant_id):
+            raise ValueError(
+                f"Missing required fields (graph, name, plant_id) in payload: {payload}"
+            )
 
         graph = payload.graph
         if not isinstance(graph, RoutineGraph):
@@ -159,7 +136,7 @@ class ControllerService:
                 processed_topic = (
                     topic.processed if isinstance(topic, Topics) else Topics(topic).processed
                 )
-                self.messaging_service.subscribe(processed_topic, self.on_sensor_data)
+                self.messaging_service.subscribe(processed_topic, self.evaluate_routines_for_sensor)
             except Exception as exc:
                 logger.error(f"Failed to subscribe to topic {processed_topic}: {exc}")
                 raise
@@ -174,9 +151,6 @@ class ControllerService:
         if self._scheduler_thread:
             self._scheduler_thread.join()
         logger.info("Controller Service stopped.")
-
-    def on_sensor_data(self, data: ProcessedSensorData) -> None:
-        self.evaluate_routines_for_sensor(data)
 
     def _scheduler_loop(self) -> None:
         # Start with last_check set to 1 minute ago to ensure we catch any events that should have fired in the last minute after a restart.
@@ -206,9 +180,12 @@ class ControllerService:
         self._sensor_values.move_to_end(sensor_key)
         self._enforce_cache_limits()
 
-        routines = self._get_compiled_routines(plant_id)
+        routines = self._get_routines(plant_id)
         for routine in routines:
-            for rule in routine.compiled:
+            compiled = routine.compiled_rules
+            if not compiled:
+                continue
+            for rule in compiled:
                 trigger = rule.trigger
                 if self.evaluator.trigger_matches(
                     trigger=trigger,
@@ -225,9 +202,13 @@ class ControllerService:
         if not check_points:
             return
 
-        routines = self._get_compiled_routines(plant_id)
+        routines = self._get_routines(plant_id)
         for routine in routines:
-            for rule in routine.compiled:
+            compiled = routine.compiled_rules
+            if not compiled:
+                continue
+            created_at = self._parse_created_at(routine.created_at)
+            for rule in compiled:
                 trigger = rule.trigger
                 rule_id = str(rule.id)
                 if not rule_id:
@@ -239,7 +220,7 @@ class ControllerService:
                     point_key = point.strftime("%Y-%m-%d %H:%M")
 
                     # Check if already fired for this minute
-                    fired_key = (routine.routine_id, rule_id)
+                    fired_key = (routine.id, rule_id)
                     last_fired = self._last_fired.get(fired_key)
                     if last_fired is not None and last_fired == point_key:
                         continue
@@ -257,7 +238,7 @@ class ControllerService:
                                 should_fire = True
                     elif trigger.type == "interval":
                         if trigger.at == point_time:
-                            if self._is_interval_due(routine.created_at, trigger.every_days, point):
+                            if self._is_interval_due(created_at, trigger.every_days, point):
                                 should_fire = True
 
                     if should_fire:
@@ -304,14 +285,14 @@ class ControllerService:
 
     def _execute_rule_actions(
         self,
-        routine: CompiledRoutine,
+        routine: Routine,
         rule: CompiledRule,
         correlation_id: Optional[str] = None,
     ) -> None:
         commands = self.evaluator.evaluate_actions(
             rule=rule,
             plant_id=routine.plant_id,
-            routine_id=routine.routine_id,
+            routine_id=routine.id,
             correlation_id=correlation_id,
         )
 
@@ -364,41 +345,21 @@ class ControllerService:
 
     def refresh(self, plant_id: int) -> None:
         self._mode_cache[plant_id] = self.database_client.get_mode(plant_id)
-        self._routine_cache[plant_id] = self._load_compiled_routines(plant_id)
+        self._routine_cache[plant_id] = self.load_routines(plant_id)
 
-    def _get_compiled_routines(self, plant_id: int) -> list[CompiledRoutine]:
+    def _get_routines(self, plant_id: int) -> list[Routine]:
         if plant_id not in self._routine_cache:
-            self._routine_cache[plant_id] = self._load_compiled_routines(plant_id)
+            self._routine_cache[plant_id] = self.load_routines(plant_id)
         return self._routine_cache[plant_id]
 
-    def _load_compiled_routines(self, plant_id: int) -> list[CompiledRoutine]:
-        routines = []
+    def load_routines(self, plant_id: int) -> list[Routine]:
+        routines: list[Routine] = []
         for routine in self.database_client.get_routines(plant_id):
             if not routine.enabled:
                 continue
-            compiled = routine.compiled_rules
-            if compiled is None:
+            if routine.compiled_rules is None:
                 continue
-            if isinstance(compiled, str):
-                import json
-
-                compiled = json.loads(compiled)
-            compiled_rules: list[CompiledRule] = []
-            if isinstance(compiled, list):
-                for item in compiled:
-                    if isinstance(item, CompiledRule):
-                        compiled_rules.append(item)
-                    else:
-                        compiled_rules.append(load("generic", CompiledRule, item))
-            routines.append(
-                CompiledRoutine(
-                    routine_id=routine.id,
-                    plant_id=routine.plant_id,
-                    name=routine.name,
-                    created_at=self._parse_created_at(routine.created_at),
-                    compiled=compiled_rules,
-                )
-            )
+            routines.append(routine)
         return routines
 
     def _parse_created_at(self, created_at: Any) -> Optional[datetime]:
@@ -427,9 +388,6 @@ class ControllerService:
             raise ValueError("graph name does not match payload name")
         if payload.plant_id is not None and graph.plant_id != payload.plant_id:
             raise ValueError("graph plant_id does not match payload plant_id")
-
-    def _compare(self, value, operator: Optional[str], threshold) -> bool:
-        return self.evaluator.compare(value, operator, threshold)
 
     def _initial_last_check_time(self) -> datetime:
         return datetime.now(self._timezone) - timedelta(minutes=1)

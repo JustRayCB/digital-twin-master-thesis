@@ -4,11 +4,9 @@ from dt.communication.dataclasses.controller import ActuatorConfig
 
 
 class ActuatorDriver(Protocol):
-    def execute(self, command: str) -> bool:
-        ...
+    def execute(self, command: str) -> bool: ...
 
-    def cleanup(self) -> None:
-        ...
+    def cleanup(self) -> None: ...
 
 
 class BaseActuator:
@@ -20,13 +18,13 @@ class BaseActuator:
         name: str,
         plant_id: int,
         driver: ActuatorDriver,
-        config: Optional[ActuatorConfig] = None,
+        pin: int,
     ):
         self.actuator_id = actuator_id
         self.name = name
         self.plant_id = plant_id
         self.driver = driver
-        self.config = config or ActuatorConfig()
+        self.pin = pin
 
     def execute(self, command: str) -> bool:
         return self.driver.execute(command)
