@@ -4,7 +4,7 @@ import uuid
 
 from dt.communication.messaging_service import MessagingService
 from dt.communication.topics import Topics
-from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import AlertHistoryEvent
 from dt.communication.messaging_service import KafkaService
 from dt.data.database.storage import Storage
@@ -78,6 +78,20 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
         event_id = storage.save_alert_event(event)
         logger.info(f"Persisted alert event with ID {event_id}")
 
+    def persist_camera_snapshot(snapshot: CameraSnapshot):
+        """Persist camera snapshots received on the camera processed topic.
+
+        Parameters
+        ----------
+        snapshot : CameraSnapshot
+            The camera snapshot payload received from the messaging service.
+        """
+        logger.info(
+            f"Received camera snapshot: sensor_id={snapshot.sensor_id}, "
+            f"timestamp={snapshot.timestamp}"
+        )
+        storage.ingest_camera_snapshot(snapshot)
+
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
     client: MessagingService = KafkaService(
         host=config.KAFKA_URL, client_id=unique_id, group_id="database_consumer_group"
@@ -88,6 +102,9 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
 
     # Subscribe to all processed sensor topics
     for topic in Topics.list_sensor_topics():
+        if topic == Topics.CAMERA_IMAGE:
+            client.subscribe(topic.processed, persist_camera_snapshot)
+            continue
         client.subscribe(topic.processed, forward_to_database)
 
     # Subscribe to alerts topic

@@ -69,6 +69,8 @@ class AlertEngineService:
         sensor_topics = Topics.list_sensor_topics()
 
         for topic in sensor_topics:
+            if topic == Topics.CAMERA_IMAGE:
+                continue
             processed_topic = topic.processed
             self.kafka_service.subscribe(processed_topic, self._on_message)
             self.logger.info(f"Subscribed to {processed_topic}")
