@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS actuators (
     id SERIAL,
     plant_id INTEGER NOT NULL,
     name VARCHAR(255) NOT NULL,
+    pin INTEGER NOT NULL,
     relay_channel INTEGER NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'active',
 
@@ -164,7 +165,8 @@ CREATE TABLE IF NOT EXISTS alert_sensors (
 
     PRIMARY KEY (id),
     CONSTRAINT fk_alert_sensors_history_plant FOREIGN KEY (alert_history_id, plant_id) REFERENCES alert_history(id, plant_id) ON DELETE CASCADE,
-    CONSTRAINT fk_alert_sensors_sensor FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE
+    CONSTRAINT fk_alert_sensors_sensor FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
+    CONSTRAINT uq_alert_sensors_history_plant UNIQUE (alert_history_id, plant_id)
 );
 
 -- Alert external (string key-value pairs per history event)
@@ -176,7 +178,8 @@ CREATE TABLE IF NOT EXISTS alert_external (
     metadata JSONB NOT NULL,
 
     PRIMARY KEY (id),
-    CONSTRAINT fk_alert_external_history_plant FOREIGN KEY (alert_history_id, plant_id) REFERENCES alert_history(id, plant_id) ON DELETE CASCADE
+    CONSTRAINT fk_alert_external_history_plant FOREIGN KEY (alert_history_id, plant_id) REFERENCES alert_history(id, plant_id) ON DELETE CASCADE,
+    CONSTRAINT uq_alert_external_history_plant UNIQUE (alert_history_id, plant_id)
 );
 
 -- ============================================================================

@@ -8,7 +8,6 @@ from typing import Any
 
 import networkx as nx
 
-from dt.communication.adapters import load
 from dt.communication.dataclasses.controller import (Action, CompiledRule,
                                                      RoutineGraph, Trigger)
 

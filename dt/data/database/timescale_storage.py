@@ -252,18 +252,20 @@ class TimescaleStorage(Storage):
             return sensors
 
     @override
-    def register_actuator(self, plant_id: int, name: str, relay_channel: int) -> int:
+    def register_actuator(self, plant_id: int, name: str, pin: int, relay_channel: int) -> int:
         query = """
-            INSERT INTO actuators (plant_id, name, relay_channel, status)
-            VALUES (:plant_id, :name, :relay_channel, :status)
+            INSERT INTO actuators (plant_id, name, pin, relay_channel, status)
+            VALUES (:plant_id, :name, :pin, :relay_channel, :status)
             ON CONFLICT (plant_id, name) DO UPDATE
-            SET relay_channel = EXCLUDED.relay_channel,
+            SET pin = EXCLUDED.pin,
+                relay_channel = EXCLUDED.relay_channel,
                 status = EXCLUDED.status
             RETURNING id
         """
         params = {
             "plant_id": plant_id,
             "name": name,
+            "pin": pin,
             "relay_channel": relay_channel,
             "status": "active",
         }
@@ -274,7 +276,7 @@ class TimescaleStorage(Storage):
 
     @override
     def list_actuators(self) -> list[dict[str, Any]]:
-        query = "SELECT id, plant_id, name, relay_channel, status FROM actuators ORDER BY id"
+        query = "SELECT id, plant_id, name, pin, relay_channel, status FROM actuators ORDER BY id"
         with self._get_connection() as conn:
             actuators = [row._asdict() for row in conn.execute(text(query))]
             self.logger.info(f"Retrieved {len(actuators)} actuators")

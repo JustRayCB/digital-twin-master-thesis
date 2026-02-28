@@ -113,12 +113,13 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         try:
             plant_id = int(payload["plant_id"])
             name = str(payload["name"])
+            pin = int(payload["pin"])
             relay_channel = int(payload["relay_channel"])
         except (KeyError, TypeError, ValueError) as exc:
             logger.error(f"Invalid actuator payload: {exc}")
             return jsonify({"error": "Invalid actuator payload"}), 400
 
-        actuator_id = storage.register_actuator(plant_id, name, relay_channel)
+        actuator_id = storage.register_actuator(plant_id, name, pin, relay_channel)
         return jsonify({"status": "Actuator bound successfully", "actuator_id": actuator_id}), 200
 
     @bp.route("/actions/log", methods=["POST"])

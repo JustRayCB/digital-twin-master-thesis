@@ -20,7 +20,7 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      Routine, RoutineGraph,
                                                      RoutineUpdate)
 from dt.communication.db_client import DatabaseApiClient
-from dt.communication.messaging_service import KafkaService, MessagingService
+from dt.communication.messaging_service import MessagingService
 from dt.communication.topics import Topics
 from dt.controller.action_keys import build_action_key
 from dt.controller.actuator_manager import ActuatorManager

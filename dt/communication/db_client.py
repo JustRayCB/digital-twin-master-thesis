@@ -83,9 +83,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error listing actuators: {exc}")
             raise RuntimeError(f"Failed to list actuators: {exc}") from exc
 
-    def bind_actuator(self, plant_id: int, name: str, relay_channel: int) -> int:
+    def bind_actuator(self, plant_id: int, name: str, pin: int, relay_channel: int) -> int:
         """Register an actuator with the database."""
-        payload = {"plant_id": plant_id, "name": name, "relay_channel": relay_channel}
+        payload = {"plant_id": plant_id, "name": name, "pin": pin, "relay_channel": relay_channel}
         try:
             response = requests.post(
                 f"{self.base_url}/bind_actuator",

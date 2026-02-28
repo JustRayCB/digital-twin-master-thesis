@@ -8,7 +8,6 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      ActuatorConfig)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import MessagingService
-from dt.communication.topics import Topics
 from dt.controller.action_keys import build_action_key
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
@@ -34,17 +33,18 @@ class ActuatorManager:
         self.last_completed: Dict[int, float] = {}
         self.logger = get_logger(__name__)
 
-    def add_actuator(self, actuator: BaseActuator, relay_channel: int):
-        actuator_id = self.bind_actuator(actuator, relay_channel)
+    def add_actuator(self, actuator: BaseActuator):
+        actuator_id = self.bind_actuator(actuator)
         self.actuators[actuator_id] = actuator
         self.logger.info(f"Added actuator {actuator.name} with ID {actuator_id}")
 
-    def bind_actuator(self, actuator: BaseActuator, relay_channel: int) -> int:
+    def bind_actuator(self, actuator: BaseActuator) -> int:
         self.logger.info(f"Binding actuator {actuator.name} to database")
         actuator_id = self.database_client.bind_actuator(
             plant_id=actuator.plant_id,
             name=actuator.name,
-            relay_channel=relay_channel,
+            pin=actuator.pin,
+            relay_channel=actuator.relay_channel,
         )
         if actuator_id != -1:
             actuator.actuator_id = actuator_id

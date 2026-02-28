@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from dt.communication.dataclasses import (
     AggregatedReading,
@@ -88,7 +88,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def register_actuator(self, plant_id: int, name: str, relay_channel: int) -> int:
+    def register_actuator(self, plant_id: int, name: str, pin: int, relay_channel: int) -> int:
         """Register a new actuator and return its assigned ID.
 
         Parameters
@@ -97,6 +97,8 @@ class Storage(ABC):
             The ID of the plant this actuator belongs to.
         name : str
             The name of the actuator.
+        pin : int
+            The GPIO pin the actuator is connected to.
         relay_channel : int
             The relay channel this actuator is connected to.
 

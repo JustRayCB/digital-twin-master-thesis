@@ -1,6 +1,4 @@
-from typing import Optional, Protocol
-
-from dt.communication.dataclasses.controller import ActuatorConfig
+from typing import Protocol
 
 
 class ActuatorDriver(Protocol):
@@ -19,12 +17,14 @@ class BaseActuator:
         plant_id: int,
         driver: ActuatorDriver,
         pin: int,
+        relay_channel: int,
     ):
         self.actuator_id = actuator_id
         self.name = name
         self.plant_id = plant_id
         self.driver = driver
         self.pin = pin
+        self.relay_channel = relay_channel
 
     def execute(self, command: str) -> bool:
         return self.driver.execute(command)

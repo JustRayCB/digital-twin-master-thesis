@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from dt.communication.dataclasses.controller import ActionCommand, CompiledRule, Trigger
 from dt.controller.action_keys import build_action_key

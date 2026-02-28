@@ -6,7 +6,6 @@ Configures and runs the Controller Service.
 from flask import Flask
 from flask_cors import CORS
 
-from dt.communication.dataclasses.controller import ActuatorConfig
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.controller.actuator_manager import ActuatorManager
@@ -24,15 +23,15 @@ logger = get_logger(__name__)
 
 def _build_actuators(actuator_manager: ActuatorManager) -> None:
     plant_id = 1
-    pump = Pump(-1, "pump", plant_id, 24)
-    light = Light(-1, "light", plant_id, 22)
-    heater = Heater(-1, "heater", plant_id, 23)
-    fan = Fan(-1, "fan", plant_id, 27)
+    pump = Pump(-1, "pump", plant_id, 24, relay_channel=1)
+    light = Light(-1, "light", plant_id, 22, relay_channel=2)
+    heater = Heater(-1, "heater", plant_id, 23, relay_channel=3)
+    fan = Fan(-1, "fan", plant_id, 27, relay_channel=4)
 
-    actuator_manager.add_actuator(pump, relay_channel=1)
-    actuator_manager.add_actuator(light, relay_channel=2)
-    actuator_manager.add_actuator(heater, relay_channel=3)
-    actuator_manager.add_actuator(fan, relay_channel=4)
+    actuator_manager.add_actuator(pump)
+    actuator_manager.add_actuator(light)
+    actuator_manager.add_actuator(heater)
+    actuator_manager.add_actuator(fan)
 
 
 def create_app(config=Config, service=None) -> Flask:
