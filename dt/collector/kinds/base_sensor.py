@@ -1,7 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 
-from dt.communication.dataclasses import RawSensorData, SensorDescriptor
+from dt.communication.dataclasses import CameraSnapshot, RawSensorData, SensorDescriptor
 from dt.communication.topics import Topics
 from dt.utils.ids import new_correlation_id
 from dt.utils.logger import get_logger
@@ -103,7 +103,7 @@ class Sensor(ABC):
             time - self.last_read_time >= self.read_interval if self.last_read_time != -1 else True
         )
 
-    def read(self) -> RawSensorData | None:
+    def read(self) -> RawSensorData | CameraSnapshot | None:
         """Read data from the sensor and return it as a RawSensorData object.
 
         This method reads the raw data from the sensor, processes it, updates
@@ -112,7 +112,7 @@ class Sensor(ABC):
 
         Returns
         -------
-        RawSensorData | None
+        RawSensorData | CameraSnapshot | None
             A dataclass object containing the sensor data and metadata, or None
             when the sensor does not return a value.
         """

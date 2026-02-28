@@ -1,6 +1,6 @@
 import time
 
-from dt.communication.dataclasses import RawSensorData
+from dt.communication.dataclasses import CameraSnapshot, RawSensorData
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService, MessagingService
 from dt.communication.topics import Topics
@@ -132,7 +132,7 @@ class SensorManager:
         # Return the minimum time until the next due reading
         return min(seconds_until_due) if seconds_until_due else default_sleep_seconds
 
-    def read_all_sensors(self) -> dict[str, RawSensorData]:
+    def read_all_sensors(self) -> dict[str, RawSensorData | CameraSnapshot]:
         """Read data from all sensors that are due for a reading.
 
         This method iterates through all managed sensors, checks if a new
@@ -141,11 +141,11 @@ class SensorManager:
 
         Returns
         -------
-        dict[str, SensorData]
+        dict[str, RawSensorData | CameraSnapshot]
             A dictionary containing the data from all sensors that were read,
             keyed by sensor name.
         """
-        data: dict[str, RawSensorData] = {}
+        data: dict[str, RawSensorData | CameraSnapshot] = {}
         for sensor_name, sensor in self.sensors.items():
             current_time = time.time()
             if sensor.needs_data(current_time):
@@ -155,7 +155,11 @@ class SensorManager:
                     continue
 
                 data[sensor.name] = reading
-                topic = sensor.topic.raw
+                topic = (
+                    sensor.topic.processed
+                    if sensor.topic == Topics.CAMERA_IMAGE
+                    else sensor.topic.raw
+                )
                 self.messaging_service.publish(
                     topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
