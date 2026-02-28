@@ -6,7 +6,7 @@ from threading import Lock
 from flask_socketio import SocketIO
 
 from dt.communication.adapters import dump
-from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import AlertHistoryEvent, AlertStatus
 from dt.communication.dataclasses.queries import ActiveAlertsQuery
 from dt.communication.db_client import DatabaseApiClient
@@ -33,6 +33,14 @@ def alert_cache_key(alert_key: str, plant_id: int) -> str:
 def shape_processed_reading_payload(reading: ProcessedSensorData) -> dict:
     """Convert a processed reading into the Socket.IO payload shape (JS timestamps in ms)."""
     payload = dump("generic", reading)
+    payload = convert_timestamp_for_browser(payload)
+    payload.pop("topic", None)
+    return payload
+
+
+def shape_camera_snapshot_payload(snapshot: CameraSnapshot) -> dict:
+    """Convert a camera snapshot into the Socket.IO payload shape (JS timestamps in ms)."""
+    payload = dump("generic", snapshot)
     payload = convert_timestamp_for_browser(payload)
     payload.pop("topic", None)
     return payload
