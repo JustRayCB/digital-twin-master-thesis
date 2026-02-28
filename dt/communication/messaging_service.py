@@ -8,13 +8,11 @@ from kafka import KafkaConsumer, KafkaProducer
 from typing_extensions import override
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import ProcessedSensorData, RawSensorData
-from dt.communication.dataclasses.controller import ActionCommand
+from dt.communication.dataclasses import (CameraSnapshot, ProcessedSensorData,
+                                          RawSensorData)
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertHistoryEvent,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
+    AlertHistoryEvent, ExternalAlertEvent, SensorAlertEvent)
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.topics import Topics
 from dt.utils import get_logger
 
@@ -210,6 +208,9 @@ class KafkaService(MessagingService):
                                     else:
                                         data = load("generic", AlertHistoryEvent, raw_data)
 
+                                elif topic == Topics.CAMERA_IMAGE.processed:
+                                    # Deserialize camera snapshots separately from generic processed data
+                                    data = load("generic", CameraSnapshot, message.value)
                                 elif "processed" in topic:
                                     # Deserialize as ProcessedSensorData
                                     data = load("generic", ProcessedSensorData, message.value)

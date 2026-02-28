@@ -7,7 +7,8 @@ from flask_socketio import SocketIO
 
 from dt.communication.adapters import dump
 from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
-from dt.communication.dataclasses.alerts.alert_record import AlertHistoryEvent, AlertStatus
+from dt.communication.dataclasses.alerts.alert_record import (
+    AlertHistoryEvent, AlertStatus)
 from dt.communication.dataclasses.queries import ActiveAlertsQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService, MessagingService
@@ -101,6 +102,19 @@ def forward_to_socketio(socketio: SocketIO, topic: Topics):
     return callback
 
 
+def forward_camera_snapshot_to_socketio(socketio: SocketIO):
+    """Create a callback that forwards camera snapshots to Socket.IO."""
+    socketio_topic = Topics.CAMERA_IMAGE.processed
+
+    def callback(snapshot: CameraSnapshot):
+        shaped = shape_camera_snapshot_payload(snapshot)
+        with latest_by_topic_lock:
+            update_latest_payload_cache(latest_by_topic, socketio_topic, shaped)
+        socketio.emit(socketio_topic, shaped)
+
+    return callback
+
+
 def setup_bridge(db_client: DatabaseApiClient, socketio: SocketIO) -> MessagingService:
     """Set up the messaging bridge from Kafka to SocketIO.
 
@@ -145,7 +159,22 @@ def setup_bridge(db_client: DatabaseApiClient, socketio: SocketIO) -> MessagingS
 
     msg_client.subscribe(Topics.ALERTS, forward_alert_event)
 
+    try:
+        latest_snapshot = db_client.get_latest_camera_snapshot(plant_id=1)
+        if latest_snapshot is not None:
+            with latest_by_topic_lock:
+                update_latest_payload_cache(
+                    latest_by_topic,
+                    Topics.CAMERA_IMAGE.processed,
+                    shape_camera_snapshot_payload(latest_snapshot),
+                )
+    except Exception as exc:
+        logger.error(f"Failed to seed camera snapshot: {exc}")
+
     for topic in Topics.list_sensor_topics():
+        if topic == Topics.CAMERA_IMAGE:
+            msg_client.subscribe(topic.processed, forward_camera_snapshot_to_socketio(socketio))
+            continue
         msg_client.subscribe(topic.processed, forward_to_socketio(socketio, topic))
 
     return msg_client
