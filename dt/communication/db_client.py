@@ -11,7 +11,12 @@ from typing import Any, Type
 import requests
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import AggregatedReading, ProcessedSensorData, SensorDescriptor
+from dt.communication.dataclasses import (
+    AggregatedReading,
+    CameraSnapshot,
+    ProcessedSensorData,
+    SensorDescriptor,
+)
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertHistoryEvent,
@@ -260,6 +265,23 @@ class DatabaseApiClient:
         target_cls: Type[ProcessedSensorData] | Type[AggregatedReading]
         target_cls = AggregatedReading if query.window == "1h" else ProcessedSensorData
         return [load("generic", target_cls, item) for item in payload]
+
+    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+        """Fetch the latest camera snapshot for a plant."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/camera/snapshots/latest",
+                params={"plant_id": plant_id},
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return load("generic", CameraSnapshot, response.json())
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching latest camera snapshot: {exc}")
+            raise RuntimeError(f"Failed to fetch latest camera snapshot: {exc}") from exc
 
     # ---------------------------------------------------------------------- #
     # Alerts

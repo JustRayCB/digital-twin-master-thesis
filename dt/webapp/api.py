@@ -130,6 +130,24 @@ def create_webapp_blueprint(
             logger.error(f"Error fetching alert history: {e}")
             return jsonify({"error": "Internal server error"}), 500
 
+    @bp.route("/camera/snapshots/latest", methods=["GET"])
+    def get_latest_camera_snapshot():
+        """Get latest camera snapshot for a plant with browser-friendly timestamp."""
+        plant_id = request.args.get("plant_id", default=1, type=int)
+        try:
+            snapshot = db_client.get_latest_camera_snapshot(plant_id)
+            if snapshot is None:
+                return jsonify({"error": "No camera snapshot found"}), 404
+
+            payload = dump("generic", snapshot)
+            payload = convert_timestamp_for_browser(payload)
+            payload.pop("topic", None)
+            return jsonify(payload), 200
+
+        except Exception as e:
+            logger.error(f"Error fetching latest camera snapshot: {e}")
+            return jsonify({"error": "Internal server error"}), 500
+
     # ---------------------------------------------------------------------- #
     # Metadata
     # ---------------------------------------------------------------------- #

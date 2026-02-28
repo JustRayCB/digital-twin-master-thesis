@@ -81,6 +81,19 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         logger.info(f"Found {len(result)} readings")
         return jsonify(result)
 
+    @bp.route("/camera/snapshots/latest", methods=["GET"])
+    def get_latest_camera_snapshot():
+        """Return the latest camera snapshot for a plant."""
+        plant_id = request.args.get("plant_id", type=int)
+        if not plant_id:
+            return jsonify({"error": "plant_id is required"}), 400
+
+        snapshot = storage.get_latest_camera_snapshot(plant_id=plant_id)
+        if snapshot is None:
+            return jsonify({"error": "No camera snapshot found"}), 404
+
+        return jsonify(dump("generic", snapshot)), 200
+
     @bp.route("/actuators", methods=["GET"])
     def list_actuators():
         """Return all registered actuators."""
