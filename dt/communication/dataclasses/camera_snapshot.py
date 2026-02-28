@@ -11,7 +11,7 @@ class CameraSnapshot:
     topic: Topics
     correlation_id: str
     mime_type: str
-    image_b64: str
+    image: str
     width: int | None = None
     height: int | None = None
 
@@ -22,6 +22,6 @@ class CameraSnapshot:
         self.topic = Topics(self.topic)
         self.correlation_id = str(self.correlation_id)
         self.mime_type = str(self.mime_type)
-        self.image_b64 = str(self.image_b64)
+        self.image = str(self.image)
         self.width = int(self.width) if self.width is not None else None
         self.height = int(self.height) if self.height is not None else None

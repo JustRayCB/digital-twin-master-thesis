@@ -3,6 +3,7 @@ from typing import Any
 
 from dt.communication.dataclasses import (
     AggregatedReading,
+    CameraSnapshot,
     ProcessedSensorData,
     SensorDescriptor,
 )
@@ -128,6 +129,37 @@ class Storage(ABC):
         ----------
         data : ProcessedSensorData
             The processed sensor data to ingest.
+        """
+        pass
+
+    @abstractmethod
+    def ingest_camera_snapshot(self, snapshot: CameraSnapshot) -> int:
+        """Ingest a camera snapshot.
+
+        Parameters
+        ----------
+        snapshot : CameraSnapshot
+            The camera snapshot payload to persist.
+
+        Returns
+        -------
+        int
+            Identifier of the inserted snapshot row.
+        """
+        pass
+
+    @abstractmethod
+    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+        """Fetch the latest camera snapshot for a plant.
+
+        Parameters
+        ----------
+        plant_id : int
+            Plant identifier.
+        Returns
+        -------
+        CameraSnapshot | None
+            Latest snapshot if present, otherwise None.
         """
         pass
 

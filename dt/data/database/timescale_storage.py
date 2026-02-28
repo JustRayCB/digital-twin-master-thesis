@@ -1,4 +1,5 @@
 import json
+from base64 import b64decode
 from contextlib import contextmanager
 from typing import Any, Generator, Optional
 
@@ -6,7 +7,7 @@ from sqlalchemy import Connection, Engine, create_engine, text
 from typing_extensions import override
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import (AggregatedReading,
+from dt.communication.dataclasses import (AggregatedReading, CameraSnapshot,
                                           ProcessedSensorData,
                                           SensorDescriptor)
 from dt.communication.dataclasses.alerts.alert_record import (
@@ -305,6 +306,42 @@ class TimescaleStorage(Storage):
         with self._get_connection() as conn:
             conn.execute(text(query), dump("db_row", data))
             self.logger.info(f"Ingested reading for sensor {data.sensor_id} at {data.timestamp}")
+
+    @override
+    def ingest_camera_snapshot(self, snapshot: CameraSnapshot) -> int:
+        query = """
+            INSERT INTO camera_snapshots (
+                timestamp, sensor_id, plant_id, topic, mime_type, image,
+                correlation_id, width, height
+            ) VALUES (
+                to_timestamp(:timestamp), :sensor_id, :plant_id, :topic,
+                :mime_type, :image, :correlation_id, :width, :height
+            )
+            RETURNING id
+        """
+        params = dump("db_row", snapshot)
+        params["image"] = b64decode(params.pop("image"))
+        with self._get_connection() as conn:
+            snapshot_id = self._get_id(conn.execute(text(query), params))
+            self.logger.info(
+                f"Ingested camera snapshot {snapshot_id} for sensor {snapshot.sensor_id}"
+            )
+            return snapshot_id
+
+    @override
+    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+        query = """
+            SELECT plant_id, sensor_id, timestamp, topic, correlation_id, mime_type, image, width, height
+            FROM camera_snapshots
+            WHERE plant_id = :plant_id
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(text(query), {"plant_id": plant_id}).fetchone()
+            if row is None:
+                return None
+            return load("db_row", CameraSnapshot, row)
 
     @override
     def query_readings(self, query_data: ReadingsQuery) -> list[ProcessedSensorData]:

@@ -8,27 +8,23 @@ Handles conversions specific to database storage:
 Uses generic adapter for base serialization, then applies DB-specific transformations.
 """
 
+import json
+from base64 import b64encode
 from dataclasses import fields
 from datetime import datetime
-import json
 from typing import Any, TypeVar, Union
 
 from typing_extensions import override
 
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
-from dt.communication.dataclasses.controller import (
-    ActionCommand,
-    ControlMode,
-    Routine,
-    RoutineUpdate,
-)
-from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
+    AlertDefinition, AlertHistoryEvent, ExternalAlertEvent, SensorAlertEvent)
+from dt.communication.dataclasses.camera_snapshot import CameraSnapshot
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ControlMode, Routine,
+                                                     RoutineUpdate)
+from dt.communication.dataclasses.processed_sensor_data import (
+    ProcessedSensorData, ValidationFlag)
 from dt.communication.dataclasses.sensor import SensorDescriptor
 from dt.communication.topics import Topics
 
@@ -87,6 +83,9 @@ class DbRowAdapter(SerializationAdapter):
         if isinstance(obj, ProcessedSensorData):
             data["topic"] = obj.topic.short_name
             data["flags"] = self._flags_to_string(obj.flags)
+
+        elif isinstance(obj, CameraSnapshot):
+            data["topic"] = obj.topic.short_name
 
         elif isinstance(obj, AlertDefinition):
             # Flat dict for alert_definitions table
@@ -188,6 +187,16 @@ class DbRowAdapter(SerializationAdapter):
             row_dict["flags"] = self._string_to_flags(row_dict.get("flags"))
             row_dict["topic"] = Topics.from_short_name(row_dict.get("topic"))
             row_dict["timestamp"] = self._to_unix_timestamp(row_dict.get("timestamp"))
+
+        elif cls == CameraSnapshot:
+            row_dict["timestamp"] = self._to_unix_timestamp(row_dict.get("timestamp"))
+            topic_value = row_dict.get("topic")
+            if topic_value is not None:
+                topic_text = str(topic_value)
+                row_dict["topic"] = Topics.from_short_name(topic_text)
+            image_bytes = row_dict.pop("image", None)
+            if image_bytes is not None:
+                row_dict["image"] = b64encode(bytes(image_bytes)).decode("ascii")
 
         elif cls == AggregatedReading:
             row_dict["bucket"] = self._to_unix_timestamp(row_dict.get("bucket"))
