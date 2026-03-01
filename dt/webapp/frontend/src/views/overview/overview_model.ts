@@ -29,6 +29,8 @@ type TelemetrySnapshot = {
   light: { value: string; label1: string; label2: string };
 };
 
+const actuatorStateById = writable<Record<number, boolean>>({});
+
 function formatTelemetryValue(value: number | null, unit: string, digits = 0) {
   if (!Number.isFinite(value)) {
     return "—";
@@ -124,12 +126,37 @@ function mapRoutine(routine: RoutineRecord): Routine {
   };
 }
 
-function mapActuator(actuator: Actuator): ActuatorControl {
+function mapActuator(actuator: Actuator, isOn: boolean): ActuatorControl {
   return {
     id: actuator.id,
     name: actuator.name,
-    isOn: false,
+    isOn,
   };
+}
+
+function actuatorStatusToOn(status: string | null | undefined): boolean | null {
+  if (typeof status !== "string") {
+    return null;
+  }
+  const normalized = status.toLowerCase();
+  if (normalized === "on") {
+    return true;
+  }
+  if (normalized === "off") {
+    return false;
+  }
+  return null;
+}
+
+function mergeActuatorStateMap(
+  current: Record<number, boolean>,
+  controls: ActuatorControl[],
+): Record<number, boolean> {
+  const merged = { ...current };
+  for (const control of controls) {
+    merged[control.id] = control.isOn;
+  }
+  return merged;
 }
 
 function buildPhotoSource(mimeType: string, image: string) {
@@ -182,7 +209,15 @@ export function createOverviewModel() {
     const data = await fetchActuators();
     const filtered = data.filter((actuator) => actuator.plant_id === DEFAULT_PLANT_ID);
     const sorted = filtered.sort((a, b) => a.name.localeCompare(b.name));
-    actuators.set(sorted.map(mapActuator));
+    const currentState = get(actuatorStateById);
+    const next = sorted.map((actuator) => {
+      const persistedState = currentState[actuator.id];
+      const statusState = actuatorStatusToOn(actuator.status);
+      const isOn = statusState ?? persistedState ?? false;
+      return mapActuator(actuator, isOn);
+    });
+    actuators.set(next);
+    actuatorStateById.set(mergeActuatorStateMap(currentState, next));
   }
 
   async function toggleRoutine(id: number) {
@@ -241,6 +276,7 @@ export function createOverviewModel() {
       actuator.id === id ? { ...actuator, isOn: nextState } : actuator,
     );
     actuators.set(updated);
+    actuatorStateById.set(mergeActuatorStateMap(get(actuatorStateById), updated));
     try {
       await dispatchAction({
         plant_id: DEFAULT_PLANT_ID,
@@ -251,6 +287,7 @@ export function createOverviewModel() {
     } catch (error) {
       console.error("Failed to dispatch actuator command", error);
       actuators.set(current);
+      actuatorStateById.set(mergeActuatorStateMap(get(actuatorStateById), current));
     }
   }
 

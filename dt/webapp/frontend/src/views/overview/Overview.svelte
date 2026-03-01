@@ -2,7 +2,7 @@
   import PlantPixelArt from "../../components/PlantPixelArt.svelte";
   import RoutineCard from "../../components/RoutineCard.svelte";
   import TelemetryCard from "../../components/TelemetryCard.svelte";
-  import { openRoutineBuilder } from "../../app_state";
+  import { openRoutineBuilder, overviewViewMode } from "../../app_state";
   import { autoPilotEnabled } from "../../stores/auto_pilot";
   import { onDestroy, onMount } from "svelte";
   import { createOverviewModel } from "./overview_model";
@@ -14,7 +14,6 @@
   const telemetry = model.telemetry;
   const currentTime = model.currentTime;
   const latestPhotoSrc = model.latestPhotoSrc;
-  let viewMode: "pixel" | "camera" = "pixel";
 
   onMount(() => {
     model.start();
@@ -36,14 +35,14 @@
 
     <div class="flex bg-cozy-white p-1.5 border-2 border-ink rounded-xl shadow-hard-sm">
       <label class="cursor-pointer select-none">
-        <input type="radio" name="view-mode" value="pixel" class="peer sr-only" bind:group={viewMode} />
+        <input type="radio" name="view-mode" value="pixel" class="peer sr-only" bind:group={$overviewViewMode} />
         <div class="flex items-center gap-2 px-6 py-2 rounded-lg font-retro text-xl text-gray-400 peer-checked:bg-cozy-mint peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
           <span class="material-symbols-outlined text-lg">token</span>
           PIXEL
         </div>
       </label>
       <label class="cursor-pointer select-none">
-        <input type="radio" name="view-mode" value="camera" class="peer sr-only" bind:group={viewMode} />
+        <input type="radio" name="view-mode" value="camera" class="peer sr-only" bind:group={$overviewViewMode} />
         <div class="flex items-center gap-2 px-6 py-2 rounded-lg font-retro text-xl text-gray-400 peer-checked:bg-cozy-mint peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
           <span class="material-symbols-outlined text-lg">photo_camera</span>
           PHOTO
@@ -61,7 +60,7 @@
 
         <div class="bg-gradient-to-br from-gray-100 to-gray-200 aspect-square w-full border-2 border-ink relative overflow-hidden flex items-center justify-center group">
           <div class="absolute inset-0 z-10 pointer-events-none opacity-5" style="background: repeating-linear-gradient(0deg, #000, #000 2px, transparent 2px, transparent 4px)"></div>
-          {#if viewMode === "camera"}
+          {#if $overviewViewMode === "camera"}
             {#if $latestPhotoSrc}
               <img
                 src={$latestPhotoSrc}

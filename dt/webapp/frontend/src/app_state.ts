@@ -4,6 +4,7 @@ import type { RoutineRecord, ViewState } from "./types";
 
 export const currentView = writable<ViewState>("OVERVIEW");
 export const routineDraft = writable<RoutineRecord | null>(null);
+export const overviewViewMode = writable<"pixel" | "camera">("pixel");
 
 export function navigate(view: ViewState) {
   currentView.set(view);
