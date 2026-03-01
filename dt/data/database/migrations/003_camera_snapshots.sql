@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS camera_snapshots (
     image BYTEA NOT NULL,
     correlation_id VARCHAR(255) NOT NULL,
     width INTEGER,
-    height INTEGER
+    height INTEGER,
 
     PRIMARY KEY (id),
     CONSTRAINT fk_camera_snapshots_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
