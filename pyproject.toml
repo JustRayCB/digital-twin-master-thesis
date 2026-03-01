@@ -64,6 +64,7 @@ adafruit-circuitpython-dht = {version=">=4.0.7,<5.0.0", markers="sys_platform ==
 adafruit-circuitpython-seesaw = {version=">=1.16.5,<2.0.0", markers="sys_platform == 'linux'"}
 adafruit-circuitpython-bh1750 = {version=">=1.1.14,<2.0.0", markers="sys_platform == 'linux'"}
 adafruit-blinka = {version=">=8.58.1,<9.0.0", markers="sys_platform == 'linux'"}
+picamera2 = "^0.3.34"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

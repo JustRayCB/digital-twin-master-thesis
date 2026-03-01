@@ -7,3 +7,4 @@ export const processedTopics = {
 
 export type ProcessedTopicName = (typeof processedTopics)[keyof typeof processedTopics];
 
+export const cameraSnapshotTopic = "dt.sensors.processed.camera_image";

@@ -13,6 +13,8 @@
   const actuators = model.actuators;
   const telemetry = model.telemetry;
   const currentTime = model.currentTime;
+  const latestPhotoSrc = model.latestPhotoSrc;
+  let viewMode: "pixel" | "camera" = "pixel";
 
   onMount(() => {
     model.start();
@@ -34,14 +36,14 @@
 
     <div class="flex bg-cozy-white p-1.5 border-2 border-ink rounded-xl shadow-hard-sm">
       <label class="cursor-pointer select-none">
-        <input type="radio" name="view-mode" value="twin" class="peer sr-only" checked />
+        <input type="radio" name="view-mode" value="pixel" class="peer sr-only" bind:group={viewMode} />
         <div class="flex items-center gap-2 px-6 py-2 rounded-lg font-retro text-xl text-gray-400 peer-checked:bg-cozy-mint peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
           <span class="material-symbols-outlined text-lg">token</span>
           PIXEL
         </div>
       </label>
       <label class="cursor-pointer select-none">
-        <input type="radio" name="view-mode" value="camera" class="peer sr-only" />
+        <input type="radio" name="view-mode" value="camera" class="peer sr-only" bind:group={viewMode} />
         <div class="flex items-center gap-2 px-6 py-2 rounded-lg font-retro text-xl text-gray-400 peer-checked:bg-cozy-mint peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
           <span class="material-symbols-outlined text-lg">photo_camera</span>
           PHOTO
@@ -59,10 +61,23 @@
 
         <div class="bg-gradient-to-br from-gray-100 to-gray-200 aspect-square w-full border-2 border-ink relative overflow-hidden flex items-center justify-center group">
           <div class="absolute inset-0 z-10 pointer-events-none opacity-5" style="background: repeating-linear-gradient(0deg, #000, #000 2px, transparent 2px, transparent 4px)"></div>
-
-          <div class="w-[80%] h-[80%] pixel-art drop-shadow-xl group-hover:scale-105 transition-transform duration-500">
-            <PlantPixelArt state={$healthState} />
-          </div>
+          {#if viewMode === "camera"}
+            {#if $latestPhotoSrc}
+              <img
+                src={$latestPhotoSrc}
+                alt="Latest plant snapshot"
+                class="h-full w-full object-cover"
+              />
+            {:else}
+              <div class="flex h-full w-full items-center justify-center px-8 text-center font-retro text-2xl text-gray-400">
+                Waiting for camera snapshot
+              </div>
+            {/if}
+          {:else}
+            <div class="w-[80%] h-[80%] pixel-art drop-shadow-xl group-hover:scale-105 transition-transform duration-500">
+              <PlantPixelArt state={$healthState} />
+            </div>
+          {/if}
 
           <div class="absolute top-4 left-4 font-retro text-ink bg-white/80 px-2 py-1 border border-ink text-lg z-20 rounded shadow-sm">
             ● REC

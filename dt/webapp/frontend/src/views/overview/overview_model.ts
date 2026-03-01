@@ -4,12 +4,14 @@ import {
   DEFAULT_PLANT_ID,
   dispatchAction,
   fetchActuators,
+  fetchLatestCameraSnapshot,
   fetchRoutines,
   updateRoutine,
 } from "../../api";
-import type { Actuator, RoutineRecord } from "../../types";
+import type { Actuator, CameraSnapshot, RoutineRecord } from "../../types";
 import { PlantHealthState, type Routine } from "../../types";
-import { processedTopics } from "../analytics/realtime_topics";
+import { cameraSnapshotTopic, processedTopics } from "../analytics/realtime_topics";
+import { realtimeClient } from "../analytics/realtime_client";
 import { realtimeReadings } from "../analytics/realtime_readings_store";
 
 type ActuatorControl = {
@@ -126,10 +128,31 @@ function mapActuator(actuator: Actuator): ActuatorControl {
   };
 }
 
+function buildPhotoSource(mimeType: string, image: string) {
+  return `data:${mimeType};base64,${image}`;
+}
+
+function extractPhotoSource(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const mimeType = record.mime_type;
+  const image = record.image;
+  if (typeof mimeType !== "string") {
+    return null;
+  }
+  if (typeof image !== "string" || !image) {
+    return null;
+  }
+  return buildPhotoSource(mimeType, image);
+}
+
 export function createOverviewModel() {
   const healthState = writable<PlantHealthState>(PlantHealthState.HEALTHY);
   const routines = writable<Routine[]>([]);
   const actuators = writable<ActuatorControl[]>([]);
+  const latestPhotoSrc = writable<string | null>(null);
   const connectionStatus = writable("Disconnected");
   const lastUpdate = writable("—");
   const currentTime = writable(formatCurrentTime(new Date()));
@@ -142,7 +165,9 @@ export function createOverviewModel() {
 
   let unsubscribeStatus: (() => void) | null = null;
   let unsubscribeReadings: (() => void) | null = null;
+  let unsubscribeCamera: (() => void) | null = null;
   let clockInterval: ReturnType<typeof setInterval> | null = null;
+  let receivedRealtimeSnapshot = false;
 
   async function loadRoutines() {
     const data = await fetchRoutines(DEFAULT_PLANT_ID);
@@ -206,6 +231,17 @@ export function createOverviewModel() {
   async function start() {
     realtimeReadings.start();
 
+    if (!unsubscribeCamera) {
+      unsubscribeCamera = realtimeClient.subscribe(cameraSnapshotTopic, (payload) => {
+        const src = extractPhotoSource(payload);
+        if (!src) {
+          return;
+        }
+        receivedRealtimeSnapshot = true;
+        latestPhotoSrc.set(src);
+      });
+    }
+
     if (!clockInterval) {
       currentTime.set(formatCurrentTime(new Date()));
       clockInterval = setInterval(() => {
@@ -267,7 +303,22 @@ export function createOverviewModel() {
       });
     });
 
-    await Promise.all([loadRoutines(), loadActuators()]);
+    const loadLatestSnapshot = async () => {
+      if (receivedRealtimeSnapshot) {
+        return;
+      }
+      try {
+        const snapshot = await fetchLatestCameraSnapshot(DEFAULT_PLANT_ID);
+        if (!snapshot || receivedRealtimeSnapshot) {
+          return;
+        }
+        latestPhotoSrc.set(buildPhotoSource(snapshot.mime_type, snapshot.image));
+      } catch (error) {
+        console.error("Failed to load latest camera snapshot", error);
+      }
+    };
+
+    await Promise.all([loadRoutines(), loadActuators(), loadLatestSnapshot()]);
   }
 
   function stop() {
@@ -279,6 +330,11 @@ export function createOverviewModel() {
       unsubscribeReadings();
       unsubscribeReadings = null;
     }
+    if (unsubscribeCamera) {
+      unsubscribeCamera();
+      unsubscribeCamera = null;
+    }
+    receivedRealtimeSnapshot = false;
     if (clockInterval) {
       clearInterval(clockInterval);
       clockInterval = null;
@@ -289,6 +345,7 @@ export function createOverviewModel() {
     healthState,
     routines,
     actuators,
+    latestPhotoSrc,
     connectionStatus,
     lastUpdate,
     currentTime,

@@ -3,6 +3,7 @@ from time import sleep
 import board
 
 from dt.collector import (
+    CameraSensor,
     HumiditySensor,
     LightSensor,
     SensorManager,
@@ -38,11 +39,13 @@ def main():
     temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 7, board.D17)
     humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 17, board.D17)
     light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 15, board.D3)
+    camera_sensor = CameraSensor("sensors.basil.picamera2.001.camera_image", 30)
 
     sensor_manager.add_sensor(moisture_sensor)
     sensor_manager.add_sensor(temperature_sensor)
     sensor_manager.add_sensor(humidity_sensor)
     sensor_manager.add_sensor(light_sensor)
+    sensor_manager.add_sensor(camera_sensor)
 
     input("Press Enter to start data collector module ...")
 

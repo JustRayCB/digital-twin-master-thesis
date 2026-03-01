@@ -31,6 +31,17 @@ export type Reading = {
   normalization_profile_id?: string | null;
 };
 
+export type CameraSnapshot = {
+  plant_id: number;
+  sensor_id: number;
+  time: number;
+  mime_type: string;
+  image: string;
+  width?: number | null;
+  height?: number | null;
+  correlation_id: string;
+};
+
 export type ActiveAlert = {
   alert_id?: number | string | null;
   alert_key?: string | null;

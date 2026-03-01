@@ -2,6 +2,7 @@ import type {
   ActiveAlert,
   ActionDispatchPayload,
   Actuator,
+  CameraSnapshot,
   Reading,
   ReadingQuery,
   RoutineRecord,
@@ -77,4 +78,21 @@ export function dispatchAction(payload: ActionDispatchPayload): Promise<unknown>
 
 export function fetchActuators(): Promise<Actuator[]> {
   return requestJson(`/api/actuators`);
+}
+
+export async function fetchLatestCameraSnapshot(
+  plantId: number = DEFAULT_PLANT_ID,
+): Promise<CameraSnapshot | null> {
+  const search = buildQuery({ plant_id: plantId });
+  const response = await fetch(`/api/camera/snapshots/latest${search}`);
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as CameraSnapshot;
 }
