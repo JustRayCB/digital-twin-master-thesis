@@ -10,19 +10,10 @@ class RelayDriver:
 
     _instance = None
 
-    def __new__(cls, name: str, pin: int):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self, name: str, pin: int):
-        if self._initialized:
-            return
         self.name = name
         self.pin = pin
         self._setup_gpio()
-        self._initialized = True
 
     def _setup_gpio(self) -> None:
         try:
