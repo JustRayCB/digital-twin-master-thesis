@@ -2,12 +2,14 @@ import { get, writable } from "svelte/store";
 
 import {
   DEFAULT_PLANT_ID,
+  deleteRoutine as deleteRoutineRequest,
   dispatchAction,
   fetchActuators,
   fetchLatestCameraSnapshot,
   fetchRoutines,
   updateRoutine,
 } from "../../api";
+import { openRoutineBuilder } from "../../app_state";
 import type { Actuator, CameraSnapshot, RoutineRecord } from "../../types";
 import { PlantHealthState, type Routine } from "../../types";
 import { cameraSnapshotTopic, processedTopics } from "../analytics/realtime_topics";
@@ -113,10 +115,12 @@ function formatRoutineCondition(routine: RoutineRecord) {
 
 function mapRoutine(routine: RoutineRecord): Routine {
   return {
-    id: String(routine.id),
+    id: routine.id,
     name: routine.name,
     condition: formatRoutineCondition(routine),
     active: routine.enabled,
+    graph: routine.graph,
+    plant_id: routine.plant_id,
   };
 }
 
@@ -181,7 +185,7 @@ export function createOverviewModel() {
     actuators.set(sorted.map(mapActuator));
   }
 
-  async function toggleRoutine(id: string) {
+  async function toggleRoutine(id: number) {
     const current = get(routines);
     const target = current.find((routine) => routine.id === id);
     if (!target) {
@@ -193,9 +197,35 @@ export function createOverviewModel() {
     );
     routines.set(updated);
     try {
-      await updateRoutine(Number(id), { enabled: nextActive });
+      await updateRoutine(id, { enabled: nextActive });
     } catch (error) {
       console.error("Failed to toggle routine", error);
+      routines.set(current);
+    }
+  }
+
+  function editRoutine(id: number) {
+    const target = get(routines).find((routine) => routine.id === id);
+    if (!target) {
+      return;
+    }
+    openRoutineBuilder({
+      id: target.id,
+      plant_id: target.plant_id ?? DEFAULT_PLANT_ID,
+      name: target.name,
+      enabled: target.active,
+      graph: target.graph,
+    });
+  }
+
+  async function deleteRoutine(id: number) {
+    const current = get(routines);
+    const updated = current.filter((routine) => routine.id !== id);
+    routines.set(updated);
+    try {
+      await deleteRoutineRequest(id);
+    } catch (error) {
+      console.error("Failed to delete routine", error);
       routines.set(current);
     }
   }
@@ -351,6 +381,8 @@ export function createOverviewModel() {
     currentTime,
     telemetry,
     toggleRoutine,
+    editRoutine,
+    deleteRoutine,
     toggleActuator,
     setHealthState,
     start,

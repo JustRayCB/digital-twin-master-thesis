@@ -5,13 +5,13 @@
   export let iconName: string;
   export let iconBgClass: string;
   export let iconColorClass: string = "text-ink";
-  export let onToggle: (id: string) => void;
+  export let onToggle: (id: number) => void;
+  export let onEdit: (id: number) => void;
+  export let onDelete: (id: number) => void;
 </script>
 
-<div
-  on:click={() => onToggle(routine.id)}
-  class="bg-white border-2 border-ink rounded-xl p-4 flex gap-4 items-center shadow-sm hover:shadow-hard hover:-translate-y-1 transition-all cursor-pointer group"
->
+<div class="bg-white border-2 border-ink rounded-xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-hard hover:-translate-y-1 transition-all group">
+  <div class="flex gap-4 items-center">
   <div class={`size-12 ${iconBgClass} rounded-lg border-2 border-transparent group-hover:border-ink flex items-center justify-center transition-colors`}>
     <span class={`material-symbols-outlined ${iconColorClass}`}>{iconName}</span>
   </div>
@@ -25,4 +25,24 @@
     </div>
   </div>
 </div>
-
+  <div class="flex items-center gap-2">
+    <button
+      on:click={() => onEdit(routine.id)}
+      class="px-3 py-1 font-retro text-sm bg-cozy-white border-2 border-ink rounded-md hover:bg-gray-50 transition-colors"
+    >
+      EDIT
+    </button>
+    <button
+      on:click={() => onDelete(routine.id)}
+      class="px-3 py-1 font-retro text-sm bg-white border-2 border-ink rounded-md hover:bg-gray-50 transition-colors"
+    >
+      DELETE
+    </button>
+    <button
+      on:click={() => onToggle(routine.id)}
+      class="ml-auto px-3 py-1 font-retro text-sm bg-cozy-mint border-2 border-ink rounded-md hover:bg-green-300 transition-colors"
+    >
+      {routine.active ? "DISABLE" : "ENABLE"}
+    </button>
+  </div>
+</div>

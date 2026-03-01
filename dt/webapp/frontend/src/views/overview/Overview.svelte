@@ -2,7 +2,7 @@
   import PlantPixelArt from "../../components/PlantPixelArt.svelte";
   import RoutineCard from "../../components/RoutineCard.svelte";
   import TelemetryCard from "../../components/TelemetryCard.svelte";
-  import { navigate } from "../../app_state";
+  import { openRoutineBuilder } from "../../app_state";
   import { autoPilotEnabled } from "../../stores/auto_pilot";
   import { onDestroy, onMount } from "svelte";
   import { createOverviewModel } from "./overview_model";
@@ -218,7 +218,7 @@
         </div>
 
         <button
-          on:click={() => navigate("LOGIC_BUILDER")}
+          on:click={() => openRoutineBuilder()}
           class="font-retro text-xl bg-cozy-white text-ink px-6 py-2 border-2 border-ink rounded-lg shadow-hard-sm hover:bg-gray-50 transition-colors"
         >
           + NEW RULE
@@ -234,6 +234,8 @@
           iconBgClass={index === 0 ? "bg-cozy-blue/30" : index === 1 ? "bg-cozy-yellow/50" : "bg-pop-red/20"}
           iconColorClass={index === 2 ? "text-pop-red" : "text-ink"}
           onToggle={model.toggleRoutine}
+          onEdit={model.editRoutine}
+          onDelete={model.deleteRoutine}
         />
       {/each}
     </div>

@@ -69,6 +69,12 @@ export function updateRoutine(routineId: number, payload: RoutineUpdatePayload):
   });
 }
 
+export function deleteRoutine(routineId: number): Promise<{ status: string }> {
+  return requestJson(`/api/routines/${routineId}`, {
+    method: "DELETE",
+  });
+}
+
 export function dispatchAction(payload: ActionDispatchPayload): Promise<unknown> {
   return requestJson(`/api/actions/dispatch`, {
     method: "POST",

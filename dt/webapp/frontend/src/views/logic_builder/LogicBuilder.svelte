@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { get } from "svelte/store";
 
-  import { navigate } from "../../app_state";
+  import { navigate, routineDraft } from "../../app_state";
   import NodeContent from "./NodeContent.svelte";
   import {
     createLogicBuilderModel,
@@ -21,7 +22,9 @@
   onMount(() => {
     window.addEventListener("mousemove", model.handleWindowMouseMove);
     window.addEventListener("mouseup", model.handleWindowMouseUp);
-    model.actions.loadActuators();
+    model.actions.loadActuators().finally(() => {
+      model.actions.loadRoutine(get(routineDraft));
+    });
   });
 
   onDestroy(() => {

@@ -1,6 +1,7 @@
 import { get, writable } from "svelte/store";
 
 import { autoPilotEnabled } from "../../stores/auto_pilot";
+import type { RoutineRecord } from "../../types";
 
 import type { Edge, NodeConfig, NodeData, NodeType, Viewport } from "./types";
 
@@ -158,6 +159,47 @@ export function renderPath(x1: number, y1: number, x2: number, y2: number) {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
 
+type GraphTrigger = {
+  type?: string;
+  topic?: string;
+  op?: string;
+  value?: number;
+  time?: string;
+  date?: string;
+  every_days?: number;
+  at?: string;
+};
+
+type GraphAction = {
+  actuator_id?: number;
+  command?: string;
+  duration?: number;
+};
+
+type GraphNode = {
+  id?: string;
+  kind?: string;
+  trigger?: GraphTrigger;
+  action?: GraphAction;
+};
+
+type GraphEdge = {
+  source?: string;
+  target?: string;
+};
+
+type GraphUiNode = {
+  x?: number;
+  y?: number;
+  label?: string;
+};
+
+type RoutineGraphPayload = {
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  ui?: Record<string, GraphUiNode>;
+};
+
 export function createLogicBuilderModel() {
   const nodes = writable<NodeData[]>(INITIAL_NODES);
   const edges = writable<Edge[]>(INITIAL_EDGES);
@@ -165,6 +207,7 @@ export function createLogicBuilderModel() {
   const routineName = writable<string>("Untitled Routine");
   const routineId = writable<number | null>(null);
   const actuators = writable<Record<string, number>>({});
+  const actuatorNames = writable<Record<number, string>>({});
 
   const connectingSourceId = writable<string | null>(null);
   const mousePos = writable({ x: 0, y: 0 });
@@ -419,6 +462,49 @@ export function createLogicBuilderModel() {
     return normalizeActuatorName(label);
   }
 
+  function triggerNodeFromTopic(topic: string) {
+    const normalizedTopic = topic.toLowerCase();
+    if (normalizedTopic.includes("temperature")) {
+      return {
+        label: "Temperature",
+        icon: "thermostat",
+        bgClass: "bg-cozy-peach",
+        unit: "°C",
+      };
+    }
+    if (normalizedTopic.includes("light")) {
+      return {
+        label: "Light Level",
+        icon: "wb_sunny",
+        bgClass: "bg-cozy-yellow",
+        unit: "lx",
+      };
+    }
+    return {
+      label: "Moisture Level",
+      icon: "water_drop",
+      bgClass: "bg-cozy-lavender",
+      unit: "%",
+    };
+  }
+
+  function actionNodeDisplay(label: string) {
+    const normalizedLabel = label.toLowerCase();
+    if (normalizedLabel.includes("pump") || normalizedLabel.includes("mist")) {
+      return { icon: "shower", bgClass: "bg-cozy-mint" };
+    }
+    if (normalizedLabel.includes("fan")) {
+      return { icon: "air", bgClass: "bg-cozy-blue" };
+    }
+    if (normalizedLabel.includes("light")) {
+      return { icon: "lightbulb", bgClass: "bg-cozy-yellow" };
+    }
+    if (normalizedLabel.includes("heater")) {
+      return { icon: "local_fire_department", bgClass: "bg-cozy-peach" };
+    }
+    return { icon: "bolt", bgClass: "bg-cozy-white" };
+  }
+
   async function loadActuators() {
     const response = await fetch("/api/actuators");
     if (!response.ok) {
@@ -426,10 +512,158 @@ export function createLogicBuilderModel() {
     }
     const data: Array<{ id: number; name: string }> = await response.json();
     const lookup: Record<string, number> = {};
+    const names: Record<number, string> = {};
     for (const actuator of data) {
       lookup[normalizeActuatorName(actuator.name)] = actuator.id;
+      names[actuator.id] = actuator.name;
     }
     actuators.set(lookup);
+    actuatorNames.set(names);
+  }
+
+  function toEditorNode(node: GraphNode, index: number, graphUi: Record<string, GraphUiNode>): NodeData | null {
+    const nodeId = node.id;
+    if (!nodeId || (node.kind !== "trigger" && node.kind !== "action")) {
+      return null;
+    }
+
+    const ui = graphUi[nodeId];
+    const x = Number(ui?.x ?? (node.kind === "trigger" ? 150 : 520));
+    const y = Number(ui?.y ?? (120 + index * 120));
+    const uiLabel = typeof ui?.label === "string" ? ui.label : undefined;
+
+    if (node.kind === "trigger" && node.trigger) {
+      const trigger = node.trigger;
+      if (trigger.type === "time") {
+        return {
+          id: nodeId,
+          type: "TRIGGER",
+          x,
+          y,
+          label: uiLabel ?? "Time of Day",
+          config: { triggerKind: "time", time: trigger.time ?? "08:00" },
+          icon: "schedule",
+          bgClass: "bg-cozy-yellow",
+          inputs: false,
+          outputs: true,
+        };
+      }
+      if (trigger.type === "date") {
+        return {
+          id: nodeId,
+          type: "TRIGGER",
+          x,
+          y,
+          label: uiLabel ?? "Specific Date",
+          config: { triggerKind: "date", date: trigger.date ?? "2026-02-14" },
+          icon: "event",
+          bgClass: "bg-cozy-blue",
+          inputs: false,
+          outputs: true,
+        };
+      }
+      if (trigger.type === "interval") {
+        return {
+          id: nodeId,
+          type: "TRIGGER",
+          x,
+          y,
+          label: uiLabel ?? "Every N Days",
+          config: {
+            triggerKind: "interval",
+            everyDays: trigger.every_days ?? 2,
+            at: trigger.at ?? "19:00",
+          },
+          icon: "repeat",
+          bgClass: "bg-cozy-peach",
+          inputs: false,
+          outputs: true,
+        };
+      }
+      if (trigger.type === "sensor") {
+        const topicDisplay = triggerNodeFromTopic(trigger.topic ?? "");
+        return {
+          id: nodeId,
+          type: "TRIGGER",
+          x,
+          y,
+          label: uiLabel ?? topicDisplay.label,
+          config: {
+            triggerKind: "sensor",
+            operator: trigger.op ?? "<",
+            value: trigger.value ?? 50,
+            unit: topicDisplay.unit,
+          },
+          icon: topicDisplay.icon,
+          bgClass: topicDisplay.bgClass,
+          inputs: false,
+          outputs: true,
+        };
+      }
+    }
+
+    if (node.kind === "action" && node.action && Number.isFinite(node.action.actuator_id)) {
+      const action = node.action;
+      const actuatorId = Number(action.actuator_id);
+      const fallbackLabel = `Actuator ${actuatorId}`;
+      const actuatorLabel = get(actuatorNames)[actuatorId] ?? fallbackLabel;
+      const label = uiLabel ?? actuatorLabel;
+      const display = actionNodeDisplay(label);
+      return {
+        id: nodeId,
+        type: "ACTION",
+        x,
+        y,
+        label,
+        config: label.toLowerCase().includes("light")
+          ? { actionState: action.command !== "OFF" }
+          : { duration: Number(action.duration ?? 0), unit: "s" },
+        icon: display.icon,
+        bgClass: display.bgClass,
+        inputs: true,
+        outputs: false,
+      };
+    }
+
+    return null;
+  }
+
+  function loadRoutine(routine: RoutineRecord | null) {
+    if (!routine) {
+      routineName.set("Untitled Routine");
+      routineId.set(null);
+      nodes.set(INITIAL_NODES);
+      edges.set(INITIAL_EDGES);
+      return;
+    }
+
+    const graph = routine.graph as RoutineGraphPayload | undefined;
+    const graphNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const graphEdges = Array.isArray(graph?.edges) ? graph.edges : [];
+    const graphUi = graph?.ui && typeof graph.ui === "object" ? graph.ui : {};
+
+    const loadedNodes = graphNodes
+      .map((node, index) => toEditorNode(node, index, graphUi))
+      .filter((node): node is NodeData => node !== null);
+
+    const loadedNodeIds = new Set(loadedNodes.map((node) => node.id));
+    const loadedEdges = graphEdges
+      .filter(
+        (edge): edge is { source: string; target: string } =>
+          typeof edge.source === "string" && typeof edge.target === "string",
+      )
+      .filter((edge) => loadedNodeIds.has(edge.source) && loadedNodeIds.has(edge.target))
+      .map((edge, index) => ({ id: `e${index + 1}`, source: edge.source, target: edge.target }));
+
+    routineName.set(routine.name);
+    routineId.set(routine.id);
+    if (loadedNodes.length === 0) {
+      nodes.set(INITIAL_NODES);
+      edges.set(INITIAL_EDGES);
+      return;
+    }
+    nodes.set(loadedNodes);
+    edges.set(loadedEdges);
   }
 
   function buildGraphPayload() {
@@ -565,6 +799,7 @@ export function createLogicBuilderModel() {
       updateNodeConfig,
       clearCanvas,
       loadActuators,
+      loadRoutine,
       saveRoutine,
     },
   };

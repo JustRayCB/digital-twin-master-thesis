@@ -8,10 +8,12 @@ export enum PlantHealthState {
 }
 
 export interface Routine {
-  id: string;
+  id: number;
   name: string;
   condition: string;
   active: boolean;
+  graph?: unknown;
+  plant_id?: number;
 }
 
 export type Reading = {
