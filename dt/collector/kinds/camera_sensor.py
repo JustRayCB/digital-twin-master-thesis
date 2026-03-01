@@ -1,5 +1,6 @@
 import time
 from base64 import b64encode
+from contextlib import suppress
 from io import BytesIO
 
 from picamera2 import Picamera2
@@ -29,16 +30,18 @@ class CameraSensor(Sensor):
         return Topics.CAMERA_IMAGE
 
     def _capture_jpeg(self, width: int, height: int) -> bytes:
-
         camera = Picamera2()
         configuration = camera.create_still_configuration(main={"size": (width, height)})
         camera.configure(configuration)
-        camera.start()
         stream = BytesIO()
         try:
+            camera.start()
             camera.capture_file(stream, format="jpeg")
         finally:
-            camera.stop()
+            with suppress(Exception):
+                camera.stop()
+            with suppress(Exception):
+                camera.close()
         return stream.getvalue()
 
     @override
