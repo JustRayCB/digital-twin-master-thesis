@@ -132,6 +132,8 @@ class ControllerService:
             logger.error("Failed to connect to Kafka messaging service")
             raise RuntimeError("Failed to connect to Kafka messaging service")
         for topic in Topics.list_sensor_topics():
+            if topic == Topics.CAMERA_IMAGE:
+                continue
             try:
                 processed_topic = (
                     topic.processed if isinstance(topic, Topics) else Topics(topic).processed
