@@ -14,7 +14,7 @@
 # - curl: For downloading files from the internet.
 # - build-essential: For compiling software from source.
 echo "Installing system dependencies..."
-sudo apt install -y python3 python3-pip git curl build-essential
+sudo apt install -y python3 python3-pip git curl build-essential npm, python3-libcamera python3-picamera2
 
 # --- Install Java Development Kit (JDK) ---
 # Installs OpenJDK 17, which is required for running Kafka and Spark.
