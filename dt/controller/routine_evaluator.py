@@ -10,7 +10,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from dt.communication.dataclasses.controller import ActionCommand, CompiledRule, Trigger
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     CompiledRule, Trigger)
 from dt.controller.action_keys import build_action_key
 
 
@@ -47,7 +48,7 @@ class RoutineEvaluator:
                     plant_id=plant_id,
                     action_id=action_key,
                     actuator_id=actuator_id,
-                    timestamp=time.time(),
+                    started_at=time.time(),
                     duration=float(action.duration),
                     command=command,
                     reason=f"Routine {routine_id} triggered",

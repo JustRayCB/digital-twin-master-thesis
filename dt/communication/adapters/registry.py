@@ -1,33 +1,36 @@
-"""Adapter registry providing clean serialization API.
-
-This module provides simple dump() and load() functions that route to
-the appropriate adapter based on the format string.
-"""
-
 from typing import Any, TypeVar
 
-from dt.communication.adapters.db_row import DbRowAdapter
-from dt.communication.adapters.generic import GenericAdapter
-from dt.communication.adapters.spark_row import SparkRowAdapter
-from dt.communication.adapters.tuple import TupleAdapter
+from dt.communication.adapters.serializers.generic.base import \
+    GenericSerializer
 
 T = TypeVar("T")
 
-ADAPTERS = {
-    "generic": GenericAdapter(),
-    "db_row": DbRowAdapter(),
-    "tuple": TupleAdapter(),
-    "spark_row": SparkRowAdapter(),
-}
+_generic = GenericSerializer()
+_registry: dict[tuple[Any, str], Any] = {}
 
-def get_adapter(format: str):
+
+def serializes(target_type: type | Any, fmt: str):
+    """Decorator that registers a serializer class for a given type and format.
+    Use target_type=Any to register as the format default (fallback for unregistered types).
+    """
+
+    def decorator(cls):
+        _registry[(target_type, fmt)] = cls()
+        return cls
+
+    return decorator
+
+
+def get_adapter(fmt: str) -> Any:
     """Return the adapter instance registered for the given format."""
-    if format not in ADAPTERS:
-        raise KeyError(f"Unknown format: {format}. Available formats: {', '.join(ADAPTERS.keys())}")
-    return ADAPTERS[format]
+    if fmt == "generic":
+        return _generic
+    if (Any, fmt) in _registry:
+        return _registry[(Any, fmt)]
+    raise KeyError(f"No serializer for format {fmt!r}")
 
 
-def dump(format: str, obj: Any) -> Any:
+def dump(fmt: str, obj: Any) -> Any:
     """Serialize object to specified format.
 
     Parameters
@@ -54,14 +57,25 @@ def dump(format: str, obj: Any) -> Any:
     >>> row = dump("db_row", sensor_reading)    # → dict (DB format)
     >>> tup = dump("tuple", sensor_reading)     # → tuple (Spark state)
     """
-    if format not in ADAPTERS:
-        raise KeyError(
-            f"Unknown format: {format}. " f"Available formats: {', '.join(ADAPTERS.keys())}"
-        )
-    return ADAPTERS[format].dump(obj)
+    # TEMP fix to avoid circular imports, should be refactored to avoid this
+    import dt.communication.adapters.serializers.db
+    import dt.communication.adapters.serializers.spark
+    import dt.communication.adapters.serializers.tuple
+
+    if fmt == "generic":
+        return _generic.dump(obj)
+    key = (type(obj), fmt)
+    if key in _registry:
+        return _registry[key].dump(obj)
+    if (
+        Any,
+        fmt,
+    ) in _registry:  # Default serializer for this format (fallback for unregistered types)
+        return _registry[(Any, fmt)].dump(obj)
+    raise KeyError(f"No serializer for ({type(obj).__name__!r}, {fmt!r})")
 
 
-def load(format: str, cls: type[T], data: Any) -> T:
+def load(fmt: str, cls: type[T], data: Any) -> T:
     """Deserialize data from specified format.
 
     Parameters
@@ -90,8 +104,19 @@ def load(format: str, cls: type[T], data: Any) -> T:
     >>> sensor = load("db_row", ProcessedSensorData, db_row)
     >>> sensor = load("tuple", RawSensorData, tuple_data)
     """
-    if format not in ADAPTERS:
-        raise KeyError(
-            f"Unknown format: {format}. " f"Available formats: {', '.join(ADAPTERS.keys())}"
-        )
-    return ADAPTERS[format].load(cls, data)
+    # TEMP fix to avoid circular imports, should be refactored to avoid this
+    import dt.communication.adapters.serializers.db
+    import dt.communication.adapters.serializers.spark
+    import dt.communication.adapters.serializers.tuple
+
+    if fmt == "generic":
+        return _generic.load(cls, data)
+    key = (cls, fmt)
+    if key in _registry:
+        return _registry[key].load(cls, data)
+    if (
+        Any,
+        fmt,
+    ) in _registry:  # Default serializer for this format (fallback for unregistered types)
+        return _registry[(Any, fmt)].load(cls, data)
+    raise KeyError(f"No serializer for ({cls.__name__!r}, {fmt!r})")

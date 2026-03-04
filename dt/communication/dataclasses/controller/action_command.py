@@ -45,7 +45,7 @@ class ActionCommand:
     plant_id: int
     action_id: str
     actuator_id: int
-    timestamp: float
+    started_at: float
     duration: float  # in seconds
     command: str  # e.g. "ON" TODO: Enum ?
     reason: str  # e.g. "moisture below threshold"
@@ -60,7 +60,7 @@ class ActionCommand:
         self.plant_id = int(self.plant_id)
         self.action_id = str(self.action_id)
         self.actuator_id = int(self.actuator_id)
-        self.timestamp = float(self.timestamp)
+        self.started_at = float(self.started_at)
         self.duration = float(self.duration)
         self.command = str(self.command)
         self.reason = str(self.reason)
@@ -91,7 +91,7 @@ class ActionCommand:
             raise ValueError("source must be one of: manual, ai, routine")
         if self.duration < 0:
             raise ValueError("duration must be >= 0")
-        if self.timestamp < 0:
+        if self.started_at < 0:
             raise ValueError("timestamp must be >= 0")
         if self.source == "routine" and self.routine_id is None:
             raise ValueError("routine_id is required when source is routine")

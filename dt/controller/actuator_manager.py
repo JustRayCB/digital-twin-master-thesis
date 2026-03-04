@@ -108,7 +108,7 @@ class ActuatorManager:
                 routine_id=original_action.routine_id,
             ),
             actuator_id=original_action.actuator_id,
-            timestamp=time.time(),
+            started_at=time.time(),
             duration=0,
             command="OFF",
             reason="Auto-off timer",

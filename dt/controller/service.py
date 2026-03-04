@@ -329,7 +329,7 @@ class ControllerService:
             plant_id=plant_id,
             action_id=action_key,
             actuator_id=actuator_id,
-            timestamp=time.time(),
+            started_at=time.time(),
             duration=duration,
             command=command,
             reason=reason,
