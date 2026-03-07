@@ -4,6 +4,7 @@ from dt.communication.dataclasses import CameraSnapshot, RawSensorData
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService, MessagingService
 from dt.communication.topics import Topics
+from dt.utils import Config
 from dt.utils.exceptions import BadSensorBindingException
 from dt.utils.logger import get_logger
 
@@ -37,7 +38,9 @@ class SensorManager:
         and initializes the database API client.
         """
         self.sensors: dict[str, Sensor] = {}
-        self.messaging_service: MessagingService = KafkaService(client_id="sensor_manager")
+        self.messaging_service: MessagingService = KafkaService(
+            host=Config.KAFKA_URL, client_id="sensor_manager"
+        )
         self.messaging_service.connect()
 
         self.logger = get_logger(__name__)

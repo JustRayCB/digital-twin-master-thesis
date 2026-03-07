@@ -113,7 +113,7 @@ class SparkStreamingAdapter:
         config_broadcast = sc.broadcast(self._config_manager)
 
         logger.info("Setting up event-time watermarking...")
-        watermarked = self.setup_watermark(raw_events, Config.SPARK_WATERMARK_INTERVAL)
+        watermarked = self.setup_watermark(raw_events, Config.SPARK_WATERMARK_INTERVAL.value)
 
         def process_sensor_group(
             key: tuple,
