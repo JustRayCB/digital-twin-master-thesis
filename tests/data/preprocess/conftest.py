@@ -1,6 +1,3 @@
-import threading
-import time
-from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -8,14 +5,8 @@ from typing import Any
 import pytest
 import yaml
 
-from dt.communication.dataclasses.raw_sensor_data import RawSensorData
-from dt.communication.db_client import DatabaseApiClient
 from dt.communication.dataclasses import SensorDescriptor
-from dt.communication.topics import Topics
-from dt.data.database.app import create_app
-from dt.data.database.migrations.runner import MigrationRunner
-from dt.data.database.timescale_storage import TimescaleStorage
-from dt.utils import Config
+from dt.communication.db_client import DatabaseApiClient
 
 
 @pytest.fixture
@@ -106,22 +97,6 @@ sensors:
     return str(config_file)
 
 
-
-@pytest.fixture
-def sample_reading():
-    """Create a sample raw sensor reading."""
-    basetime = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    return RawSensorData(
-        plant_id=1,
-        sensor_id=101,
-        timestamp=basetime.timestamp(),
-        value=25.5,
-        unit="°C",
-        topic=Topics.TEMPERATURE,
-        correlation_id="test-correlation-id",
-    )
-
-
 @pytest.fixture
 def base_config() -> dict[str, object]:
     """Reusable preprocessing configuration for stream integration tests."""
@@ -149,7 +124,9 @@ def base_config() -> dict[str, object]:
                 "smoothing": {"strategy": "pass_through"},
             }
         },
-        "sensors": {"greenhouse.temperature": {"template": "greenhouse.temperature.defaults"}},
+        "sensors": {
+            "greenhouse.temperature": {"template": "greenhouse.temperature.defaults"}
+        },
     }
 
 
@@ -169,6 +146,7 @@ def config_manager_defaults() -> dict[str, object]:
 @pytest.fixture
 def config_writer(tmp_path: Path):
     """Persist preprocessing configuration to a temporary file for tests."""
+
     def _write(config: dict[str, Any], filename: str = "preprocess_config.yml") -> str:
         config_path = tmp_path / filename
         config_path.write_text(yaml.safe_dump(config))
@@ -198,57 +176,6 @@ def spark_session():
     session.stop()
 
 
-@pytest.fixture(scope="module")
-def postgres_container():
-    """Start a PostgreSQL container with TimescaleDB extension."""
-    try:
-        from testcontainers.postgres import PostgresContainer
-
-        with PostgresContainer(image="timescale/timescaledb:latest-pg18", driver="psycopg") as postgres:
-            time.sleep(2)
-            yield postgres
-    except Exception as exc:
-        pytest.skip(f"Timescale test container could not start in this environment: {exc}")
-
-
-@pytest.fixture(scope="module")
-def db_engine(postgres_container):
-    """Create SQLAlchemy engine and run migrations for the test database."""
-    from sqlalchemy import create_engine
-
-    db_url = postgres_container.get_connection_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
-
-    psycopg_url = db_url.replace("postgresql+psycopg://", "postgresql://")
-    runner = MigrationRunner(migrations_dir=Config.DB_MIGRATIONS_DIR, db_url=psycopg_url)
-    runner.run_migrations()
-
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture(scope="module")
-def timescale_storage(db_engine):
-    """Timescale storage connected to the test database."""
-    return TimescaleStorage(engine=db_engine)
-
-
-@pytest.fixture(scope="module")
-def database_service_url(timescale_storage):
-    """Run the Flask database service backed by the Timescale test container."""
-    from werkzeug.serving import make_server
-
-    app = create_app(config=type("TestConfig", (), {}), storage=timescale_storage)
-    server = make_server("127.0.0.1", 0, app)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}/"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-
-
 @pytest.fixture
 def sensor_registry(timescale_storage):
     """Helper to register sensors in the Timescale test database."""
@@ -270,13 +197,13 @@ def sensor_registry(timescale_storage):
 
 
 @pytest.fixture
-def configure_preprocess_db_client(monkeypatch, database_service_url):
+def configure_preprocess_db_client(monkeypatch, database_service_base_url):
     """Route preprocessing ConfigurationManager DB lookups to the test database service."""
     import dt.data.preprocess.config.manager as preprocess_config_manager
 
     monkeypatch.setattr(
         preprocess_config_manager,
         "DatabaseApiClient",
-        partial(DatabaseApiClient, base_url=database_service_url),
+        partial(DatabaseApiClient, base_url=database_service_base_url),
     )
-    return database_service_url
+    return database_service_base_url

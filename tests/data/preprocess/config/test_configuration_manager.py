@@ -1,11 +1,13 @@
+import copy
+
 import pytest
+import yaml
 from cattrs.errors import ClassValidationError
 
 from dt.communication.topics import Topics
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.config.types import (
     AffineCalibrationConfig,
-    IdentityCalibrationConfig,
     MinMaxNormalizationConfig,
 )
 from dt.data.preprocess.stages.calibration import AffineCalibration as ExecutableAffine
@@ -13,13 +15,23 @@ from dt.data.preprocess.stages.calibration import (
     IdentityCalibration as ExecutableIdentityCalibration,
 )
 from dt.data.preprocess.stages.imputation import ForwardFillWithDecay
-from dt.data.preprocess.stages.normalization import IdentityNormalization, MinMaxNormalization
+from dt.data.preprocess.stages.normalization import (
+    IdentityNormalization,
+    MinMaxNormalization,
+)
 from dt.data.preprocess.stages.smoothing import EWMASmoothing, PassThroughSmoothing
 
 
-@pytest.fixture
-def mock_config_file(config_manager_defaults, config_writer):
-    config_data = config_manager_defaults
+def write_config(tmp_path, config_data: dict[str, object], filename: str) -> str:
+    """Write a config dictionary to a named temp file and return the path."""
+    config_path = tmp_path / filename
+    config_path.write_text(yaml.safe_dump(config_data))
+    return str(config_path)
+
+
+def write_default_config_file(tmp_path, config_manager_defaults) -> str:
+    """Write the shared configuration-manager test config and return its path."""
+    config_data = copy.deepcopy(config_manager_defaults)
     config_data["templates"] = {
         "temp_sensor": {
             "units": "C",
@@ -39,12 +51,14 @@ def mock_config_file(config_manager_defaults, config_writer):
         },
     }
 
-    return config_writer(config_data, "test_config.yml")
+    return write_config(tmp_path, config_data, "test_config.yml")
 
 
-def test_sensor_inherits_from_template(mock_config_file) -> None:
+def test_sensor_inherits_from_template(tmp_path, config_manager_defaults) -> None:
     """Sensor inherits defaults from its referenced template."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     config = manager.get_sensor_config("sensor.standard")
 
     assert config.units == "C"
@@ -54,9 +68,13 @@ def test_sensor_inherits_from_template(mock_config_file) -> None:
     assert config.validation.range.min == -10
 
 
-def test_sensor_override_merges_with_template(mock_config_file) -> None:
+def test_sensor_override_merges_with_template(
+    tmp_path, config_manager_defaults
+) -> None:
     """Per-sensor overrides should replace template fields."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     config = manager.get_sensor_config("sensor.calibrated")
 
     assert config.units == "C"
@@ -64,9 +82,13 @@ def test_sensor_override_merges_with_template(mock_config_file) -> None:
     assert config.calibration.offset == 2.5
 
 
-def test_sensor_without_template_loads_standalone_config(mock_config_file) -> None:
+def test_sensor_without_template_loads_standalone_config(
+    tmp_path, config_manager_defaults
+) -> None:
     """Standalone sensors can define strategy blocks without templates."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     config = manager.get_sensor_config("sensor.custom")
 
     assert config.units == "V"
@@ -74,35 +96,41 @@ def test_sensor_without_template_loads_standalone_config(mock_config_file) -> No
     assert config.normalization.input_max == 10.0
 
 
-def test_sensor_config_objects_are_cached(mock_config_file) -> None:
+def test_sensor_config_objects_are_cached(tmp_path, config_manager_defaults) -> None:
     """ConfigurationManager caches loaded SensorConfig objects."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     first = manager.get_sensor_config("sensor.standard")
     second = manager.get_sensor_config("sensor.standard")
     assert first is second
 
 
-def test_unknown_sensor_raises_key_error(mock_config_file) -> None:
+def test_unknown_sensor_raises_key_error(tmp_path, config_manager_defaults) -> None:
     """Unknown sensor keys raise KeyError."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     with pytest.raises(KeyError):
         manager.get_sensor_config("sensor.ghost")
 
 
-def test_unknown_template_raises_error(config_manager_defaults, config_writer) -> None:
+def test_unknown_template_raises_error(tmp_path, config_manager_defaults) -> None:
     """Unknown templates referenced by sensors raise ValueError."""
     config_data = config_manager_defaults
     config_data["sensors"] = {"broken": {"template": "missing"}}
-    path = config_writer(config_data, "broken.yml")
+    path = write_config(tmp_path, config_data, "broken.yml")
 
     manager = ConfigurationManager(path)
     with pytest.raises(ValueError, match="unknown template"):
         manager.get_sensor_config("broken")
 
 
-def test_profile_ids_reflect_overrides(mock_config_file) -> None:
+def test_profile_ids_reflect_overrides(tmp_path, config_manager_defaults) -> None:
     """Profile IDs encode which blocks were overridden."""
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
 
     standard = manager.get_sensor_config("sensor.standard")
     assert standard.calibration_profile_id == "temp_sensor"
@@ -118,12 +146,17 @@ def test_profile_ids_reflect_overrides(mock_config_file) -> None:
 
 
 def test_resolve_sensor_config_maps_db_id_to_config_key(
-    mock_config_file, sensor_registry, configure_preprocess_db_client
+    tmp_path,
+    config_manager_defaults,
+    sensor_registry,
+    configure_preprocess_db_client,
 ) -> None:
     """resolve_sensor_config maps DB sensor IDs back to configured sensor keys."""
     sensor = sensor_registry["register"]("sensor.standard")
 
-    manager = ConfigurationManager(mock_config_file)
+    manager = ConfigurationManager(
+        write_default_config_file(tmp_path, config_manager_defaults)
+    )
     sensor_key, sensor_config = manager.resolve_sensor_config(
         plant_id=sensor.plant_id, sensor_id=sensor.id, topic=Topics.TEMPERATURE
     )
@@ -133,8 +166,8 @@ def test_resolve_sensor_config_maps_db_id_to_config_key(
 
 
 def test_resolve_sensor_config_falls_back_to_generic_key(
+    tmp_path,
     config_manager_defaults,
-    config_writer,
     sensor_registry,
     configure_preprocess_db_client,
 ) -> None:
@@ -144,7 +177,7 @@ def test_resolve_sensor_config_falls_back_to_generic_key(
         "temp_sensor": {"units": "C", "validation": {"range": {"min": -10, "max": 50}}}
     }
     config_data["sensors"] = {"dht22.temperature": {"template": "temp_sensor"}}
-    path = config_writer(config_data, "generic_only.yml")
+    path = write_config(tmp_path, config_data, "generic_only.yml")
 
     sensor = sensor_registry["register"]("sensors.basil.dht22.001.temperature")
 
@@ -158,15 +191,15 @@ def test_resolve_sensor_config_falls_back_to_generic_key(
 
 
 def test_resolve_sensor_config_rejects_numeric_yaml_keys(
+    tmp_path,
     config_manager_defaults,
-    config_writer,
     sensor_registry,
     configure_preprocess_db_client,
 ) -> None:
     """Numeric sensor keys in YAML are rejected to prevent ambiguous resolution."""
     config_data = config_manager_defaults
     config_data["sensors"] = {"7": {"units": "C"}}
-    path = config_writer(config_data, "numeric_key.yml")
+    path = write_config(tmp_path, config_data, "numeric_key.yml")
 
     sensor = sensor_registry["register"]("sensors.basil.dht22.001.temperature")
 
@@ -177,7 +210,9 @@ def test_resolve_sensor_config_rejects_numeric_yaml_keys(
         )
 
 
-def test_template_override_preserves_nested_fields(config_manager_defaults, config_writer) -> None:
+def test_template_override_preserves_nested_fields(
+    tmp_path, config_manager_defaults
+) -> None:
     """Nested overrides should preserve template values when fields are omitted."""
     config_data = config_manager_defaults
     config_data["templates"] = {
@@ -193,7 +228,7 @@ def test_template_override_preserves_nested_fields(config_manager_defaults, conf
         }
     }
 
-    path = config_writer(config_data, "nested_override.yml")
+    path = write_config(tmp_path, config_data, "nested_override.yml")
 
     manager = ConfigurationManager(path)
     config = manager.get_sensor_config("sensor.partial")
@@ -204,7 +239,7 @@ def test_template_override_preserves_nested_fields(config_manager_defaults, conf
 
 
 def test_strategy_objects_are_cached_for_normalization_imputation_smoothing(
-    config_manager_defaults, config_writer
+    tmp_path, config_manager_defaults
 ) -> None:
     """ConfigurationManager caches normalization, imputation, and smoothing strategies."""
     config_data = config_manager_defaults
@@ -218,7 +253,7 @@ def test_strategy_objects_are_cached_for_normalization_imputation_smoothing(
         }
     }
 
-    path = config_writer(config_data, "strategy_cache.yml")
+    path = write_config(tmp_path, config_data, "strategy_cache.yml")
 
     manager = ConfigurationManager(path)
 
@@ -243,12 +278,14 @@ def test_strategy_objects_are_cached_for_normalization_imputation_smoothing(
     assert isinstance(calibration_first, ExecutableAffine)
 
 
-def test_strategy_defaults_when_sections_missing(config_manager_defaults, config_writer) -> None:
+def test_strategy_defaults_when_sections_missing(
+    tmp_path, config_manager_defaults
+) -> None:
     """Missing strategy sections should fall back to defaults."""
     config_data = config_manager_defaults
     config_data["sensors"] = {"sensor.standard": {"units": "C"}}
 
-    path = config_writer(config_data, "defaults.yml")
+    path = write_config(tmp_path, config_data, "defaults.yml")
 
     manager = ConfigurationManager(path)
 
@@ -263,14 +300,20 @@ def test_strategy_defaults_when_sections_missing(config_manager_defaults, config
     assert isinstance(smoothing, PassThroughSmoothing)
 
 
-def test_template_override_preserves_strategy_fields(config_manager_defaults, config_writer) -> None:
+def test_template_override_preserves_strategy_fields(
+    tmp_path, config_manager_defaults
+) -> None:
     """Strategy overrides should preserve template fields when partial."""
     config_data = config_manager_defaults
     config_data["templates"] = {
         "temp_sensor": {
             "units": "C",
             "calibration": {"strategy": "affine", "scale": 1.0, "offset": 0.5},
-            "normalization": {"strategy": "min_max", "input_min": 0.0, "input_max": 10.0},
+            "normalization": {
+                "strategy": "min_max",
+                "input_min": 0.0,
+                "input_max": 10.0,
+            },
         }
     }
     config_data["sensors"] = {
@@ -281,7 +324,7 @@ def test_template_override_preserves_strategy_fields(config_manager_defaults, co
         }
     }
 
-    path = config_writer(config_data, "strategy_override.yml")
+    path = write_config(tmp_path, config_data, "strategy_override.yml")
 
     manager = ConfigurationManager(path)
     config = manager.get_sensor_config("sensor.partial")
@@ -292,7 +335,7 @@ def test_template_override_preserves_strategy_fields(config_manager_defaults, co
     assert config.normalization.input_max == 10.0
 
 
-def test_profile_ids_track_mixed_overrides(config_manager_defaults, config_writer) -> None:
+def test_profile_ids_track_mixed_overrides(tmp_path, config_manager_defaults) -> None:
     """Profile IDs should reflect only overridden sections."""
     config_data = config_manager_defaults
     config_data["templates"] = {
@@ -309,7 +352,7 @@ def test_profile_ids_track_mixed_overrides(config_manager_defaults, config_write
         }
     }
 
-    path = config_writer(config_data, "profile_ids.yml")
+    path = write_config(tmp_path, config_data, "profile_ids.yml")
 
     manager = ConfigurationManager(path)
     config = manager.get_sensor_config("sensor.mixed")
@@ -318,36 +361,36 @@ def test_profile_ids_track_mixed_overrides(config_manager_defaults, config_write
     assert config.normalization_profile_id == "temp_sensor"
 
 
-def test_empty_strategy_block_rejected(config_manager_defaults, config_writer) -> None:
+def test_empty_strategy_block_rejected(tmp_path, config_manager_defaults) -> None:
     """Empty strategy mappings should fail validation."""
     config_data = config_manager_defaults
     config_data["sensors"] = {"sensor.empty": {"units": "C", "imputation": {}}}
 
-    path = config_writer(config_data, "empty_strategy.yml")
+    path = write_config(tmp_path, config_data, "empty_strategy.yml")
 
     with pytest.raises(ClassValidationError):
         ConfigurationManager(path)
 
 
-def test_malformed_system_windows_rejected(config_manager_defaults, config_writer) -> None:
+def test_malformed_system_windows_rejected(tmp_path, config_manager_defaults) -> None:
     """Invalid window types should raise schema validation errors."""
     config_data = config_manager_defaults
     config_data["system"]["windows"]["small_sec"] = "fast"
     config_data["sensors"] = {"sensor.standard": {"units": "C"}}
 
-    path = config_writer(config_data, "bad_windows.yml")
+    path = write_config(tmp_path, config_data, "bad_windows.yml")
 
     with pytest.raises(ClassValidationError):
         ConfigurationManager(path)
 
 
-def test_malformed_system_weights_rejected(config_manager_defaults, config_writer) -> None:
+def test_malformed_system_weights_rejected(tmp_path, config_manager_defaults) -> None:
     """Invalid weight types should raise schema validation errors."""
     config_data = config_manager_defaults
     config_data["system"]["weights"]["range_ok"] = "high"
     config_data["sensors"] = {"sensor.standard": {"units": "C"}}
 
-    path = config_writer(config_data, "bad_weights.yml")
+    path = write_config(tmp_path, config_data, "bad_weights.yml")
 
     with pytest.raises(ClassValidationError):
         ConfigurationManager(path)

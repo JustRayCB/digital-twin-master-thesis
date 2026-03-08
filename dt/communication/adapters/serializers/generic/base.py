@@ -12,6 +12,7 @@ class GenericSerializer(Serializer[Any]):
     def __init__(self) -> None:
         self._converter = cattrs.Converter()
         self._converter.register_structure_hook(Topics, self._structure_topic)
+        self._converter.register_unstructure_hook(Topics, self._unstructure_topic)
 
     @staticmethod
     def _structure_topic(value, _type) -> Topics:
@@ -21,6 +22,10 @@ class GenericSerializer(Serializer[Any]):
             return Topics(value)
         except ValueError:
             return Topics.from_short_name(str(value))
+
+    @staticmethod
+    def _unstructure_topic(value: Topics) -> str:
+        return value.value
 
     def register_structure_hook(self, target_type, hook) -> None:
         self._converter.register_structure_hook(target_type, hook)

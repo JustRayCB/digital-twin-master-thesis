@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from contextlib import contextmanager
@@ -25,7 +24,7 @@ from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
-from tests.conftest import wait_for_consumer_assignment
+from tests.conftest import create_topic_consumer
 
 
 def load_alert_event(payload: dict) -> AlertHistoryEvent:
@@ -204,14 +203,11 @@ def alerts_consumer(kafka_bootstrap_servers, kafka_topics):
     KafkaConsumer
         Consumer subscribed to the alerts topic.
     """
-    consumer = KafkaConsumer(
+    consumer = create_topic_consumer(
         Topics.ALERTS,
-        bootstrap_servers=kafka_bootstrap_servers,
-        group_id=f"alert-tests-{uuid.uuid4().hex[:8]}",
-        auto_offset_reset="latest",
-        value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+        kafka_bootstrap_servers,
+        group_prefix="alert-tests",
     )
-    wait_for_consumer_assignment(consumer)
     yield consumer
     consumer.close()
 

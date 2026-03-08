@@ -3,9 +3,7 @@ import time
 from datetime import datetime, timezone
 
 import pytest
-from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
-from kafka.admin import NewTopic
-from kafka.errors import TopicAlreadyExistsError
+from kafka import KafkaProducer
 
 from dt.communication.adapters import dump
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
@@ -13,48 +11,19 @@ from dt.communication.topics import Topics
 from dt.data.preprocess import main as preprocess_main
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.spark_adapter import SparkStreamingAdapter
+from tests.conftest import create_topic_consumer, ensure_kafka_topics
 
 
 @pytest.fixture(scope="module")
-def kafka_container():
-    """Start a Kafka container for end-to-end preprocessing tests."""
-    try:
-        from testcontainers.kafka import KafkaContainer
-
-        with KafkaContainer().with_kraft() as kafka:
-            yield kafka
-    except Exception as exc:
-        pytest.skip(f"Kafka test container could not start in this environment: {exc}")
-
-
-@pytest.fixture(scope="module")
-def kafka_bootstrap_servers(kafka_container) -> str:
-    """Return Kafka bootstrap servers string."""
-    return kafka_container.get_bootstrap_server()
-
-
-@pytest.fixture(scope="module")
-def kafka_topics(kafka_bootstrap_servers: str) -> list[str]:
+def preprocess_kafka_topics(kafka_bootstrap_servers: str) -> list[str]:
     """Create raw/processed topics required by preprocessing."""
     raw_topic = Topics.TEMPERATURE.raw
     processed_topic = Topics.TEMPERATURE.processed
-
-    admin = KafkaAdminClient(
-        bootstrap_servers=kafka_bootstrap_servers, client_id="preprocess-tests-admin"
+    ensure_kafka_topics(
+        kafka_bootstrap_servers,
+        {raw_topic, processed_topic},
+        warm_topics=False,
     )
-    existing = set(admin.list_topics())
-    to_create = [
-        NewTopic(name=topic, num_partitions=1, replication_factor=1)
-        for topic in (raw_topic, processed_topic)
-        if topic not in existing
-    ]
-    if to_create:
-        try:
-            admin.create_topics(to_create)
-        except TopicAlreadyExistsError:
-            pass
-    admin.close()
-
     return [raw_topic, processed_topic]
 
 
@@ -65,11 +34,11 @@ def test_preprocessing_kafka_end_to_end(
     configure_preprocess_db_client,
     sensor_registry,
     kafka_bootstrap_servers,
-    kafka_topics,
+    preprocess_kafka_topics,
 ) -> None:
     """Raw Kafka events should be processed and published to processed topics."""
     sensor = sensor_registry["register"]("dht22.temperature")
-    raw_topic, processed_topic = kafka_topics
+    raw_topic, processed_topic = preprocess_kafka_topics
 
     adapter = SparkStreamingAdapter(ConfigurationManager(test_config_path))
     try:
@@ -101,12 +70,12 @@ def test_preprocessing_kafka_end_to_end(
         bootstrap_servers=kafka_bootstrap_servers,
         value_serializer=lambda value: json.dumps(value).encode("utf-8"),
     )
-    consumer = KafkaConsumer(
+    consumer = create_topic_consumer(
         processed_topic,
-        bootstrap_servers=kafka_bootstrap_servers,
+        kafka_bootstrap_servers,
+        group_prefix="preprocess-kafka",
         auto_offset_reset="earliest",
         enable_auto_commit=False,
-        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
     )
 
     try:

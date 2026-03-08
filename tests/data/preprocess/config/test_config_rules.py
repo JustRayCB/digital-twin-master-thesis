@@ -6,7 +6,8 @@ from cattrs.errors import ClassValidationError
 from dt.communication.adapters.registry import load
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.config.serialization import ensure_config_serialization
-from dt.data.preprocess.config.types import EWMASmoothingConfig, RocConfig, RocProfile, SystemConfig
+from dt.data.preprocess.config.types import (EWMASmoothingConfig, RocConfig,
+                                             RocProfile, SystemConfig)
 
 
 def test_load_sensor_validation_config_defaults(configure_preprocess_db_client) -> None:
@@ -19,9 +20,9 @@ def test_load_sensor_validation_config_defaults(configure_preprocess_db_client) 
     assert manager.config.system.weights.range_ok == 0.4
 
     temp_config = manager.get_sensor_config("dht22.temperature")
-    assert temp_config.validation.range.min == -40.0
-    assert temp_config.validation.range.max == 80.0
-    assert temp_config.validation.roc.active_max_per_minute == 1.0
+    assert temp_config.validation.range.min == 0
+    assert temp_config.validation.range.max == 50
+    assert temp_config.validation.roc.active_max_per_minute == 5.0
 
 
 def test_set_active_profile_switches_active_profile() -> None:

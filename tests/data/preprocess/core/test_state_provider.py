@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -144,7 +145,7 @@ def _run_stateful_stream_batches(
         timeoutConf=GroupStateTimeout.EventTimeTimeout,
     )
 
-    query_name = "state_provider_results"
+    query_name = f"state_provider_results_{uuid4().hex}"
     query = (
         processed.writeStream.format("memory")
         .queryName(query_name)

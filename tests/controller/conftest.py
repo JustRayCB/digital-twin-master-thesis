@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from collections.abc import Generator
@@ -10,15 +9,15 @@ from collections.abc import Generator
 import pytest
 from kafka import KafkaConsumer
 
-from dt.communication.db_client import DatabaseApiClient
 from dt.communication.dataclasses.controller import ActionCommand
+from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
-from dt.data.database.consumer import setup_bridge
 from dt.controller.actuator_manager import ActuatorManager
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
-from tests.conftest import wait_for_consumer_assignment
+from dt.data.database.consumer import setup_bridge
+from tests.conftest import create_topic_consumer
 
 
 class RecordingDriver:
@@ -153,15 +152,11 @@ def action_consumer(
     Generator[KafkaConsumer, None, None]
         Kafka consumer subscribed to the actions topic.
     """
-    group_id = f"controller-actions-{uuid.uuid4().hex[:8]}"
-    consumer = KafkaConsumer(
+    consumer = create_topic_consumer(
         Topics.ACTIONS,
-        bootstrap_servers=kafka_bootstrap_servers,
-        group_id=group_id,
-        auto_offset_reset="latest",
-        value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+        kafka_bootstrap_servers,
+        group_prefix="controller-actions",
     )
-    wait_for_consumer_assignment(consumer)
     yield consumer
     consumer.close()
 
