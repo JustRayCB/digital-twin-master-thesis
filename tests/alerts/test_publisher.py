@@ -2,6 +2,7 @@
 
 import pytest
 
+from dt.alerts.publisher import AlertPublisher
 from dt.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
@@ -83,6 +84,13 @@ def alert_definition(sample_sensor):
         persistence_count=1,
         cooldown_seconds=300,
     )
+
+
+def test_publisher_can_be_built_from_shared_services(kafka_service, database_api_client):
+    """Shared integration fixtures should build an alert publisher directly."""
+    publisher = AlertPublisher(kafka_service, definition_client=database_api_client)
+
+    assert publisher is not None
 
 
 def test_publish_created_event(publisher, alerts_consumer, sensor_alert_event, alert_definition):

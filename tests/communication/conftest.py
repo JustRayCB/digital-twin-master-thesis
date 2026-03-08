@@ -7,9 +7,7 @@ import pytest
 from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
-from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
-from dt.data.database.timescale_storage import TimescaleStorage
 
 
 def build_raw_sensor_data(**overrides: object) -> RawSensorData:
@@ -78,27 +76,15 @@ def processed_sensor_data_full() -> ProcessedSensorData:
 
 
 @pytest.fixture
-def database_api_client(database_service_base_url: str) -> DatabaseApiClient:
-    """Create a database API client pointed at the test database service."""
-    return DatabaseApiClient(base_url=database_service_base_url)
-
-
-@pytest.fixture
-def storage(clean_timescale_storage: TimescaleStorage) -> TimescaleStorage:
-    """Provide a clean Timescale-backed storage for each test."""
-    return clean_timescale_storage
-
-
-@pytest.fixture
-def plant_id(storage: TimescaleStorage) -> int:
+def plant_id(test_storage) -> int:
     """Create a plant used by client integration tests."""
-    return storage.upsert_plant(
+    return test_storage.upsert_plant(
         name="Communication Test Plant", notes="db_client integration tests"
     )
 
 
 @pytest.fixture
-def sensor(storage: TimescaleStorage, plant_id: int) -> SensorDescriptor:
+def sensor(test_storage, plant_id: int) -> SensorDescriptor:
     """Register a sensor for client integration tests."""
     sensor = SensorDescriptor(
         id=0,
@@ -107,7 +93,7 @@ def sensor(storage: TimescaleStorage, plant_id: int) -> SensorDescriptor:
         pin=17,
         read_interval=5,
     )
-    sensor.id = storage.register_sensor(sensor)
+    sensor.id = test_storage.register_sensor(sensor)
     return sensor
 
 

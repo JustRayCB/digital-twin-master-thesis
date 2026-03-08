@@ -14,7 +14,7 @@ pytestmark = [pytest.mark.requires_timescale]
 
 def test_get_latest_camera_snapshot_reads_real_api_payload(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sensor: SensorDescriptor,
 ) -> None:
     """Fetch the latest camera snapshot from the real database API."""
@@ -29,7 +29,7 @@ def test_get_latest_camera_snapshot_reads_real_api_payload(
         width=640,
         height=480,
     )
-    storage.ingest_camera_snapshot(snapshot)
+    test_storage.ingest_camera_snapshot(snapshot)
 
     result = database_api_client.get_latest_camera_snapshot(plant_id=sensor.plant_id)
 

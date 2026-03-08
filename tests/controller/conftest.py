@@ -65,13 +65,13 @@ def controller_database_client(
 @pytest.fixture(scope="module")
 def controller_database_bridge(
     kafka_bootstrap_servers: str,
-    storage,
+    shared_storage,
     kafka_topics: list[str],
 ) -> Generator[KafkaService, None, None]:
     """Run the database Kafka bridge for controller integration tests."""
     del kafka_topics
     config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=config, storage=storage)
+    bridge = setup_bridge(config=config, storage=shared_storage)
 
     deadline = time.time() + 15.0
     while time.time() < deadline:
@@ -118,12 +118,12 @@ def action_consumer(
 
 
 @pytest.fixture
-def plant_id(storage) -> int:
+def plant_id(test_storage) -> int:
     """Create a plant record for controller tests.
 
     Parameters
     ----------
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance backed by the test database.
 
     Returns
@@ -131,7 +131,7 @@ def plant_id(storage) -> int:
     int
         Plant identifier.
     """
-    return storage.upsert_plant(
+    return test_storage.upsert_plant(
         name=f"Controller Plant {uuid.uuid4().hex[:8]}",
         notes="Controller tests",
     )

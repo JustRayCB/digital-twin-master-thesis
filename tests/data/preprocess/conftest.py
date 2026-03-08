@@ -177,9 +177,9 @@ def spark_session():
 
 
 @pytest.fixture
-def sensor_registry(timescale_storage):
+def sensor_registry(test_storage):
     """Helper to register sensors in the Timescale test database."""
-    plant_id = timescale_storage.upsert_plant(name="Test Plant (preprocess)")
+    plant_id = test_storage.upsert_plant(name="Test Plant (preprocess)")
 
     def register(name: str, read_interval: int = 60) -> SensorDescriptor:
         sensor = SensorDescriptor(
@@ -189,7 +189,7 @@ def sensor_registry(timescale_storage):
             pin=0,
             read_interval=read_interval,
         )
-        sensor_id = timescale_storage.register_sensor(sensor)
+        sensor_id = test_storage.register_sensor(sensor)
         sensor.id = sensor_id
         return sensor
 

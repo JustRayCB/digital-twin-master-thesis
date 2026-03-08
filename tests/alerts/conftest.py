@@ -16,7 +16,6 @@ from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition, AlertStatus, SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
 from tests.conftest import create_topic_consumer
@@ -46,12 +45,12 @@ def alerts_consumer(kafka_bootstrap_servers, kafka_topics):
 
 
 @pytest.fixture(scope="module")
-def sample_plant_id(storage) -> int:
+def sample_plant_id(shared_storage) -> int:
     """Create a sample plant in the test database.
 
     Parameters
     ----------
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance backed by the test database.
 
     Returns
@@ -59,16 +58,16 @@ def sample_plant_id(storage) -> int:
     int
         Plant identifier for alert tests.
     """
-    return storage.upsert_plant(name="Alert Test Plant", notes="Alert service tests")
+    return shared_storage.upsert_plant(name="Alert Test Plant", notes="Alert service tests")
 
 
 @pytest.fixture(scope="module")
-def sample_sensor(storage, sample_plant_id) -> SensorDescriptor:
+def sample_sensor(shared_storage, sample_plant_id) -> SensorDescriptor:
     """Create a sample sensor in the test database.
 
     Parameters
     ----------
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance backed by the test database.
     sample_plant_id : int
         Plant identifier for the test sensor.
@@ -81,26 +80,9 @@ def sample_sensor(storage, sample_plant_id) -> SensorDescriptor:
     sensor = SensorDescriptor(
         id=0, plant_id=sample_plant_id, name="alert_sensor", pin=4, read_interval=60
     )
-    sensor_id = storage.register_sensor(sensor)
+    sensor_id = shared_storage.register_sensor(sensor)
     sensor.id = sensor_id
     return sensor
-
-
-@pytest.fixture
-def definition_client(database_service_base_url) -> DatabaseApiClient:
-    """Create a DatabaseApiClient for the test database service.
-
-    Parameters
-    ----------
-    database_service_base_url : str
-        Base URL for the database service API.
-
-    Returns
-    -------
-    DatabaseApiClient
-        Client wired to the test database service.
-    """
-    return DatabaseApiClient(base_url=database_service_base_url)
 
 
 @pytest.fixture
@@ -188,19 +170,9 @@ def registry() -> AlertRegistry:
 
 
 @pytest.fixture
-def publisher_service(kafka_bootstrap_servers, kafka_topics):
-    """Create a KafkaService for publishing alert events."""
-    client_id = f"alert-publisher-{uuid.uuid4().hex[:8]}"
-    service = KafkaService(host=kafka_bootstrap_servers, client_id=client_id, group_id=client_id)
-    service.connect()
-    yield service
-    service.disconnect()
-
-
-@pytest.fixture
-def publisher(publisher_service, definition_client) -> AlertPublisher:
+def publisher(kafka_service, database_api_client) -> AlertPublisher:
     """Create an alert publisher backed by Kafka and the database service."""
-    return AlertPublisher(publisher_service, definition_client=definition_client)
+    return AlertPublisher(kafka_service, definition_client=database_api_client)
 
 
 @pytest.fixture
@@ -208,12 +180,6 @@ def consumer_service(kafka_bootstrap_servers, kafka_topics):
     """Create a KafkaService for consuming processed sensor data."""
     client_id = f"alert-consumer-{uuid.uuid4().hex[:8]}"
     return KafkaService(host=kafka_bootstrap_servers, client_id=client_id, group_id=client_id)
-
-
-@pytest.fixture
-def processed_publisher(kafka_service) -> KafkaService:
-    """Provide a Kafka service for publishing processed sensor readings."""
-    return kafka_service
 
 
 @pytest.fixture

@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.requires_timescale]
 
 def test_get_alert_history_parses_polymorphic_events(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sensor: SensorDescriptor,
 ) -> None:
     """Return sensor, external, and base alert history events from the real API."""
@@ -40,8 +40,8 @@ def test_get_alert_history_parses_polymorphic_events(
         persistence_count=3,
         cooldown_seconds=300,
     )
-    storage.save_alert_definition(definition)
-    storage.save_alert_definition(
+    test_storage.save_alert_definition(definition)
+    test_storage.save_alert_definition(
         AlertDefinition(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -54,7 +54,7 @@ def test_get_alert_history_parses_polymorphic_events(
             cooldown_seconds=0,
         )
     )
-    storage.save_alert_definition(
+    test_storage.save_alert_definition(
         AlertDefinition(
             alert_key="base:event",
             plant_id=sensor.plant_id,
@@ -68,7 +68,7 @@ def test_get_alert_history_parses_polymorphic_events(
         )
     )
 
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         SensorAlertEvent(
             alert_key="rule1:temp",
             plant_id=sensor.plant_id,
@@ -91,7 +91,7 @@ def test_get_alert_history_parses_polymorphic_events(
             ),
         )
     )
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         ExternalAlertEvent(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -103,7 +103,7 @@ def test_get_alert_history_parses_polymorphic_events(
             metadata={"model": "demo"},
         )
     )
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         AlertHistoryEvent(
             alert_key="base:event",
             plant_id=sensor.plant_id,
@@ -133,7 +133,7 @@ def test_get_alert_history_parses_polymorphic_events(
 
 def test_get_active_alerts_returns_real_active_events(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sensor: SensorDescriptor,
 ) -> None:
     """Return active alerts and deserialize sensor payloads from the real API."""
@@ -148,8 +148,8 @@ def test_get_active_alerts_returns_real_active_events(
         persistence_count=3,
         cooldown_seconds=300,
     )
-    storage.save_alert_definition(definition)
-    storage.save_alert_definition(
+    test_storage.save_alert_definition(definition)
+    test_storage.save_alert_definition(
         AlertDefinition(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -162,7 +162,7 @@ def test_get_active_alerts_returns_real_active_events(
             cooldown_seconds=0,
         )
     )
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         SensorAlertEvent(
             alert_key="rule1:temp",
             plant_id=sensor.plant_id,
@@ -185,7 +185,7 @@ def test_get_active_alerts_returns_real_active_events(
             ),
         )
     )
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         ExternalAlertEvent(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -210,7 +210,7 @@ def test_get_active_alerts_returns_real_active_events(
 
 def test_ensure_alert_definition_posts_to_real_api(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sensor: SensorDescriptor,
 ) -> None:
     """Persist alert definitions through the database API."""
@@ -228,7 +228,7 @@ def test_ensure_alert_definition_posts_to_real_api(
 
     database_api_client.ensure_alert_definition(definition)
 
-    with storage.engine.begin() as conn:
+    with test_storage.engine.begin() as conn:
         stored = conn.execute(
             text(
                 """

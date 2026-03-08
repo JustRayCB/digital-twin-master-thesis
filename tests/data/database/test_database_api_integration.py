@@ -67,7 +67,7 @@ def test_list_sensors_returns_registered_sensors(client, sample_sensor) -> None:
 
 
 def test_bind_sensor_persists_to_database(
-    client, sample_plant_id: int, storage: TimescaleStorage
+    client, sample_plant_id: int, test_storage: TimescaleStorage
 ) -> None:
     """Bind sensor endpoint registers a sensor and returns the assigned ID.
 
@@ -77,7 +77,7 @@ def test_bind_sensor_persists_to_database(
         Flask client bound to the database API.
     sample_plant_id : int
         Plant identifier to bind the sensor to.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to validate persistence.
 
     Returns
@@ -100,7 +100,7 @@ def test_bind_sensor_persists_to_database(
     sensor_id = payload["sensor_id"]
     assert sensor_id > 0
 
-    sensors = storage.list_sensors()
+    sensors = test_storage.list_sensors()
     assert any(sensor.id == sensor_id and sensor.name == "new_sensor" for sensor in sensors)
 
 
@@ -125,14 +125,14 @@ def test_bind_sensor_rejects_invalid_json(client) -> None:
     assert "error" in payload
 
 
-def test_get_readings_returns_raw_data(client, storage: TimescaleStorage, sample_sensor) -> None:
+def test_get_readings_returns_raw_data(client, test_storage: TimescaleStorage, sample_sensor) -> None:
     """Readings endpoint returns persisted readings for a sensor.
 
     Parameters
     ----------
     client : flask.testing.FlaskClient
         Flask client bound to the database API.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to seed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor.
@@ -142,7 +142,7 @@ def test_get_readings_returns_raw_data(client, storage: TimescaleStorage, sample
     None
         The assertions raise if /readings raw query regresses.
     """
-    storage.ingest_reading(
+    test_storage.ingest_reading(
         ProcessedSensorData(
             plant_id=sample_sensor.plant_id,
             sensor_id=sample_sensor.id,
@@ -201,7 +201,7 @@ def test_get_latest_camera_snapshot_returns_404_when_absent(client) -> None:
 
 
 def test_get_latest_camera_snapshot_returns_camera_payload(
-    client, storage: TimescaleStorage, sample_sensor: SensorDescriptor
+    client, test_storage: TimescaleStorage, sample_sensor: SensorDescriptor
 ) -> None:
     """Latest snapshot endpoint returns persisted camera payload in API shape."""
     snapshot = CameraSnapshot(
@@ -215,7 +215,7 @@ def test_get_latest_camera_snapshot_returns_camera_payload(
         width=640,
         height=480,
     )
-    storage.ingest_camera_snapshot(snapshot)
+    test_storage.ingest_camera_snapshot(snapshot)
 
     response = client.get(
         "/camera/snapshots/latest",
@@ -229,7 +229,7 @@ def test_get_latest_camera_snapshot_returns_camera_payload(
 
 
 def test_list_actuators_returns_persisted_actuators(
-    client, storage: TimescaleStorage, sample_plant_id: int
+    client, test_storage: TimescaleStorage, sample_plant_id: int
 ) -> None:
     """List actuators returns stored actuators.
 
@@ -237,7 +237,7 @@ def test_list_actuators_returns_persisted_actuators(
     ----------
     client : flask.testing.FlaskClient
         Flask client bound to the database API.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to seed actuator records.
     sample_plant_id : int
         Plant identifier owning the actuator.
@@ -247,7 +247,7 @@ def test_list_actuators_returns_persisted_actuators(
     None
         The assertions raise if /actuators output regresses.
     """
-    actuator_id = storage.register_actuator(sample_plant_id, "water_pump", 17, 0)
+    actuator_id = test_storage.register_actuator(sample_plant_id, "water_pump", 17, 0)
 
     response = client.get("/actuators")
 
@@ -258,7 +258,7 @@ def test_list_actuators_returns_persisted_actuators(
 
 
 def test_get_alert_history_returns_persisted_events(
-    client, storage: TimescaleStorage, sample_sensor
+    client, test_storage: TimescaleStorage, sample_sensor
 ) -> None:
     """Alert history endpoint returns persisted alert events.
 
@@ -266,7 +266,7 @@ def test_get_alert_history_returns_persisted_events(
     ----------
     client : flask.testing.FlaskClient
         Flask client bound to the database API.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to seed alerts.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor used by the alert.
@@ -287,7 +287,7 @@ def test_get_alert_history_returns_persisted_events(
         persistence_count=3,
         cooldown_seconds=300,
     )
-    storage.save_alert_definition(definition)
+    test_storage.save_alert_definition(definition)
 
     event = SensorAlertEvent(
         alert_key=definition.alert_key,
@@ -312,7 +312,7 @@ def test_get_alert_history_returns_persisted_events(
         threshold_op=">",
         threshold_value=30.0,
     )
-    storage.save_alert_event(event)
+    test_storage.save_alert_event(event)
 
     response = client.get("/alerts/history", query_string=dump("generic", AlertHistoryQuery()))
 
@@ -325,7 +325,7 @@ def test_get_alert_history_returns_persisted_events(
 
 
 def test_get_active_alerts_excludes_cleared_events(
-    client, storage: TimescaleStorage, sample_sensor
+    client, test_storage: TimescaleStorage, sample_sensor
 ) -> None:
     """Active alerts endpoint excludes cleared alerts.
 
@@ -333,7 +333,7 @@ def test_get_active_alerts_excludes_cleared_events(
     ----------
     client : flask.testing.FlaskClient
         Flask client bound to the database API.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to seed alerts.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor used by the alert.
@@ -354,9 +354,9 @@ def test_get_active_alerts_excludes_cleared_events(
         persistence_count=1,
         cooldown_seconds=300,
     )
-    storage.save_alert_definition(definition)
+    test_storage.save_alert_definition(definition)
 
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         SensorAlertEvent(
             alert_key=definition.alert_key,
             plant_id=definition.plant_id,
@@ -382,7 +382,7 @@ def test_get_active_alerts_excludes_cleared_events(
         )
     )
 
-    storage.save_alert_event(
+    test_storage.save_alert_event(
         SensorAlertEvent(
             alert_key=definition.alert_key,
             plant_id=definition.plant_id,
@@ -420,7 +420,7 @@ def test_get_active_alerts_excludes_cleared_events(
 
 
 def test_ensure_alert_definition_is_idempotent(
-    client, storage: TimescaleStorage, sample_sensor
+    client, test_storage: TimescaleStorage, sample_sensor
 ) -> None:
     """Ensure alert definition endpoint upserts without duplication.
 
@@ -428,7 +428,7 @@ def test_ensure_alert_definition_is_idempotent(
     ----------
     client : flask.testing.FlaskClient
         Flask client bound to the database API.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage used to validate persistence.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor used by the definition.
@@ -457,7 +457,7 @@ def test_ensure_alert_definition_is_idempotent(
     assert first.status_code == 200
     assert second.status_code == 200
 
-    with storage.engine.connect() as conn:
+    with test_storage.engine.connect() as conn:
         rows = conn.execute(
             text(
                 "SELECT COUNT(*) FROM alert_definitions WHERE alert_key = :key AND plant_id = :plant_id"

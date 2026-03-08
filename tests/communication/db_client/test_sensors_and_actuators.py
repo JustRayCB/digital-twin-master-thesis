@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.requires_timescale]
 
 def test_bind_sensor_persists_and_returns_sensor_id(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     plant_id: int,
 ) -> None:
     """Bind a sensor through the real database API and persist it."""
@@ -28,7 +28,7 @@ def test_bind_sensor_persists_and_returns_sensor_id(
     sensor_id = database_api_client.bind_sensor(sensor)
 
     assert sensor_id > 0
-    sensors = storage.list_sensors()
+    sensors = test_storage.list_sensors()
     assert any(item.id == sensor_id and item.name == sensor.name for item in sensors)
 
 
@@ -46,11 +46,11 @@ def test_list_sensors_reads_real_api_payload(
 
 def test_list_actuators_reads_real_api_payload(
     database_api_client: DatabaseApiClient,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     plant_id: int,
 ) -> None:
     """List actuators through the real database API."""
-    actuator_id = storage.register_actuator(plant_id, "pump", 18, 0)
+    actuator_id = test_storage.register_actuator(plant_id, "pump", 18, 0)
 
     actuators = database_api_client.list_actuators()
 

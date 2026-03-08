@@ -59,7 +59,7 @@ def test_service_evaluates_payload_on_callback(
     publisher,
     evaluator,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service evaluates payload when Kafka receives a message.
@@ -76,7 +76,7 @@ def test_service_evaluates_payload_on_callback(
         Rule evaluator for alert checks.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -90,8 +90,8 @@ def test_service_evaluates_payload_on_callback(
             sample_sensor, value=38.0, correlation_id="svc-eval-1"
         )
         # Send two readings to satisfy persistence_count=2
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         alert_event = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
         assert alert_event is not None
@@ -103,7 +103,7 @@ def test_service_registers_candidates_with_registry(
     registry,
     publisher,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service registers candidate alerts with the registry.
@@ -118,7 +118,7 @@ def test_service_registers_candidates_with_registry(
         Publisher emitting alert events to Kafka.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -146,7 +146,7 @@ def test_service_registers_candidates_with_registry(
     with running_alert_service(consumer_service, evaluator, registry, publisher):
         # Extract and invoke callback
         reading = build_processed_reading(sample_sensor, value=38.0, correlation_id="svc-reg-1")
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         state = wait_for_alert_state(registry, "temp_high:temperature", timeout_seconds=10.0)
         assert state is not None
@@ -160,7 +160,7 @@ def test_service_publishes_created_alerts(
     publisher,
     evaluator,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service publishes ACTIVE alerts via publisher.
@@ -177,7 +177,7 @@ def test_service_publishes_created_alerts(
         Rule evaluator for alert checks.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -192,8 +192,8 @@ def test_service_publishes_created_alerts(
             sample_sensor, value=38.0, correlation_id="svc-created-1"
         )
         # Send two readings to satisfy persistence_count=2
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         event = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
         assert event is not None
@@ -205,7 +205,7 @@ def test_service_publishes_updated_alerts(
     registry,
     publisher,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service publishes ACTIVE alerts via publisher.
@@ -222,7 +222,7 @@ def test_service_publishes_updated_alerts(
         Rule evaluator for alert checks.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -252,8 +252,8 @@ def test_service_publishes_updated_alerts(
         reading = build_processed_reading(
             sample_sensor, value=38.0, correlation_id="svc-updated-1"
         )
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         events = collect_alert_events(alerts_consumer, count=2, timeout_seconds=10.0)
         assert len(events) == 2
@@ -264,7 +264,7 @@ def test_service_does_not_publish_ignored_alerts(
     registry,
     publisher,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service does not publish IGNORED alerts.
@@ -281,7 +281,7 @@ def test_service_does_not_publish_ignored_alerts(
         Rule evaluator for alert checks.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -311,7 +311,7 @@ def test_service_does_not_publish_ignored_alerts(
         reading = build_processed_reading(
             sample_sensor, value=38.0, correlation_id="svc-ignored-1"
         )
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
         assert registry._states != {}
@@ -322,7 +322,7 @@ def test_service_handles_multiple_candidates(
     registry,
     publisher,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service handles multiple candidate alerts from one payload.
@@ -337,7 +337,7 @@ def test_service_handles_multiple_candidates(
         Publisher emitting alert events to Kafka.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -379,7 +379,7 @@ def test_service_handles_multiple_candidates(
             sample_sensor, value=38.0, correlation_id="svc-multi-1"
         )
         reading.dq_score = 0.5
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
 
         events = collect_alert_events(alerts_consumer, count=2, timeout_seconds=10.0)
         assert {event.alert_key for event in events} == {
@@ -428,7 +428,7 @@ def test_service_does_not_fail_when_no_candidates(
     registry,
     publisher,
     alerts_consumer,
-    processed_publisher,
+    kafka_service,
     sample_sensor,
 ):
     """Test that service handles payloads that produce no candidate alerts.
@@ -443,7 +443,7 @@ def test_service_does_not_fail_when_no_candidates(
         Publisher emitting alert events to Kafka.
     alerts_consumer : KafkaConsumer
         Kafka consumer subscribed to the alerts topic.
-    processed_publisher : KafkaService
+    kafka_service : KafkaService
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Registered sensor descriptor from the test database.
@@ -455,7 +455,7 @@ def test_service_does_not_fail_when_no_candidates(
     evaluator = RuleEvaluator([])
     with running_alert_service(consumer_service, evaluator, registry, publisher):
         reading = build_processed_reading(sample_sensor, value=38.0, correlation_id="svc-empty-1")
-        assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading)
+        assert kafka_service.publish(Topics.TEMPERATURE.processed, reading)
         import time
         time.sleep(0.5)
 

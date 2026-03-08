@@ -27,7 +27,7 @@ pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 def test_bridge_persists_processed_reading(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_sensor,
 ) -> None:
     """Persist processed readings received from Kafka.
@@ -38,13 +38,13 @@ def test_bridge_persists_processed_reading(
         Kafka bootstrap servers for the test broker.
     kafka_service : KafkaService
         Producer service for publishing processed readings.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
     """
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -65,7 +65,7 @@ def test_bridge_persists_processed_reading(
         kafka_service.publish(Topics.TEMPERATURE.processed, test_reading)
 
         def reading_persisted() -> bool:
-            readings = storage.query_readings(
+            readings = test_storage.query_readings(
                 ReadingsQuery(sensor_id=sample_sensor.id, since=test_reading.timestamp - 60)
             )
             return any(reading.correlation_id == "kafka-integration-test" for reading in readings)
@@ -79,7 +79,7 @@ def test_bridge_persists_processed_reading(
 def test_bridge_persists_multiple_processed_readings(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_sensor,
 ) -> None:
     """Persist multiple processed readings received from Kafka.
@@ -90,13 +90,13 @@ def test_bridge_persists_multiple_processed_readings(
         Kafka bootstrap servers for the test broker.
     kafka_service : KafkaService
         Producer service for publishing processed readings.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
     """
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -121,7 +121,7 @@ def test_bridge_persists_multiple_processed_readings(
             )
 
         def readings_persisted() -> bool:
-            readings = storage.query_readings(
+            readings = test_storage.query_readings(
                 ReadingsQuery(sensor_id=sample_sensor.id, since=base_time - 60)
             )
             recent = {reading.correlation_id for reading in readings}
@@ -136,7 +136,7 @@ def test_bridge_persists_multiple_processed_readings(
 def test_bridge_persists_camera_snapshot(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_sensor,
 ) -> None:
     """Persist camera snapshots received from Kafka.
@@ -147,13 +147,13 @@ def test_bridge_persists_camera_snapshot(
         Kafka bootstrap servers for the test broker.
     kafka_service : KafkaService
         Producer service for publishing camera snapshots.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
     """
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -173,7 +173,7 @@ def test_bridge_persists_camera_snapshot(
         kafka_service.publish(Topics.CAMERA_IMAGE.processed, snapshot)
 
         def snapshot_persisted() -> bool:
-            latest = storage.get_latest_camera_snapshot(plant_id=sample_sensor.plant_id)
+            latest = test_storage.get_latest_camera_snapshot(plant_id=sample_sensor.plant_id)
             return latest is not None and latest.correlation_id == "camera-kafka-integration-test"
 
         wait_until(snapshot_persisted, timeout_seconds=10.0, interval_seconds=0.25)
@@ -185,7 +185,7 @@ def test_bridge_persists_camera_snapshot(
 def test_bridge_persists_sensor_alert_event(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_sensor,
 ) -> None:
     """Persist sensor alert events received from Kafka.
@@ -196,13 +196,13 @@ def test_bridge_persists_sensor_alert_event(
         Kafka bootstrap servers for the test broker.
     kafka_service : KafkaService
         Producer service for publishing alert events.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
     """
     alert_key = "high_temp:sensor_test"
-    storage.save_alert_definition(
+    test_storage.save_alert_definition(
         AlertDefinition(
             alert_key=alert_key,
             plant_id=sample_sensor.plant_id,
@@ -217,7 +217,7 @@ def test_bridge_persists_sensor_alert_event(
     )
 
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -252,7 +252,7 @@ def test_bridge_persists_sensor_alert_event(
         )
 
         def event_persisted() -> bool:
-            history = storage.get_alert_history(
+            history = test_storage.get_alert_history(
                 AlertHistoryQuery(plant_id=sample_sensor.plant_id, limit=20)
             )
             return any(event.correlation_id == "alert-integration-test-1" for event in history)
@@ -266,7 +266,7 @@ def test_bridge_persists_sensor_alert_event(
 def test_bridge_persists_external_alert_event(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_sensor,
 ) -> None:
     """Persist external alert events received from Kafka.
@@ -277,13 +277,13 @@ def test_bridge_persists_external_alert_event(
         Kafka bootstrap servers for the test broker.
     kafka_service : KafkaService
         Producer service for publishing alert events.
-    storage : TimescaleStorage
+    test_storage : TimescaleStorage
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
     """
     alert_key = "ai_anomaly:plant_test"
-    storage.save_alert_definition(
+    test_storage.save_alert_definition(
         AlertDefinition(
             alert_key=alert_key,
             plant_id=sample_sensor.plant_id,
@@ -298,7 +298,7 @@ def test_bridge_persists_external_alert_event(
     )
 
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -319,7 +319,7 @@ def test_bridge_persists_external_alert_event(
         )
 
         def event_persisted() -> bool:
-            history = storage.get_alert_history(
+            history = test_storage.get_alert_history(
                 AlertHistoryQuery(plant_id=sample_sensor.plant_id, limit=20)
             )
             return any(event.correlation_id == "alert-integration-test-2" for event in history)
@@ -333,13 +333,13 @@ def test_bridge_persists_external_alert_event(
 def test_bridge_persists_action_status_events(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
-    storage: TimescaleStorage,
+    test_storage: TimescaleStorage,
     sample_plant_id: int,
 ) -> None:
     """Persist action status events received from Kafka."""
-    actuator_id = storage.register_actuator(sample_plant_id, "water_pump", 17, 1)
+    actuator_id = test_storage.register_actuator(sample_plant_id, "water_pump", 17, 1)
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
-    bridge = setup_bridge(config=test_config, storage=storage)
+    bridge = setup_bridge(config=test_config, storage=test_storage)
     assert isinstance(bridge, KafkaService)
 
     try:
@@ -362,7 +362,7 @@ def test_bridge_persists_action_status_events(
         )
 
         def action_persisted() -> bool:
-            history = storage.get_action_history(sample_plant_id, limit=20)
+            history = test_storage.get_action_history(sample_plant_id, limit=20)
             return any(item.correlation_id == "action-integration-test" for item in history)
 
         wait_until(action_persisted, timeout_seconds=10.0, interval_seconds=0.25)
