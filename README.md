@@ -1,404 +1,265 @@
 # Digital Twin for Plant Health Monitoring
 
-A modular digital-twin stack for monitoring plant health. Physical sensors (DHT22, BH1750, STEMMA soil moisture, camera) feed a Raspberry Pi collector that publishes telemetry to Kafka. A Flask-based database service persists data into PostgreSQL with TimescaleDB, while the web dashboard streams live updates over Socket.IO. Supporting modules cover AI model management, utilities, setup automation, and hardware/software experiments.
+This repository contains a modular digital twin for plant monitoring on
+Raspberry Pi hardware. It collects live sensor readings, streams them through
+Kafka, preprocesses them with Spark Structured Streaming, persists them in
+PostgreSQL + TimescaleDB, evaluates alert rules, and exposes a web dashboard
+for real-time and historical monitoring.
 
+The current software stack is organized as a set of Python services under `dt/`
+with Kafka for asynchronous data flow and REST APIs for queries and control
+surfaces.
 
-# ⚠️ WARNING
+![System architecture](docs/img/container.drawio.svg)
 
-The project doesn't run out-of-the-box yet. It's a work-in-progress prototype
-with placeholder components and incomplete features. There are currently some 
-inconsistencies in the codebase as I refactor and extend functionality.
+## What the project does
 
-# Table of Contents
+- Collects raw readings from physical sensors connected to a Raspberry Pi 4B.
+- Publishes raw telemetry to Kafka topics.
+- Runs a configurable preprocessing pipeline with calibration, validation, imputation, smoothing, and normalization.
+- Persists processed readings and alert history in PostgreSQL + TimescaleDB.
+- Evaluates alert rules and publishes alert lifecycle events.
+- Serves a dashboard with live updates through Socket.IO and historical queries through REST.
 
-1. [Key Capabilities](#key-capabilities)  
-2. [System Architecture](#system-architecture)  
-   - [Hardware Architecture](#hardware-architecture)  
-   - [Circuit Documentation](#circuit-documentation)  
-   - [Wiring Details](#wiring-details)  
-   - [Physical Twin](#physical-twin)  
-3. [Repository Layout](#repository-layout)  
-4. [Technology Stack](#technology-stack)  
-5. [Prerequisites](#prerequisites)  
-6. [Installation & Environment Profiles](#installation--environment-profiles)  
-7. [Configuration](#configuration)  
-8. [Running the Stack](#running-the-stack)  
-   - [Kafka Topics](#kafka-topics)  
-   - [Database Service](#database-service)  
-   - [Collector](#collector)  
-   - [Web Dashboard](#web-dashboard)  
-   - [Controller](#controller)  
-   - [AI / Analytics](#ai--analytics)  
-9. [Scripts & Hands-On Utilities](#scripts--hands-on-utilities)  
-10. [Testing & Quality](#testing--quality)  
-11. [Development Notes & Extensibility](#development-notes--extensibility)  
-12. [TODO](#todo)  
+## Main components
 
----
+| Service | Path | Responsibility |
+| --- | --- | --- |
+| Collector | `dt/collector/` | Reads hardware sensors and publishes raw sensor events to Kafka. |
+| Preprocessing | `dt/data/preprocess/` | Spark streaming job that transforms raw readings into processed readings. |
+| Database service | `dt/data/database/` | Runs SQL migrations on startup, persists Kafka events, and exposes historical data APIs. |
+| Alert engine (future analytics) | `dt/alerts/` | Evaluates alert rules, manages alert state, and publishes alert lifecycle events. |
+| Web application | `dt/webapp/` | Dashboard UI, REST facade for the frontend, and Socket.IO real-time bridge. |
+| Controller | `dt/controller/` | Actuator control service for pump, fan, heater, and light. |
 
-## Key Capabilities
+## Data flow
 
-- Real-time telemetry collection from GPIO/I²C sensors with configurable read cadences.
-- Kafka-backed messaging fabric with topic segregation for raw vs. processed sensor data.
-- Unified PostgreSQL + TimescaleDB storage with hypertables, continuous aggregates, and REST endpoints.
-- Interactive web dashboard (Flask + Socket.IO + Plotly) for live and historical visualisation.
-- Early AI/model-registry scaffolding for future predictive and rule-based services.
-- Provisioning scripts for Debian/Ubuntu hosts and Kafka KRaft nodes.
-- Hands-on scripts to validate individual sensors, actuators, and platform services.
+The normal runtime path for a reading is:
 
----
+1. The collector polls a physical sensor and publishes a raw event to a Kafka topic such as `dt.sensors.raw.temperature`.
+2. The preprocessing job consumes raw sensor topics, applies the configured pipeline, and republishes the result to `dt.sensors.processed.*`.
+3. The database service consumes processed sensor events and alert events, then stores them in PostgreSQL + TimescaleDB.
+4. The alert engine consumes processed readings, evaluates YAML-defined rules, and publishes alert events to `dt.alerts`.
+5. The controller consumes processed readings as well and evaluates routines rules for actuator control, publishing actions to `dt.actions`.
+6. The web application consumes processed readings and alert events for live updates and queries the database service for historical data.
 
-## System Architecture
+![Sensor reading flow](docs/img/seq_readings_flow.drawio.svg)
 
-![Block diagram architecture](./notes/block-diagram.svg) 
+## Physical setup
 
-## Hardware architecture
+The reference deployment is a Raspberry Pi 4B with:
 
+- DHT22 for temperature and humidity
+- BH1750 for light intensity
+- Adafruit STEMMA soil moisture sensor
+- Raspberry Pi Camera Module
+- 4-channel relay
+- Water pump, fan, heater, and LED strip
 
-![Circuit Architecture diagram](./notes/circuit_image.png) 
-<!--Please include the following link, which help us continue to improve and support the embed, making it a valuable tool for your audience.--> <p style= "margin-top: 5px;" >Edit this project interactively in <a href="https://app.cirkitdesigner.com/project/a7f2e871-a131-4ed9-a017-cf650347826f" target = "_blank">Cirkit Designer</a>.</p>
+The I2C bus is shared by the BH1750 and STEMMA soil sensor on GPIO 2/3. The DHT22 data line is connected to GPIO 17. The relay channels are used to switch the actuators.
 
-### **Circuit Documentation**
+![Assembled twin](docs/img/dt_box_1.jpg)
+![Open box](docs/img/dt_box_open.jpg)
 
-#### **Component List**
+More detailed wiring and operational context live in [docs/runbook.pdf](docs/runbook.pdf).
 
-1. **Adafruit STEMMA Soil Sensor**  
-   * **Description**: Measures soil moisture levels.  
-   * **Pins**: GND, VIN, SDA, SCL  
-2. **BH1750**  
-   * **Description**: Digital light sensor for measuring ambient light.  
-   * **Pins**: VCC, GND, SCL, SDA, ADDR  
-3. **12V White LED Strip**  
-   * **Description**: Provides illumination.  
-   * **Pins**: \+12V, GND  
-4. **PTC**  
-   * **Description**: Positive Temperature Coefficient heater for temperature control.  
-   * **Pins**: Neutral, Live  
-5. **FAN 12V**  
-   * **Description**: Provides air circulation.  
-   * **Pins**: RED, BLACK  
-6. **5V Mini Water Pump**  
-   * **Description**: Pumps water for irrigation.  
-   * **Pins**: Positive pin, Negative pin  
-7. **12V Power Supply**  
-   * **Description**: Provides 12V power to various components.  
-   * **Pins**: \+, \-  
-8. **Raspberry Pi 4b**  
-   * **Description**: Central processing unit for the system.  
-   * **Pins**: Multiple GPIO pins, power, and communication interfaces  
-9. **DHT22**  
-   * **Description**: Measures temperature and humidity.  
-   * **Pins**: GND, VCC, DAT  
-10. **MB102 Breadboard Power Supply Module 3.3V/5V**  
-    * **Description**: Provides 3.3V and 5V power outputs.  
-    * **Pins**: VCC, GND, 3.3V, 5V  
-11. **Relay 4 Channel 5V**  
-    * **Description**: Controls high-power devices using low-power signals.  
-    * **Pins**: GND, IN1, IN2, IN3, IN4, VCC, COM1, COM2, COM3, COM4, NO1, NO2, NO3, NO4, NC1, NC2, NC3, NC4
+## Repository layout
 
-#### **Wiring Details**
-
-##### **Adafruit STEMMA Soil Sensor**
-
-* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
-* **VIN**: Connected to MB102 Breadboard Power Supply Module VCC  
-* **SDA**: Connected to Raspberry Pi GPIO 2 SDA  
-* **SCL**: Connected to Raspberry Pi GPIO 3 SCL
-
-##### ---
-
-**BH1750**
-
-* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
-* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
-* **SDA**: Connected to Raspberry Pi GPIO 2 SDA  
-* **SCL**: Connected to Raspberry Pi GPIO 3 SCL
-
-##### ---
-
-**12V White LED Strip**
-
-* **\+12V**: Connected to Relay 4 Channel 5V COM2  
-* **GND**: Connected to 12V Power Supply \-
-
-##### ---
-
-**PTC**
-
-* **Neutral**: Connected to 12V Power Supply \-  
-* **Live**: Connected to Relay 4 Channel 5V COM3
-
-##### ---
-
-**FAN 12V**
-
-* **RED**: Connected to Relay 4 Channel 5V COM4  
-* **BLACK**: Connected to 12V Power Supply \-
-
-##### ---
-
-**5V Mini Water Pump**
-
-* **Positive pin**: Connected to Relay 4 Channel 5V COM1  
-* **Negative pin**: Connected to MB102 Breadboard Power Supply Module GND
-
-##### ---
-
-**12V Power Supply**
-
-* **\+**: Connected to various components through relays  
-* **\-**: Connected to respective component grounds
-
-##### ---
-
-**Raspberry Pi 4b**
-
-* **GPIO 2 SDA**: Connected to Adafruit STEMMA Soil Sensor SDA and BH1750 SDA  
-* **GPIO 3 SCL**: Connected to Adafruit STEMMA Soil Sensor SCL and BH1750 SCL  
-* **GPIO 17**: Connected to Relay 4 Channel 5V IN1  
-* **GPIO 27**: Connected to Relay 4 Channel 5V IN2  
-* **GPIO 22**: Connected to Relay 4 Channel 5V IN3  
-* **GPIO 24**: Connected to Relay 4 Channel 5V IN4  
-* **GND**: Connected to MB102 Breadboard Power Supply Module GND
-
-##### ---
-
-**DHT22**
-
-* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
-* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
-* **DAT**: Connected to Raspberry Pi GPIO 23
-
-##### ---
-
-**MB102 Breadboard Power Supply Module 3.3V/5V**
-
-* **VCC**: Connected to 12V Power Supply \+  
-* **GND**: Connected to 12V Power Supply \-  
-* **3.3V**: Not used in this configuration  
-* **5V**: Not used in this configuration
-
-##### ---
-
-**Relay 4 Channel 5V**
-
-* **GND**: Connected to MB102 Breadboard Power Supply Module GND  
-* **VCC**: Connected to MB102 Breadboard Power Supply Module VCC  
-* **IN1**: Connected to Raspberry Pi GPIO 17  
-* **IN2**: Connected to Raspberry Pi GPIO 27  
-* **IN3**: Connected to Raspberry Pi GPIO 22  
-* **IN4**: Connected to Raspberry Pi GPIO 24  
-* **COM1**: Connected to 5V Mini Water Pump positive pin  
-* **NO1**: Connected to MB102 Breadboard Power Supply Module VCC  
-* **COM2**: Connected to 12V White LED Strip \+12V  
-* **NO2**: Connected to 12V Power Supply \+  
-* **COM3**: Connected to PTC Live  
-* **NO3**: Connected to 12V Power Supply \+  
-* **COM4**: Connected to FAN 12V RED  
-* **NO4**: Connected to 12V Power Supply \+
-
-##### ---
-
-### Physical Twin
-
-![Digital Twin Box](./notes/dt_box_1.jpg) 
-![Digital Twin Box LED ON](./notes/dt_box_night.jpg) 
-![Digital Twin Box opened](./notes/dt_box_open.jpg) 
----
-
-## Repository Layout
-
-| Path | Description |
+| Path | Purpose |
 | --- | --- |
-| `dt/collector/` | GPIO/I²C sensor abstractions, mocks, and the `SensorManager` publishing to Kafka. |
-| `dt/communication/` | Messaging clients (Kafka, MQTT) and REST API client for the database service and shared dataclasses. |
-| `dt/data/database/` | Flask API for data persistence with `TimescaleStorage` (PostgreSQL + TimescaleDB). |
-| `dt/webapp/` | Flask + Socket.IO dashboard, Plotly front-end assets, templates, and real-time store. |
-| `dt/ai/` | Model base class, metadata, registry, and filesystem storage backend (future analytics). |
-| `dt/utils/` | Config enum, logging setup, correlation IDs, preprocessing configuration and exceptions. |
-| `scripts/` | Provisioning scripts (`setup.sh`, `setup_kafka.sh`), Kafka topic manager, SQL migration runner, and hands-on hardware/software experiments. |
-| `tests/` | Pytest suite validating core dataclasses, preprocessing pipeline (serialization, helpers, validation). |
-| `Makefile` | Convenience targets for installing poetry profiles, running services, tests, and maintenance. |
-| `pyproject.toml` | Poetry project metadata, dependency groups (`dev`, `spark`, `db`, `rpi`), Python constraint (≥3.11,<4). |
-| `.env.example`        | Example environment file for configuration.                                                                                     |
-| `logs/`               | Runtime logs generated by `dt.utils.logger.get_logger`.                                                                         |
+| `dt/` | Main application package and service modules |
+| `dt/communication/` | Shared dataclasses, Kafka helpers, adapters, topic definitions, REST clients |
+| `dt/utils/` | Configuration, logging, exceptions, YAML config files |
+| `scripts/` | Provisioning scripts, Kafka utilities, SQL migration runner, hands-on scripts |
+| `tests/` | Pytest suites organized by domain |
+| `docs/img/` | Architecture diagrams, sequence diagrams, and hardware photos |
 
+## Technology stack
 
----
-
-## Technology Stack
-
-- **Runtime:** Python 3.11+, Poetry-managed environment.
-- **Messaging:** Apache Kafka (`kafka-python`)
-- **Data Storage:** PostgreSQL with TimescaleDB extension for unified time-series and relational storage (`sqlalchemy`, `psycopg[binary]`).
-- **Web:** Flask, Flask-SocketIO, Flask-CORS, Plotly, vanilla JS modules.
-- **Analytics:** Pandas, Matplotlib, model registry scaffolding for future ML integration.
-- **Hardware I/O (optional group `rpi`):** `adafruit-circuitpython-*`, `adafruit-blinka`, `RPi.GPIO`, `board`, `busio`.
-- **Dev Tooling (`dev` group):** pytest, ruff, mypy, basedpyright, debugpy, neovim helpers.
-
----
+- Python 3.11+
+- Poetry for dependency management
+- Apache Kafka for messaging
+- PySpark Structured Streaming for preprocessing
+- PostgreSQL + TimescaleDB for time-series and relational storage
+- Flask + Flask-SocketIO for HTTP APIs and real-time dashboard updates
+- Raspberry Pi hardware libraries in the optional `rpi` dependency group
 
 ## Prerequisites
 
-- Python 3.11 and Poetry (`curl -sSL https://install.python-poetry.org | python3 -`).
-- Kafka broker (scripted install via `scripts/setup_kafka.sh` or existing cluster).
-- PostgreSQL with TimescaleDB extension (install via `apt` on Raspberry Pi).
-- Raspberry Pi OS (64-bit) for hardware deployment, with I²C/1-Wire/GPIO enabled.
-- For Spark features, install Java 17 (handled `scripts/setup.sh`).
+### Software
 
----
+- Python 3.11+
+- Poetry
+- Kafka reachable at `KAFKA_URL`
+- PostgreSQL with TimescaleDB reachable at `PG_DATABASE_URL`
+- Java 17 if you run Kafka locally or use the preprocessing service
 
-## Installation & Environment Profiles
+### Hardware
 
-Poetry extras mirror machine roles; the Makefile wraps recommended combinations:
+Hardware is only required for live sensor collection and actuator control. If you only want to explore the UI, APIs, or documentation, you can skip the physical setup and use dashboard demo mode.
 
-| Target | Command | Included groups |
+## Installation
+
+The repo uses Poetry dependency groups so you can install only what a given machine needs.
+
+| Scenario | Command | Includes |
 | --- | --- | --- |
-| Development workstation | `make install-dev` | `main + dev + db + spark` |
-| Raspberry Pi edge | `make install-rpi` | `main + rpi + db` |
-| Data node | `make install-db` | `main + db` |
-| Analytics | `make install-spark` | `main + spark (+db)` |
-| Minimal | `make install-naked` | `main` |
+| Development workstation | `make install-dev` | main + dev + db + spark |
+| Raspberry Pi runtime | `make install-rpi` | main + rpi + db |
+| Database-only node | `make install-db` | main + db |
+| Preprocessing-only node | `make install-spark` | main + spark |
+| Minimal Python environment | `make install-naked` | main |
 
-Manual equivalent:
+If Poetry uses the wrong interpreter, point it at Python 3.11 explicitly:
 
 ```bash
-poetry install --with dev,db,spark --without rpi   # example for full dev stack
+poetry env use python3.11
 ```
 
-Activate the virtual environment with `eval $(poetry env activate)` or `make venv`.
+## Infrastructure setup
 
----
+### Kafka
+
+For Debian-based systems, the repository provides `scripts/setup_kafka.sh`. It installs Kafka in KRaft mode, configures a local broker, and registers a systemd service.
+
+Useful checks after installation:
+
+```bash
+sudo systemctl status kafka-kraft.service
+sudo journalctl -u kafka-kraft.service -f
+nc -z localhost 9092
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+The repo also includes `scripts/kafka_manager.py` for listing, creating, and configuring topics.
+
+### PostgreSQL + TimescaleDB
+
+For Debian-based systems, use `scripts/setup_postgresql.sh`. It installs PostgreSQL and TimescaleDB, creates the application database and user, enables the extension, and writes `PG_DATABASE_URL` to `.env`.
+
+The database schema is migration-driven. The database service runs migrations automatically on startup. You can also run them manually:
+
+```bash
+poetry run python scripts/run_sql_migration.py
+```
 
 ## Configuration
 
-Central settings live in `dt/utils/config.py` (StrEnum)  exposed as environment variables:
+Copy `.env.example` to `.env` and adjust the values for your environment.
 
-- `KAFKA_URL`: Kafka bootstrap servers (default `localhost:9092`).
-- `PG_DATABASE_URL`: PostgreSQL connection string (default `postgresql+psycopg://dt:dt@localhost:5432/dt`).
-- `DB_MIGRATIONS_DIR`: SQL migrations directory used by the database service (default `dt/data/database/migrations`).
-- `SQL_POOL_SIZE`: SQLAlchemy connection pool size (default `5`).
-- `FLASK_*_URL`: Base URLs consumed by cross-service clients (`DatabaseApiClient`, web dashboard, ...).
-- `MODELS_DIR`: Registry storage path (default `../data/models/`).
-- `PREPROCESSING_CONFIG_PATH`: YAML file describing sensor validation rules (default `dt/utils/preprocessing_config.yml`).
-- `PREPROCESSING_CHECKPOINT_DIR`: Filesystem path where the Spark preprocessing job stores its streaming checkpoints (default `./spark-checkpoints/preprocessing`).
-- `SPARK_APP_NAME`: Application name used for the preprocessing Spark session (default `dt-preprocessing-app`).
-- `SPARK_LOG_LEVEL`: Spark log verbosity for the preprocessing job (default `WARN`).
-- `STARTING_OFFSETS`: Kafka starting offsets for the streaming query (`earliest` or `latest`, default `latest`).
+Key variables:
 
-Keep credentials out of version control in production by using the `.env` file, which is ignored by git.
+| Variable | Purpose |
+| --- | --- |
+| `KAFKA_URL` | Kafka bootstrap server |
+| `PG_DATABASE_URL` | PostgreSQL connection URL |
+| `SQL_POOL_SIZE` | SQLAlchemy connection pool size |
+| `FLASK_DASHBOARD_URL` | Webapp base URL |
+| `FLASK_DB_URL` | Database service base URL |
+| `FLASK_CONTROLLER_URL ` | Controller service base URL |
+| `PREPROCESSING_CONFIG_PATH` | YAML config for preprocessing rules and profiles |
+| `ALERT_RULES_PATH` | YAML alert rule file path |
+| `PREPROCESSING_CHECKPOINT_DIR` | Spark checkpoint directory |
+| `SPARK_APP_NAME` | Spark application name |
+| `SPARK_STARTING_OFFSETS` | Kafka offset startup policy for preprocessing |
+| `DB_MIGRATIONS_DIR` | SQL migrations directory override |
 
----
+Configuration files used by the stack:
 
-## Running the Stack
+- `dt/utils/preprocessing_config.yml`
+- `dt/utils/alert_rules.yml`
 
-1. **Kafka topics**  
-   - Use `scripts/kafka_manager.py setup` logic (or manually run `KafkaManager.setup_kafka()`) to create raw/processed sensor topics and supporting channels (alerts, commands).
-   - Sensor topics follow `dt.sensors.<sensor>`, with `.raw` / `.processed` variants provided by `Topics`.
+## Running the stack
 
-2. **Collector**  
-   - `make run-collector` → runs `dt/collector/main.py`.
-   - `SensorManager` composes sensor instances (Soil moisture, temperature, humidity, light, camera placeholder). Each sensor:
-     - Implements `read_sensor`.
-     - Declares `Topics` target (`.processed` currently used).
-     - Publishes `SensorData` with correlation IDs, units, timestamps.
-   - Binding to the database via `DatabaseApiClient.bind_sensor` exists but is commented while hardware pin mapping is in flux.
+Recommended service start order:
 
-3. **Preprocessing pipeline**  
-   - `make run-preprocessing` → runs `dt/data/preprocess/main.py`.
-   - Consumes raw Kafka topics (`dt.sensors.raw.*`), loads rules from `PREPROCESSING_CONFIG_PATH`, and writes cleaned payloads to processed topics.
-   - Checkpointed micro-batch state is stored under `PREPROCESSING_CHECKPOINT_DIR`; set this to a durable path in production.
-   - Requires the Spark extras (`poetry install --with spark`) and a reachable Kafka broker (`KAFKA_URL`).
-   - Ensure `dt/utils/preprocessing_config.yml` lists each active sensor and that the database service exposes matching descriptors so the pipeline can resolve validation rules.
-   - Processed payloads include `flags`, `dq_score`, `imputed`, and optional `raw_value`; confirm downstream consumers expect these fields.
+1. Start Kafka.
+2. Start PostgreSQL + TimescaleDB.
+3. Start the database service so migrations run and Kafka persistence is active.
+4. Start the preprocessing service if you want processed sensor data.
+5. Start the alert engine.
+8. Start the controller only if you want actuator control.
+7. Start the collector (but do not press ENTER yet) on the Raspberry Pi when hardware is available.
+6. Start the web application and press ENTER in the collector terminal to begin sensor polling.
 
-4. **Database service**
-   - `make run-database` → runs `dt/data/database/app.py`.
-   - Subscribes to processed topics via Kafka bridge, persists measurements and alert events into PostgreSQL + TimescaleDB, and exposes REST endpoints:
-     - `POST /bind_sensor` → register sensors (`SensorDescriptor`).
-     - `GET /sensors` → list all registered sensors with metadata.
-     - `GET /actuators` → list all registered actuators.
-     - `GET /readings?window={raw|1h}&sensor_id=X&plant_id=Y&topic=Z&since=T1&until=T2` → query measurements with optional aggregation.
-     - `GET /alerts/history?plant_id=X&limit=N` → retrieve alert event history.
-   - Storage backend uses TimescaleDB hypertables for measurements with continuous aggregates (1h rollups), plus relational tables for sensors, plants, actuators, and alert lifecycle history.
-   - Runs SQL migrations automatically on startup (bootstrap schema and policies). Manual equivalent: `python scripts/run_sql_migration.py`.
+Make targets:
 
-5. **Web dashboard**  
-   - `make run-dashboard` → runs `dt/webapp/app.py`.
-   - Sets up a Kafka consumer (`webapp_consumer_group`) and relays events to Socket.IO namespaces (`temperature`, `humidity`, `soil_moisture`, `light_intensity`, `camera_image`).
-   - Front-end (`dt/webapp/static/js`) maintains a central store, displays live charts via Plotly, and merges historical data fetched from the database.
+```bash
+make run-database
+make run-preprocessing
+make run-alert-engine
+make run-controller
+make run-collector
+make run-dashboard
+```
 
-6. **Controller**  
-   - Placeholder scaffolding for actuator management under `dt/controller/`. Base classes (`kinds/base_actuator.py`, etc.) are ready for future devices (fan, pump, light, relay). 
+### Demo mode
 
-7. **AI / Analytics**  
-    - `dt/ai` provides a foundational framework for integrating AI and analytics models. It includes a `BaseModel` class, a `ModelRegistry` for managing model lifecycles, and a `FileSystemStorage` backend. While no specific models are implemented yet, the structure is in place for developing and registering online, offline, and rule-based models.
+You can run the dashboard without Kafka or hardware by starting it in demo mode:
 
----
+```bash
+poetry run python -m dt.webapp.app --demo --demo-interval 1.0
+```
 
-## Scripts & Hands-On Utilities
+### Service ports
 
-- `scripts/setup.sh`: Bootstraps Debian/Ubuntu host (Python, build tools, Java 17, Poetry, `poetry install`).
-- `scripts/setup_kafka.sh`: Idempotent KRaft broker installer (creates `/opt/kafka`, systemd unit, external/internal listeners).
-- `scripts/run_sql_migration.py`: Executes SQL migrations from `dt/data/database/migrations/` in order, tracking completion in `schema_migrations` table.
-- `scripts/kafka_manager.py`: CLI helper (`create`, `delete`, `list`, `describe`, `alter`, `config`, `setup_kafka`) built around `Topics`.
-- `scripts/hands-on-scripts/hardware/`: Quick sensor/actuator tests (I²C scan, BH1750 lux reader, DHT22, Adafruit Seesaw soil probe, relay/pump control).
-- `scripts/hands-on-scripts/software/`: Mini-clients for Kafka producer/consumer, database queries, Spark streaming example.
-- `logs/`: Check runtime behaviour per-day (log files are auto-created).
+| Service | Default port |
+| --- | --- |
+| Web dashboard | `5000` |
+| Database service | `5001` |
+| Alert engine | `5003` |
+| Controller | `5004` |
 
-Grant execute permission where necessary (`chmod +x scripts/setup_kafka.sh`).
+## Messaging topics
 
----
+The canonical topic definitions live in `dt/communication/topics.py`.
 
-## Testing & Quality
+- Raw sensor topics: `dt.sensors.raw.*`
+- Processed sensor topics: `dt.sensors.processed.*`
+- Alerts: `dt.alerts`
+- Actions: `dt.actions`
 
-- Run `make test` or `poetry run pytest` (tests reside in `tests/` folder).
-- Lint/type-check (if `dev` extras installed):
-  - `poetry run ruff check .`
-  - `poetry run mypy dt`
-  - `poetry run basedpyright`
-- Continuous logging assists in manual verification (`logs/plant_twin_<date>.log`).
+Examples:
 
----
+- `dt.sensors.raw.temperature`
+- `dt.sensors.processed.soil_moisture`
+- `dt.alerts`
 
-## Development Notes & Extensibility
+## Data and API conventions
 
-- All shared payloads use `dt.communication.dataclasses`:
-  - `RawSensorData` and `ProcessedSensorData` enforces type conversion, JSON round-trips, `data_type` convenience.
-  - `SensorDescriptor`, `DBTimestampQuery`, `DBIdQuery`, `ActionCommand` ensure consistent serialization.
-  - `SensorValidationConfig`, `SensorConfig`, `RangeConfig`, `RocConfig`, `StuckConfig` support preprocessing and validation.
-- Topics are centralised in `dt/communication/topics.py`; prefer `.processed` topics until raw channel consumers exist.
-- `dt/utils/ids.new_correlation_id()` creates UUIDs for end-to-end tracing (planned usage: readings → alerts → actions → audit trail).
-- `dt/utils/logger.get_logger` writes to both stdout (INFO+) and rotating file (DEBUG). Avoid duplicate handler registration.
-- For hardware changes, encapsulate sensor-specific logic in `dt/collector/kinds` and register through `SensorManager`.
-- AI capabilities can evolve by implementing subclasses of `BaseModel` under `dt/ai/models/<category>/` and registering them via `ModelRegistry`.
+- Backend dataclasses and database APIs use Unix epoch seconds for timestamps.
+- The web UI uses milliseconds and converts at the API boundary.
+- Standard sensor units are Celsius, percent, lux, and calibrated soil moisture percent.
+- Correlation IDs are expected to propagate end-to-end for traceability.
 
----
+## Development and testing
 
-## Code Documentation
+Primary commands:
 
-This repository is thoroughly documented to facilitate understanding and extension.
+```bash
+make test
+poetry run ruff check .
+poetry run mypy dt
+poetry run basedpyright
+make build-webapp
+```
 
--   **Python Code**: All Python modules, classes, functions, and methods are documented using [numpydoc-style](https://numpydoc.readthedocs.io/en/latest/format.html) docstrings.
--   **JavaScript Code**: The frontend JavaScript code is documented using [JSDoc](https://jsdoc.app/) comments.
--   **Shell Scripts**: All shell scripts in the `scripts/` directory are commented to explain their purpose and commands.
+Tests live under `tests/` and generally mirror the domain structure under `dt/`.
 
----
+## Current status
 
-## TODO
+This is an active thesis project, not a polished product distribution. The core architecture, storage layer, alert engine, and preprocessing pipeline are present, but parts of the system are still evolving:
 
-- ✅ Thoroughly document the entire repository, including Python code (numpydoc), JavaScript (JSDoc), and shell scripts.
-- ✅ Replace sensitive defaults in `dt/utils/config.py` with secure configuration management.
-- ✅ Implement the data processing pipeline (consuming raw topics, enriching, publishing processed).
-- ✅ Migrate to PostgreSQL + TimescaleDB for unified time-series and relational storage.
-- Flesh out controller actuators and camera pipeline (currently placeholders).
-- Better interfacing of Sensors and Actuators to make it independent from the model used.
-- Close the loop with action commands (Kafka topic, REST endpoint, actuator control).
-- Integrate AI models and registry once analytics logic is ready (tie into Kafka or database events).
-- Enhance the web dashboard with more visualisations, historical queries, alert visualisation, and actuator controls, model status.
-- Configure dashboard-driven adjustments for retention and aggregation policies.
-- Document migration path to managed PostgreSQL services (AWS RDS, Azure Database, etc.).
-- Document production-grade deployment (systemd units, docker-compose, TLS for Kafka/PostgreSQL).
-- Extend the test suite beyond dataclasses (e.g., messaging mocks, storage integrations).
+- The controller service exists but the full closed-loop automation story (with analytics) is still in progress.
+- Routines for actuator control based on sensor readings are working.
+- The database module is complete with migrations, but needs to split the big TimescaleStorage class into more focused classes.
+- Need to add an image processing module and move the camera storing out of the DB by using the filesystem.
+- Need to modify retention and downsampling policies in TimescaleDB to balance storage and historical query needs.
 
----
+
+## Further documentation
+
+- [Runbook](docs/runbook.pdf): full operational documentation, interfaces, contracts, and module details
+- [Presentations](docs/presentations/): project communication material
+
+If you are new to the project, start with this README, then move to `docs/runbook.pdf` for deployment, operations, contracts, and troubleshooting details.
