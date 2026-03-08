@@ -18,6 +18,7 @@ from dt.data.database.consumer import setup_bridge
 from dt.controller.actuator_manager import ActuatorManager
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
+from tests.conftest import wait_for_consumer_assignment
 
 
 class RecordingDriver:
@@ -44,30 +45,6 @@ class FailingDriver:
         return None
 
 
-def poll_action_message(consumer: KafkaConsumer, timeout_seconds: float = 5.0) -> dict | None:
-    """Poll Kafka for an action message.
-
-    Parameters
-    ----------
-    consumer : KafkaConsumer
-        Kafka consumer subscribed to the actions topic.
-    timeout_seconds : float, optional
-        Maximum time to wait for a message.
-
-    Returns
-    -------
-    dict | None
-        Action payload if received, otherwise None.
-    """
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        records = consumer.poll(timeout_ms=500)
-        for messages in records.values():
-            for message in messages:
-                return message.value
-    return None
-
-
 def poll_action_messages(
     consumer: KafkaConsumer,
     expected_count: int,
@@ -91,29 +68,6 @@ def poll_action_messages(
                 if len(messages) >= expected_count:
                     return messages
     return messages
-
-
-def _wait_for_assignment(consumer: KafkaConsumer, timeout_seconds: float = 5.0) -> None:
-    """Wait for Kafka consumer partition assignment before yielding fixtures.
-
-    Parameters
-    ----------
-    consumer : KafkaConsumer
-        Kafka consumer instance to monitor.
-    timeout_seconds : float, optional
-        Maximum time to wait for an assignment.
-
-    Returns
-    -------
-    None
-        Raises TimeoutError if no assignment is made.
-    """
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        consumer.poll(timeout_ms=200)
-        if consumer.assignment():
-            return
-    raise TimeoutError("Kafka consumer did not receive a partition assignment")
 
 
 def wait_for_action_history(
@@ -207,7 +161,7 @@ def action_consumer(
         auto_offset_reset="latest",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
     )
-    _wait_for_assignment(consumer)
+    wait_for_consumer_assignment(consumer)
     yield consumer
     consumer.close()
 

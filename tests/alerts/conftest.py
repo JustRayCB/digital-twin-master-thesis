@@ -3,47 +3,29 @@
 from __future__ import annotations
 
 import json
-import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 import pytest
-from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
-from kafka.admin import NewTopic
-from kafka.errors import TopicAlreadyExistsError
-from sqlalchemy import create_engine
-from testcontainers.kafka import KafkaContainer
-from testcontainers.postgres import PostgresContainer
-from werkzeug.serving import make_server
+from kafka import KafkaConsumer
 
 from dt.alerts.evaluator import RuleEvaluator
 from dt.alerts.publisher import AlertPublisher
 from dt.alerts.registry import AlertRegistry
-from dt.alerts.rules import (
-    AlertCondition,
-    AlertRule,
-    ConditionType,
-    EvaluationStage,
-    SeverityLevel,
-)
+from dt.alerts.rules import (AlertCondition, AlertRule, ConditionType,
+                             EvaluationStage, SeverityLevel)
 from dt.communication.adapters import load
 from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    AlertStatus,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
+    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
+    SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
-from dt.data.database.app import create_app
-from dt.data.database.migrations.runner import MigrationRunner
-from dt.data.database.timescale_storage import TimescaleStorage
-from dt.utils import Config
+from tests.conftest import wait_for_consumer_assignment
 
 
 def load_alert_event(payload: dict) -> AlertHistoryEvent:
@@ -123,93 +105,89 @@ def collect_alert_events(
     return events
 
 
-@pytest.fixture(scope="module")
-def kafka_topics(kafka_bootstrap_servers):
-    """Ensure Kafka topics exist for alert tests.
+def build_processed_reading(
+    sensor: SensorDescriptor,
+    value: float,
+    dq_score: float = 1.0,
+    correlation_id: str = "test-corr-1",
+) -> ProcessedSensorData:
+    """Build a processed sensor reading for alert tests.
 
     Parameters
     ----------
-    kafka_bootstrap_servers : str
-        Kafka bootstrap server URL.
+    sensor : SensorDescriptor
+        Registered sensor used to populate the reading.
+    value : float
+        Sensor reading value.
+    dq_score : float, optional
+        Data-quality score for the reading.
+    correlation_id : str, optional
+        Correlation identifier propagated through the alert flow.
 
     Returns
     -------
-    list[str]
-        Topics created or confirmed for alert tests.
+    ProcessedSensorData
+        Reading payload aligned with the alert service contracts.
     """
-    admin = KafkaAdminClient(
-        bootstrap_servers=kafka_bootstrap_servers, client_id="alert-tests-admin"
+    return ProcessedSensorData(
+        plant_id=sensor.plant_id,
+        sensor_id=sensor.id,
+        timestamp=time.time(),
+        value=value,
+        unit="Celsius",
+        topic=Topics.TEMPERATURE,
+        correlation_id=correlation_id,
+        flags={ValidationFlag.VALID: True},
+        dq_score=dq_score,
+        imputed=False,
     )
-    topics = {Topics.ALERTS}
-    topics.update(topic.processed for topic in Topics.list_sensor_topics())
 
-    existing = set(admin.list_topics())
-    new_topics = [
-        NewTopic(name=topic, num_partitions=1, replication_factor=1)
-        for topic in topics
-        if topic not in existing
-    ]
-    if new_topics:
-        try:
-            admin.create_topics(new_topics)
-        except TopicAlreadyExistsError:
-            pass
-    admin.close()
 
-    producer = KafkaProducer(
-        bootstrap_servers=kafka_bootstrap_servers,
-        value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+def wait_for_consumer_thread(consumer_service: KafkaService, timeout_seconds: float = 5.0) -> None:
+    """Wait for a KafkaService consumer thread to start polling."""
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if consumer_service.consumer and consumer_service.consumer_thread:
+            if consumer_service.consumer_thread.is_alive():
+                time.sleep(1.2)
+                return
+        time.sleep(0.05)
+    raise AssertionError("Kafka consumer thread did not start within timeout.")
+
+
+def wait_for_alert_state(registry: AlertRegistry, alert_key: str, timeout_seconds: float = 5.0):
+    """Wait for an alert state to appear in the registry."""
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        state = registry.get_alert_state(alert_key)
+        if state is not None:
+            return state
+        time.sleep(0.1)
+    return None
+
+
+@contextmanager
+def running_alert_service(
+    consumer_service: KafkaService,
+    evaluator: RuleEvaluator,
+    registry: AlertRegistry,
+    publisher: AlertPublisher,
+):
+    """Run the alert engine service and ensure shutdown."""
+    from dt.alerts.service import AlertEngineService
+
+    service = AlertEngineService(
+        kafka_service=consumer_service,
+        evaluator=evaluator,
+        registry=registry,
+        publisher=publisher,
     )
-    for topic in topics:
-        producer.send(topic, {})
-    producer.flush()
-    producer.close()
-    return sorted(topics)
-
-
-@pytest.fixture(scope="module")
-def kafka_container():
-    """Start a Kafka container for alert tests."""
-    with KafkaContainer().with_kraft() as kafka:
-        yield kafka
-
-
-@pytest.fixture(scope="module")
-def kafka_bootstrap_servers(kafka_container) -> str:
-    """Return the Kafka bootstrap servers string.
-
-    Parameters
-    ----------
-    kafka_container : KafkaContainer
-        Testcontainers Kafka instance.
-
-    Returns
-    -------
-    str
-        Kafka bootstrap servers string.
-    """
-    return kafka_container.get_bootstrap_server()
-
-
-@pytest.fixture
-def kafka_service(kafka_bootstrap_servers, kafka_topics) -> KafkaService:
-    """Create a KafkaService connected to the test broker.
-
-    Parameters
-    ----------
-    kafka_bootstrap_servers : str
-        Kafka bootstrap server URL.
-
-    Returns
-    -------
-    KafkaService
-        Connected Kafka service for publishing.
-    """
-    client_id = f"alert-tests-{uuid.uuid4().hex[:8]}"
-    service = KafkaService(host=kafka_bootstrap_servers, client_id=client_id, group_id=client_id)
-    service.connect()
-    yield service
-    service.disconnect()
+    service.start()
+    wait_for_consumer_thread(consumer_service)
+    try:
+        yield service
+    finally:
+        service.shutdown()
 
 
 @pytest.fixture
@@ -233,50 +211,9 @@ def alerts_consumer(kafka_bootstrap_servers, kafka_topics):
         auto_offset_reset="latest",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
     )
-    deadline = time.time() + 5.0
-    while not consumer.assignment() and time.time() < deadline:
-        consumer.poll(timeout_ms=200)
+    wait_for_consumer_assignment(consumer)
     yield consumer
     consumer.close()
-
-
-@pytest.fixture(scope="module")
-def postgres_container():
-    """Start a PostgreSQL container with TimescaleDB extension."""
-    with PostgresContainer(image="timescale/timescaledb:latest-pg18", driver="psycopg") as postgres:
-        time.sleep(2)
-        yield postgres
-
-
-@pytest.fixture(scope="module")
-def db_engine(postgres_container):
-    """Create SQLAlchemy engine and run migrations."""
-    db_url = postgres_container.get_connection_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
-
-    psycopg_url = db_url.replace("postgresql+psycopg://", "postgresql://")
-    runner = MigrationRunner(migrations_dir="dt/data/database/migrations", db_url=psycopg_url)
-    runner.run_migrations()
-
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture(scope="module")
-def storage(db_engine):
-    """Create TimescaleStorage instance connected to the test database.
-
-    Parameters
-    ----------
-    db_engine : sqlalchemy.Engine
-        SQLAlchemy engine connected to TimescaleDB.
-
-    Returns
-    -------
-    TimescaleStorage
-        Storage instance backed by the test database.
-    """
-    return TimescaleStorage(engine=db_engine)
 
 
 @pytest.fixture(scope="module")
@@ -318,33 +255,6 @@ def sample_sensor(storage, sample_plant_id) -> SensorDescriptor:
     sensor_id = storage.register_sensor(sensor)
     sensor.id = sensor_id
     return sensor
-
-
-@pytest.fixture(scope="module")
-def database_service_base_url(storage):
-    """Start the database service and return its base URL.
-
-    Parameters
-    ----------
-    storage : TimescaleStorage
-        Storage instance backed by the test database.
-
-    Returns
-    -------
-    str
-        Base URL for the database service API.
-    """
-    app = create_app(config=Config, storage=storage)
-    server = make_server("127.0.0.1", 0, app)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    base_url = f"http://127.0.0.1:{server.server_port}"
-    try:
-        yield base_url
-    finally:
-        server.shutdown()
-        thread.join()
 
 
 @pytest.fixture
@@ -536,60 +446,3 @@ def range_rule() -> AlertRule:
 def evaluator(threshold_rule) -> RuleEvaluator:
     """Create a rule evaluator with a single threshold rule."""
     return RuleEvaluator([threshold_rule])
-
-
-@pytest.fixture
-def processed_reading_factory():
-    """Factory to create processed sensor readings for tests."""
-
-    def _create(
-        sensor, value: float, dq_score: float = 1.0, correlation_id: str = "test-corr-1"
-    ) -> ProcessedSensorData:
-        return ProcessedSensorData(
-            plant_id=sensor.plant_id,
-            sensor_id=sensor.id,
-            timestamp=time.time(),
-            value=value,
-            unit="Celsius",
-            topic=Topics.TEMPERATURE,
-            correlation_id=correlation_id,
-            flags={ValidationFlag.VALID: True},
-            dq_score=dq_score,
-            imputed=False,
-        )
-
-    return _create
-
-
-@pytest.fixture
-def wait_for_consumer():
-    """Wait for a Kafka consumer thread to start and begin polling."""
-
-    def _wait(consumer_service: KafkaService, timeout_seconds: float = 5.0) -> None:
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            if consumer_service.consumer and consumer_service.consumer_thread:
-                if consumer_service.consumer_thread.is_alive():
-                    time.sleep(1.2)
-                    return
-            time.sleep(0.05)
-        raise AssertionError("Kafka consumer thread did not start within timeout.")
-
-    return _wait
-
-
-@pytest.fixture
-def wait_for_alert():
-    """Wait for an alert state to appear in the registry."""
-
-    def _wait(registry: AlertRegistry, alert_key: str, timeout_seconds: float = 5.0):
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            state = registry.get_alert_state(alert_key)
-            if state is not None:
-                return state
-            time.sleep(0.1)
-        return None
-
-    return _wait
-

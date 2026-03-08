@@ -5,11 +5,8 @@ import time
 import pytest
 
 from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.publisher import AlertPublisher
 from dt.alerts.registry import AlertRegistry
 from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
-from dt.alerts.service import AlertEngineService
-from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertHistoryEvent,
@@ -17,16 +14,14 @@ from dt.communication.dataclasses.alerts.alert_record import (
     SensorAlertEvent,
 )
 from dt.communication.dataclasses.alerts.alert_type import AlertType
-from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
-from tests.alerts.conftest import poll_alert_event
+from tests.alerts.conftest import build_processed_reading, poll_alert_event, running_alert_service
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
 
 @pytest.fixture
-def alert_service(threshold_rule, dq_rule, publisher, consumer_service, wait_for_consumer):
+def alert_service(threshold_rule, dq_rule, publisher, consumer_service):
     """Create alert service with Kafka-backed publisher.
 
     Parameters
@@ -35,13 +30,6 @@ def alert_service(threshold_rule, dq_rule, publisher, consumer_service, wait_for
         Threshold rule used by the evaluator.
     dq_rule : AlertRule
         DQ score rule used by the evaluator.
-    publisher : AlertPublisher
-        Publisher emitting alert events to Kafka.
-    consumer_service : KafkaService
-        Kafka service used for subscriptions.
-    wait_for_consumer : Callable
-        Fixture to wait for consumer thread.
-
     Returns
     -------
     AlertEngineService
@@ -50,24 +38,12 @@ def alert_service(threshold_rule, dq_rule, publisher, consumer_service, wait_for
     # Create real registry and evaluator
     registry = AlertRegistry()
     evaluator = RuleEvaluator([threshold_rule, dq_rule])
-
-    service = AlertEngineService(
-        kafka_service=consumer_service,
-        evaluator=evaluator,
-        registry=registry,
-        publisher=publisher,
-    )
-
-    service.start()
-    wait_for_consumer(consumer_service)
-    try:
+    with running_alert_service(consumer_service, evaluator, registry, publisher) as service:
         yield service
-    finally:
-        service.shutdown()
 
 
 def test_alert_flow_with_persistence_threshold(
-    alert_service, alerts_consumer, processed_publisher, sample_sensor, processed_reading_factory
+    alert_service, alerts_consumer, processed_publisher, sample_sensor
 ):
     """Test that alerts are created only after reaching persistence threshold.
 
@@ -81,23 +57,20 @@ def test_alert_flow_with_persistence_threshold(
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Sensor descriptor providing plant and sensor IDs.
-    processed_reading_factory : Callable
-        Factory to create processed readings.
-
     Returns
     -------
     None
         The assertions raise if persistence handling regresses.
     """
     # First reading exceeding threshold (38°C > 35°C)
-    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    reading1 = build_processed_reading(sample_sensor, value=38.0, correlation_id="corr-1")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
     # Should not publish yet (persistence_count=2)
     assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
     # Second reading exceeding threshold
-    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    reading2 = build_processed_reading(sample_sensor, value=39.0, correlation_id="corr-2")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
     payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
@@ -112,7 +85,7 @@ def test_alert_flow_with_persistence_threshold(
 
 
 def test_dq_alert_with_higher_persistence(
-    alert_service, alerts_consumer, processed_publisher, sample_sensor, processed_reading_factory
+    alert_service, alerts_consumer, processed_publisher, sample_sensor
 ):
     """Test DQ alert requires 3 consecutive violations (higher persistence).
 
@@ -126,31 +99,22 @@ def test_dq_alert_with_higher_persistence(
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Sensor descriptor providing plant and sensor IDs.
-    processed_reading_factory : Callable
-        Factory to create processed readings.
-
     Returns
     -------
     None
         The assertions raise if persistence handling regresses.
     """
     # DQ rule has persistence_count=3 and applies to all sources (wildcard)
-    reading1 = processed_reading_factory(
-        sample_sensor, value=25.0, dq_score=0.3, correlation_id="dq-1"
-    )
+    reading1 = build_processed_reading(sample_sensor, value=25.0, dq_score=0.3, correlation_id="dq-1")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
     assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
-    reading2 = processed_reading_factory(
-        sample_sensor, value=26.0, dq_score=0.4, correlation_id="dq-2"
-    )
+    reading2 = build_processed_reading(sample_sensor, value=26.0, dq_score=0.4, correlation_id="dq-2")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
     assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
     # Third occurrence should create the alert
-    reading3 = processed_reading_factory(
-        sample_sensor, value=27.0, dq_score=0.2, correlation_id="dq-3"
-    )
+    reading3 = build_processed_reading(sample_sensor, value=27.0, dq_score=0.2, correlation_id="dq-3")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
 
     payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
@@ -169,7 +133,6 @@ def test_alert_updated_after_cooldown(
     processed_publisher,
     threshold_rule,
     sample_sensor,
-    processed_reading_factory,
 ):
     """Test that alert fires UPDATED event after cooldown expires.
 
@@ -185,9 +148,6 @@ def test_alert_updated_after_cooldown(
         Rule defining the cooldown behavior.
     sample_sensor : SensorDescriptor
         Sensor descriptor providing plant and sensor IDs.
-    processed_reading_factory : Callable
-        Factory to create processed readings.
-
     Returns
     -------
     None
@@ -197,10 +157,10 @@ def test_alert_updated_after_cooldown(
     threshold_rule.cooldown_seconds = 0.1
 
     # Create alert with 2 readings
-    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    reading1 = build_processed_reading(sample_sensor, value=38.0, correlation_id="corr-1")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
-    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    reading2 = build_processed_reading(sample_sensor, value=39.0, correlation_id="corr-2")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
     created_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
@@ -208,7 +168,7 @@ def test_alert_updated_after_cooldown(
     assert created_payload.status == AlertStatus.ACTIVE
 
     # Immediate re-occurrence within cooldown (should be ignored, not published)
-    reading3 = processed_reading_factory(sample_sensor, value=40.0, correlation_id="corr-3")
+    reading3 = build_processed_reading(sample_sensor, value=40.0, correlation_id="corr-3")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
 
     assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
@@ -217,7 +177,7 @@ def test_alert_updated_after_cooldown(
     time.sleep(0.15)
 
     # Send another reading after cooldown
-    reading4 = processed_reading_factory(sample_sensor, value=41.0, correlation_id="corr-4")
+    reading4 = build_processed_reading(sample_sensor, value=41.0, correlation_id="corr-4")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading4)
 
     updated_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
@@ -231,7 +191,6 @@ def test_acknowledgment_publishes_lifecycle_event(
     alerts_consumer,
     processed_publisher,
     sample_sensor,
-    processed_reading_factory,
 ):
     """Test that acknowledging an alert publishes an ACKNOWLEDGED lifecycle event.
 
@@ -245,19 +204,16 @@ def test_acknowledgment_publishes_lifecycle_event(
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Sensor descriptor providing plant and sensor IDs.
-    processed_reading_factory : Callable
-        Factory to create processed readings.
-
     Returns
     -------
     None
         The assertions raise if lifecycle publishing regresses.
     """
     # Create alert
-    reading1 = processed_reading_factory(sample_sensor, value=38.0, correlation_id="corr-1")
+    reading1 = build_processed_reading(sample_sensor, value=38.0, correlation_id="corr-1")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
 
-    reading2 = processed_reading_factory(sample_sensor, value=39.0, correlation_id="corr-2")
+    reading2 = build_processed_reading(sample_sensor, value=39.0, correlation_id="corr-2")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
 
     created_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
@@ -314,7 +270,6 @@ def test_multiple_rules_trigger_independently(
     alerts_consumer,
     processed_publisher,
     sample_sensor,
-    processed_reading_factory,
 ):
     """Test that multiple rules can trigger independently on the same payload.
 
@@ -328,9 +283,6 @@ def test_multiple_rules_trigger_independently(
         Kafka service used to publish processed readings.
     sample_sensor : SensorDescriptor
         Sensor descriptor providing plant and sensor IDs.
-    processed_reading_factory : Callable
-        Factory to create processed readings.
-
     Returns
     -------
     None
@@ -338,24 +290,18 @@ def test_multiple_rules_trigger_independently(
     """
     # Send readings that violate both rules
     # Threshold rule: persistence=2, DQ rule: persistence=3
-    reading1 = processed_reading_factory(
-        sample_sensor, value=38.0, dq_score=0.3, correlation_id="multi-1"
-    )
+    reading1 = build_processed_reading(sample_sensor, value=38.0, dq_score=0.3, correlation_id="multi-1")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading1)
     assert poll_alert_event(alerts_consumer, timeout_seconds=2.0) is None
 
-    reading2 = processed_reading_factory(
-        sample_sensor, value=39.0, dq_score=0.4, correlation_id="multi-2"
-    )
+    reading2 = build_processed_reading(sample_sensor, value=39.0, dq_score=0.4, correlation_id="multi-2")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading2)
     # Threshold alert should be created now (persistence=2)
     first_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
     assert first_payload is not None
     assert first_payload.alert_key == "temp_high:temperature"
 
-    reading3 = processed_reading_factory(
-        sample_sensor, value=40.0, dq_score=0.2, correlation_id="multi-3"
-    )
+    reading3 = build_processed_reading(sample_sensor, value=40.0, dq_score=0.2, correlation_id="multi-3")
     assert processed_publisher.publish(Topics.TEMPERATURE.processed, reading3)
     # DQ alert should be created now (persistence=3)
     second_payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
