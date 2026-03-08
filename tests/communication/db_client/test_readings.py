@@ -1,118 +1,69 @@
-from unittest.mock import MagicMock, patch
+"""Integration tests for reading queries through the database API client."""
+
+from __future__ import annotations
 
 import pytest
-import requests
+from sqlalchemy import text
 
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData
 from dt.communication.dataclasses.queries import ReadingsQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
+from dt.data.database.timescale_storage import TimescaleStorage
+
+pytestmark = [pytest.mark.requires_timescale]
 
 
-def test_query_readings_raw_structures_processed_readings() -> None:
-    """Query raw readings and structure ProcessedSensorData objects.
+def test_query_readings_raw_structures_processed_readings(
+    database_api_client: DatabaseApiClient,
+    storage: TimescaleStorage,
+    reading: ProcessedSensorData,
+) -> None:
+    """Query raw readings and deserialize ProcessedSensorData instances."""
+    storage.ingest_reading(reading)
 
-    Returns
-    -------
-    None
-        Assertions fail if request parameters or structuring changes.
-    """
-    client = DatabaseApiClient(base_url="http://localhost:5001")
-    query = ReadingsQuery(window="raw", sensor_id=1, plant_id=2, topic=Topics.TEMPERATURE.value)
-
-    payload = [
-        {
-            "plant_id": 2,
-            "sensor_id": 1,
-            "timestamp": 1_735_000_000.0,
-            "value": 21.5,
-            "unit": "C",
-            "topic": Topics.TEMPERATURE.value,
-            "correlation_id": "corr-1",
-            "flags": {"valid_data_point": True},
-            "dq_score": 0.9,
-            "imputed": False,
-        }
-    ]
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = payload
-    mock_response.raise_for_status.return_value = None
-
-    with patch("requests.get", return_value=mock_response) as mock_get:
-        readings = client.query_readings(query)
-
-    mock_get.assert_called_once_with(
-        "http://localhost:5001/readings",
-        params={
-            "window": "raw",
-            "sensor_id": 1,
-            "plant_id": 2,
-            "topic": Topics.TEMPERATURE.value,
-            "since": None,
-            "until": None,
-        },
-        headers={"Content-Type": "application/json"},
-        timeout=10,
+    readings = database_api_client.query_readings(
+        ReadingsQuery(
+            window="raw",
+            sensor_id=reading.sensor_id,
+            plant_id=reading.plant_id,
+            topic=reading.topic.value,
+        )
     )
+
     assert len(readings) == 1
     assert isinstance(readings[0], ProcessedSensorData)
     assert readings[0].topic is Topics.TEMPERATURE
 
 
-def test_query_readings_1h_structures_aggregated_readings() -> None:
-    """Query 1h aggregates and structure AggregatedReading objects.
+def test_query_readings_1h_structures_aggregated_readings(
+    database_api_client: DatabaseApiClient,
+    storage: TimescaleStorage,
+    reading: ProcessedSensorData,
+) -> None:
+    """Query 1h aggregates and deserialize AggregatedReading instances."""
+    storage.ingest_reading(reading)
+    with storage.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);"))
 
-    Returns
-    -------
-    None
-        Assertions fail if aggregation window routing regresses.
-    """
-    client = DatabaseApiClient(base_url="http://localhost:5001")
-    query = ReadingsQuery(window="1h", sensor_id=1, plant_id=2, topic=Topics.TEMPERATURE.value)
-
-    payload = [
-        {
-            "bucket": 1_735_000_000.0,
-            "sensor_id": 1,
-            "plant_id": 2,
-            "topic": Topics.TEMPERATURE.value,
-            "unit": "C",
-            "avg_value": 20.0,
-            "min_value": 18.0,
-            "max_value": 22.0,
-            "sample_count": 12,
-            "avg_dq_score": 0.95,
-            "imputed_count": 1,
-        }
-    ]
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = payload
-    mock_response.raise_for_status.return_value = None
-
-    with patch("requests.get", return_value=mock_response):
-        readings = client.query_readings(query)
+    readings = database_api_client.query_readings(
+        ReadingsQuery(
+            window="1h",
+            sensor_id=reading.sensor_id,
+            plant_id=reading.plant_id,
+            topic=reading.topic.value,
+        )
+    )
 
     assert len(readings) == 1
     assert isinstance(readings[0], AggregatedReading)
     assert readings[0].topic is Topics.TEMPERATURE
 
 
-def test_query_readings_wraps_request_exceptions() -> None:
-    """Raise RuntimeError when querying readings fails.
+def test_query_readings_wraps_real_request_exceptions() -> None:
+    """Raise RuntimeError when the readings API cannot be reached."""
+    client = DatabaseApiClient(base_url="http://127.0.0.1:9")
 
-    Returns
-    -------
-    None
-        Assertions fail if error mapping changes.
-    """
-    client = DatabaseApiClient(base_url="http://localhost:5001")
-    query = ReadingsQuery(window="raw", sensor_id=1)
-
-    with patch("requests.get", side_effect=requests.RequestException("boom")):
-        with pytest.raises(RuntimeError, match="Failed to query readings"):
-            client.query_readings(query)
+    with pytest.raises(RuntimeError, match="Failed to query readings"):
+        client.query_readings(ReadingsQuery(window="raw", sensor_id=1))

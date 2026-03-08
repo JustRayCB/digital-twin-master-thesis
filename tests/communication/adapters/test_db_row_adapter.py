@@ -1,5 +1,6 @@
 """Tests for DbRowAdapter - database row conversions."""
 
+import json
 from datetime import datetime
 from typing import Iterable
 
@@ -11,14 +12,16 @@ from dt.alerts.rules import SeverityLevel
 from dt.communication.adapters.db_row import DbRowAdapter
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    AlertStatus,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
+    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
+    SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
-from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
+from dt.communication.dataclasses.camera_snapshot import CameraSnapshot
+from dt.communication.dataclasses.controller import (Action, CompiledRule,
+                                                     RoutineEdge, RoutineGraph,
+                                                     RoutineNode,
+                                                     RoutineUpdate, Trigger)
+from dt.communication.dataclasses.processed_sensor_data import (
+    ProcessedSensorData, ValidationFlag)
 from dt.communication.topics import Topics
 
 _ENGINE = create_engine("sqlite+pysqlite:///:memory:", future=True)
@@ -141,6 +144,55 @@ def test_dump_preserves_other_fields(adapter, processed_sensor_data_full):
     assert result["value"] == 25.3
     assert result["unit"] == "Celsius"
     assert result["dq_score"] == 0.95
+
+
+def test_dump_routine_update_serializes_compiled_rules(adapter):
+    """Serialize compiled rules as JSON for routine persistence.
+
+    Parameters
+    ----------
+    adapter : DbRowAdapter
+        Adapter instance under test.
+    """
+    graph = RoutineGraph(
+        name="Test Routine",
+        plant_id=1,
+        nodes=[
+            RoutineNode(
+                id="trigger-1",
+                kind="trigger",
+                trigger=Trigger(type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0),
+            ),
+            RoutineNode(
+                id="action-1",
+                kind="action",
+                action=Action(actuator_id=1, command="ON", duration=5.0),
+            ),
+        ],
+        edges=[RoutineEdge(source="trigger-1", target="action-1")],
+    )
+    compiled_rules = [
+        CompiledRule(
+            id="trigger-1",
+            trigger=Trigger(type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0),
+            actions=[Action(actuator_id=1, command="ON", duration=5.0)],
+        )
+    ]
+
+    routine = RoutineUpdate(
+        plant_id=1,
+        name="Test Routine",
+        graph=graph,
+        compiled_rules=compiled_rules,
+    )
+
+    result = adapter.dump(routine)
+
+    assert isinstance(result["compiled_rules"], str)
+    decoded = json.loads(result["compiled_rules"])
+    assert decoded == json.loads(
+        json.dumps([adapter._generic.dump(rule) for rule in compiled_rules])
+    )
 
 
 def test_load_processed_data_from_named_tuple(adapter):
@@ -896,3 +948,56 @@ def test_external_alert_event_rejects_single_row(adapter):
 
     with pytest.raises(ValueError, match="ExternalAlertEvent requires .* tuple"):
         adapter.load(ExternalAlertEvent, row)
+
+
+def test_dump_camera_snapshot_for_db_row(adapter):
+    """Verify CameraSnapshot dumps to DB-ready fields."""
+    snapshot = CameraSnapshot(
+        plant_id=1,
+        sensor_id=9,
+        timestamp=1735689600.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="cam-corr-1",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
+
+    dumped = adapter.dump(snapshot)
+
+    assert dumped["topic"] == Topics.CAMERA_IMAGE.short_name
+    assert dumped["image"] == "AQI="
+    assert dumped["timestamp"] == 1735689600.0
+
+
+def test_load_camera_snapshot_from_db_row(adapter):
+    """Verify CameraSnapshot loads from DB row with decoded timestamp/topic."""
+    row = make_row(
+        {
+            "plant_id": 1,
+            "sensor_id": 9,
+            "timestamp": datetime.fromtimestamp(1735689600.0),
+            "topic": Topics.CAMERA_IMAGE.short_name,
+            "correlation_id": "cam-corr-2",
+            "mime_type": "image/jpeg",
+            "image": b"\x01\x02",
+            "width": 640,
+            "height": 480,
+        },
+        datetime_fields={"timestamp"},
+    )
+
+    loaded = adapter.load(CameraSnapshot, row)
+
+    assert loaded == CameraSnapshot(
+        plant_id=1,
+        sensor_id=9,
+        timestamp=1735689600.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="cam-corr-2",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
