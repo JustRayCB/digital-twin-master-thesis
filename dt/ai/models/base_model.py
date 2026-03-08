@@ -3,7 +3,7 @@
 import datetime
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any
 
 from dt.ai.registry import ModelMetadata
 
@@ -13,8 +13,8 @@ class BaseModel(ABC):
 
     def __init__(
         self,
-        model_id: Optional[str],
-        metadata: Optional[ModelMetadata] = None,
+        model_id: str | None,
+        metadata: ModelMetadata | None = None,
     ):
         self.model_id: str = model_id if model_id else str(uuid.uuid4())
         self.metadata = (
@@ -42,10 +42,10 @@ class BaseModel(ABC):
         self.metadata.version = str(version)
 
     @abstractmethod
-    def predict(self, inputs: Dict[str, Any]) -> Any:
+    def predict(self, inputs: dict[str, Any]) -> Any:
         pass
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         return self.metadata.to_dict()
 
     @abstractmethod
@@ -62,7 +62,7 @@ class BaseModel(ABC):
         """
         return self.metadata
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "model_id": self.model_id,
             **self.metadata.to_dict(),  # Include metadata fields in root dict
@@ -70,7 +70,7 @@ class BaseModel(ABC):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BaseModel":
+    def from_dict(cls, data: dict[str, Any]) -> "BaseModel":
         """
         Create model from dictionary.
 

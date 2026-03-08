@@ -172,3 +172,9 @@ cython_debug/
 .prettierrc
 connections.json
 path/to/HDFS/dir
+report
+poetry.lock
+package-lock.json
+/dt/webapp/frontend/node_modules
+/dt/webapp/static/ui/assets
+/dt/webapp/static/ui/index.html

@@ -1,1 +1,2 @@
-from .storage import InfluxDBStorage, SQLStorage, Storage
+from .storage import Storage as Storage
+from .timescale_storage import TimescaleStorage as TimescaleStorage

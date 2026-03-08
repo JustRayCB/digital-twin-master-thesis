@@ -3,13 +3,25 @@
         <span class="title">Real-Time Monitoring</span>
         <form id="monitoring-controls">
             <input type="radio" class="chooser" name="data-period" value="1h" />1h
-            <input type="radio" class="chooser" name="data-period" value="24h" />24h
+            <input type="radio" class="chooser" name="data-period" value="24h" checked />24h
             <input type="radio" class="chooser" name="data-period" value="7d" />7d
             <input type="radio" class="chooser" name="data-period" value="30d" />30d
         </form>
     </div>
 
     <div class="monitoring-content">
+        <form id="trace-toggles">
+            <label><input type="checkbox" name="trace-toggle" value="value" checked />processed</label>
+            <label><input type="checkbox" name="trace-toggle" value="raw_value" checked />raw</label>
+            <label><input type="checkbox" name="trace-toggle" value="calibrated_value" checked />calibrated</label>
+            <label><input type="checkbox" name="trace-toggle" value="normalized_value" checked />normalized</label>
+        </form>
+        <!-- Driven by Plotly hover over processed-value points. -->
+        <div class="dq-status">
+            <span>DQ (hover): </span>
+            <span id="monitoring-dq-score">—</span>
+            <span id="monitoring-flags"></span>
+        </div>
         <div class="chart-grid">
             <div class="chart-container">
                 <h3>Temperature</h3>

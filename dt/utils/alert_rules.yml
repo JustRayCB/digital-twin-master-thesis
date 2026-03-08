@@ -1,0 +1,118 @@
+# Alert Rules Configuration
+#
+# This file defines alert rules evaluated by the alert engine service.
+# Rules are evaluated against processed sensor data from Kafka topics.
+#
+# Rule Structure:
+#   rule_id: Unique identifier for the rule
+#   name: Human-readable name
+#   description: Template with format placeholders (e.g., {threshold})
+#   severity: info | warning | critical
+#   evaluation_stage: processed (currently only supported stage)
+#   source: Sensor type or topic short name (* for all sensors)
+#   condition: Alert condition definition
+#     type: threshold | range | dq_score | validation_flag
+#     Additional parameters depend on condition type:
+#       - threshold: operator (>, <, >=, <=, ==, !=), threshold value
+#       - range: min_value, max_value (null for unbounded)
+#       - dq_score: threshold value
+#       - validation_flag: flag name to check
+#   persistence_count: Consecutive violations required before alert fires
+#   cooldown_seconds: Minimum seconds between alert firings for same rule/source
+
+alert_rules:
+  # Temperature threshold example
+  - rule_id: temp_high_warning
+    name: High Temperature Warning
+    description: "Temperature exceeds {threshold}°C"
+    severity: warning
+    evaluation_stage: processed
+    source: temperature
+    condition:
+      type: threshold
+      operator: ">"
+      threshold: 35.0
+    persistence_count: 2
+    cooldown_seconds: 300
+
+  # Critical temperature threshold
+  - rule_id: temp_critical
+    name: Critical Temperature
+    description: "Temperature critically high at {threshold}°C"
+    severity: critical
+    evaluation_stage: processed
+    source: temperature
+    condition:
+      type: threshold
+      operator: ">"
+      threshold: 40.0
+    persistence_count: 1
+    cooldown_seconds: 600
+
+  - rule_id: humidity_warning
+    name: High Humidity Warning
+    description: "Humidity exceeds {threshold}%"
+    severity: warning
+    evaluation_stage: processed
+    source: humidity
+    condition:
+      type: threshold
+      operator: ">"
+      threshold: 70.0
+    persistence_count: 3
+    cooldown_seconds: 300
+
+
+  # Soil moisture range example
+  - rule_id: moisture_low
+    name: Low Soil Moisture
+    description: "Soil moisture below {threshold}%"
+    severity: warning
+    evaluation_stage: processed
+    source: soil_moisture
+    condition:
+      type: threshold
+      operator: < 
+      threshold: 40
+    persistence_count: 3
+    cooldown_seconds: 600
+
+  # Data quality score example (applies to all sensors)
+  - rule_id: dq_score_low
+    name: Low Data Quality
+    description: "Data quality score below {threshold}"
+    severity: info
+    evaluation_stage: processed
+    source: "*"
+    condition:
+      type: dq_score
+      threshold: 0.7
+    persistence_count: 1
+    cooldown_seconds: 120
+
+  # Light level examples
+  - rule_id: light_too_low
+    name: Insufficient Light
+    description: "Light level below {threshold} lux"
+    severity: warning
+    evaluation_stage: processed
+    source: light_intensity
+    condition:
+      type: threshold
+      operator: "<"
+      threshold: 1000.0
+    persistence_count: 5
+    cooldown_seconds: 1800
+
+  - rule_id: light_excessive
+    name: Excessive Light
+    description: "Light level exceeds {threshold} lux"
+    severity: info
+    evaluation_stage: processed
+    source: light_intensity
+    condition:
+      type: threshold
+      operator: ">"
+      threshold: 50000.0
+    persistence_count: 3
+    cooldown_seconds: 1800

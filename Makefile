@@ -2,16 +2,18 @@
 # Digital Twin Makefile
 # =========================
 # Edit these if your module paths differ.
-PY            := poetry run python
-WEB ?= dt/webapp/app.py
-COLLECTOR ?= dt/collector/main.py
-CONTROLLER ?= dt/controller/app.py
-DB ?= dt/data/database/app.py
+PY            := poetry run python -m
+WEB ?= dt.webapp.app
+COLLECTOR ?= dt.collector.main
+CONTROLLER ?= dt.controller.app
+DB ?= dt.data.database.app
+PREPROCESS ?= dt.data.preprocess.main
+ALERTS ?= dt.alerts.app
 
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
-				run-dashboard run-collector run-controller run-database \
-				test venv \
+				run-dashboard run-collector run-controller run-database run-preprocessing run-alert-engine \
+				build-webapp test venv \
 				clean-env clean-venv clean-pyc \
 				update-deps check-deps
 
@@ -30,8 +32,12 @@ help:
 	@echo "Run targets:"
 	@echo "  make run-dashboard				-> Flask app (web dashboard)"
 	@echo "  make run-collector				-> sensor polling loop"
-	@echo "  make run-collector				-> actuator/controller app"
+	@echo "  make run-controller				-> actuator/controller app"
 	@echo "  make run-database				-> database (TS and RDB) app (SQLite/InfluxDB)"
+	@echo "  make run-preprocessing			-> Spark preprocessing pipeline"
+	@echo "  make run-alert-engine				-> alert engine service (Kafka + Flask API)"
+	@echo "  make run-alert-api-only			-> alert engine Flask API only (no Kafka consumer)"
+	@echo "  make build-webapp				-> build Svelte UI into dt/webapp/static/ui"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test					-> run tests with pytest"
@@ -86,6 +92,19 @@ run-controller:
 
 run-database:
 	$(PY) $(DB)
+
+run-preprocessing:
+	$(PY) $(PREPROCESS)
+
+run-alert-engine:
+	$(PY) $(ALERTS)
+
+run-alert-api-only:
+	$(PY) -c "from dt.alerts.app import create_app; app=create_app(start_consumer=False); app.run(host='0.0.0.0', port=5003)"
+
+build-webapp:
+	npm --prefix dt/webapp/frontend install
+	npm --prefix dt/webapp/frontend run build
 
 # -------------------------
 # Quality (optional groups: dev)

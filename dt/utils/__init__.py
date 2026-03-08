@@ -1,3 +1,2 @@
-from .config import Config
-from .dataclasses import DBIdQuery, DBTimestampQuery, SensorData, SensorDescriptor
-from .logger import get_logger
+from .config import Config as Config
+from .logger import get_logger as get_logger

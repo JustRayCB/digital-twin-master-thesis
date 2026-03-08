@@ -1,3 +1,15 @@
+/**
+ * @file Manages the parameter controls component of the dashboard.
+ * This includes handling user interactions with sliders for temperature, humidity, and soil moisture,
+ * as well as the simulation control button.
+ */
+
+/**
+ * Initializes the event listeners for the parameter controls component.
+ * This function sets up listeners for the input sliders to update their
+ * corresponding value displays in real-time. It also sets up the event listener
+ * for the "Simulate" button to send the current control parameters to the backend.
+ */ 
 export function initiParameterControls() {
     const tempSlider = document.getElementById('temp-slider')
     const humiditySlider = document.getElementById('humidity-slider')
@@ -8,14 +20,17 @@ export function initiParameterControls() {
         document.getElementById('current-temp').innerText = tempSlider.value
     })
 
+    // Update the displayed value when the humidity slider is moved.
     humiditySlider.addEventListener('input', () => {
         document.getElementById('current-humidity').innerText = humiditySlider.value
     })
 
+    // Update the displayed value when the moisture slider is moved.
     moistureSlider.addEventListener('input', () => {
         document.getElementById('current-moisture').innerText = moistureSlider.value
     })
 
+    // Handle the click event for the "Simulate" button.
     document.getElementById('simulate-button').addEventListener('click', function () {
         // Collect all parameter values
         const simulationParams = {
@@ -24,7 +39,7 @@ export function initiParameterControls() {
             soilMoisture: moistureSlider.value,
         }
 
-        // Send the data to backend
+        // Send the simulation parameters to the backend API.
         fetch('/api/simulate', {
             method: 'POST',
             headers: {
@@ -35,7 +50,7 @@ export function initiParameterControls() {
             .then((response) => response.json())
             .then((data) => {
                 console.log('Simulation started:', data)
-                // Trigger any UI updates needed
+                // TODO: Trigger any UI updates needed after simulation starts.
             })
             .catch((error) => {
                 console.error('Error starting simulation:', error)

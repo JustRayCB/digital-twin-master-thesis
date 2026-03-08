@@ -6,7 +6,7 @@ authors = [
     {name = "JustRayCB",email = "rayancbpro@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11,<4.0"
+requires-python = ">=3.11,<4.0,!=3.14.1"
 dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
     "matplotlib (>=3.10.1,<4.0.0)",
@@ -17,6 +17,10 @@ dependencies = [
     "requests (>=2.32.3,<3.0.0)",
     "kafka-python (>=2.1.5,<3.0.0)",
     "dotenv (>=0.9.9,<0.10.0)",
+    "pyyaml (>=6.0.3,<7.0.0)",
+    "numpy (>=2.3.4,<3.0.0)",
+    "cattrs (>=25.3.0,<26.0.0)",
+    "networkx (>=3.6.1,<4.0.0)",
 ]
 
 # Dev tools
@@ -30,6 +34,8 @@ debugpy = "^1.8.12"
 pytest = ">=8.4.2,<9.0.0"
 ruff = "^0.13.2"
 mypy = "^1.18.2"
+pyupgrade = "^3.21.0"
+testcontainers = {extras = ["postgres", "kafka"], version = "^4.9.0"}
 
 
 # Spark kept out of default installs
@@ -45,9 +51,10 @@ pyarrow = ">=19.0.1,<20.0.0"
 optional = true
 
 [tool.poetry.group.db.dependencies]
-influxdb-client = ">=1.48.0,<2.0.0"
+sqlalchemy = "^2.0.44"
+psycopg = {extras = ["binary"], version = "^3.2.12"}
+testcontainers = "^4.13.2"
 
-# Raspberry Pi / hardware IO — guarded with platform markers
 [tool.poetry.group.rpi]
 optional = true
 
@@ -64,3 +71,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_timescale: marks tests that require a PostgreSQL/TimescaleDB instance (deselect with '-m \"not requires_timescale\"')",
+    "requires_kafka: marks tests that require a Kafka broker (deselect with '-m \"not requires_kafka\"')",
+]

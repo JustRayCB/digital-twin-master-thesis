@@ -14,17 +14,27 @@ LOG_FILE = os.path.join(LOG_DIR, f"plant_twin_{current_date}.log")
 
 # Configure logging
 def get_logger(name: str):
-    """Create a logger with specified name and level
+    """Create and configure a logger.
+
+    This function sets up a logger that writes to both the console (INFO level
+    and above) and a rotating daily log file (DEBUG level and above). It ensures
+    that handlers are not duplicated if the logger has already been configured.
 
     Parameters
     ----------
     name : str
-        Name of the logger (usually __name__ from the calling module)
+        The name of the logger, typically the ``__name__`` of the calling module.
 
     Returns
     -------
     logging.Logger
-        Configured logger instance
+        A configured logger instance.
+
+    Examples
+    --------
+    >>> logger = get_logger(__name__)
+    >>> logger.info("This is an informational message.")
+    >>> logger.debug("This is a debug message.")
     """
 
     logger = logging.getLogger(name)

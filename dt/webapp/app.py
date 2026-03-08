@@ -1,26 +1,45 @@
-import sys
+"""Main Flask application for the web dashboard.
 
-sys.dont_write_bytecode = True
-import uuid
+This application serves the main dashboard for the digital twin project.
+It has the following key responsibilities:
+
+1.  Web Interface: Renders the main `dashboard.html` template, which
+    provides the user interface for monitoring and controlling the digital
+    twin.
+
+2.  Real-time Updates: Sets up a Flask-SocketIO server to push real-time
+    sensor data to connected web clients.
+
+3.  Messaging Bridge: Initializes a Kafka client that subscribes to
+    processed sensor data topics. When a message is received, it is
+    broadcast to the appropriate SocketIO room, allowing for live updates
+    on the dashboard.
+
+4.  API Endpoints: Provides API endpoints for the frontend to fetch
+    historical data from the database service.
+"""
+
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
 
-import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from dt.communication import (DatabaseApiClient, KafkaService,
-                              MessagingService, Topics)
-from dt.utils import Config, SensorData, get_logger
-from dt.utils.dataclasses import DBTimestampQuery
+import dt.webapp.consumer as consumer
+from dt.communication.controller_client import ControllerClient
+from dt.communication.db_client import DatabaseApiClient
+from dt.utils import get_logger
+from dt.webapp.api import create_webapp_blueprint
+from dt.webapp.ui import create_ui_blueprint, default_ui_dir
 
-app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Global SocketIO instance (initialized in create_app)
+socketio = SocketIO(cors_allowed_origins="*")
 logger = get_logger(__name__)
-connection_status = False
 
-# Simulated data for all components
+
+# Simulated data for initial render (to be replaced by real data fetching)
 dashboard_data = {
     # Plant Status Data
     "last_update": datetime.now().strftime("%H:%M"),
@@ -30,22 +49,19 @@ dashboard_data = {
     "connection_status": "Connected",
     "health_status": "Good",
     "health_details": "Growing normally, soil drying",
-    "alerts": [
-        {"message": "Low soil moisture", "time": "14:20"},
-        {"message": "Light levels optimal", "time": "13:45"},
-    ],
+    "alerts": [],
     # Parameter Controls Data
     "control_mode": "Auto",
     "temp_setpoint": 23,
     "humidity_setpoint": 45,
     "soil_setpoint": 25,
     "soil_moisture": 25,
-    # Real-time Monitoring Data
-    "monitoring_period": "1h",
-    "temp_history": [22, 22.5, 23, 23.2, 23.1, 23],
-    "humidity_history": [44, 45, 46, 45, 45, 44],
-    "soil_history": [26, 25, 25, 24, 24, 25],
-    "light_history": [750, 760, 780, 790, 780, 780],
+    # Real-time Monitoring Data (placeholders)
+    "monitoring_period": "24h",
+    "temp_history": [],
+    "humidity_history": [],
+    "soil_history": [],
+    "light_history": [],
     # Quick Actions & Insights Data
     "recommendations": [
         "Water within next 8 hours",
@@ -56,146 +72,132 @@ dashboard_data = {
 }
 
 
-@app.route("/")
-def dashboard():
-    return render_template("dashboard.html", data=dashboard_data)
+def create_app(
+    start_consumer: bool = True,
+    db_client: Optional[DatabaseApiClient] = None,
+    controller_client: Optional[ControllerClient] = None,
+    ui_dir: Optional[Path] = None,
+) -> Flask:
+    """Create and configure the Flask application.
 
-
-@app.route("/api/simulate", methods=["POST"])
-def start_simulation():
-    simulation_parameters = request.json
-    logger.info(f"Starting simulation with parameters: {simulation_parameters}")
-
-    temperature = simulation_parameters.get("temperature")
-    humidity = simulation_parameters.get("humidity")
-    soil_moisture = simulation_parameters.get("light")
-
-    return {"status": "success"}
-
-
-@app.route("/api/data/timestamp", methods=["POST"])
-def get_data_by_timeframe():
-    """API endpoint to get the data from the database from a specific timestamp to the current time.
+    Parameters
+    ----------
+    start_consumer : bool, optional
+        Whether to start the Kafka consumer background thread, by default True.
+    db_client : DatabaseApiClient | None, optional
+        Dependency injection for the database client. If None, a new one is created.
+    controller_client : ControllerClient | None, optional
+        Dependency injection for the controller client. If None, a new one is created.
+    ui_dir : Path | None, optional
+        Directory containing a built UI (expects `index.html` plus assets). If None,
+        defaults to `dt/webapp/static/ui`.
 
     Returns
     -------
-    JSON
-        A JSON object with the data from the database.
-
+    Flask
+        The configured Flask application.
     """
+    app = Flask(__name__)
+    CORS(app)
 
-    """
-    request_data = request.get_json()
-    if not DBTimestampQuery.validate_json(request_data):
-        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
-        return jsonify({"error": "Invalid JSON data"}), 400
-    # Convert the JSON data to a DBTimestampQuery object
-    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
-    db_query.js_to_py_timestamp()
-    request_data = db_query.to_json()
-    db_url = "http://localhost:5001/data/timestamp"
-    print(f"Request data: {request_data}")
-    response = requests.post(db_url, json=request_data)
-    if response.status_code == 200:
-        data = response.json()
-        logger.info(f"Data from timestamp: {data}")
-        return jsonify(data)
-    else:
-        logger.error(f"Error getting data from timestamp: {response.text}")
-        return jsonify({"error": "Error getting data from timestamp"}), 500
-    """
+    # Initialize SocketIO with this app
+    socketio.init_app(app)
 
-    request_data = request.get_json()
-    if not DBTimestampQuery.validate_json(request_data):
-        logger.error(f"Invalid JSON data to get data from timestamp {request_data}")
-        return jsonify({"error": "Invalid JSON data"}), 400
-    # Convert the JSON data to a DBTimestampQuery object
-    db_query: DBTimestampQuery = DBTimestampQuery.from_json(request_data)
-    db_query.js_to_py_timestamp()  # Convert the timestamp from JavaScript format to Python format
+    # Dependency Injection
+    if db_client is None:
+        db_client = DatabaseApiClient()
 
-    db_client = DatabaseApiClient()
-    data = db_client.get_data_by_timeframe(db_query)
+    if controller_client is None:
+        controller_client = ControllerClient()
 
-    logger.info(f"Getting data by timefreame for {db_query}")
+    # Register API Blueprint
+    api_bp = create_webapp_blueprint(db_client, controller_client)
+    app.register_blueprint(api_bp)
 
-    # if not data:
-    #     logger.error(f"Error getting data from timestamp: {data}")
-    #     return jsonify({"error": "Error getting data from timestamp"}), 500
+    # Register UI Blueprint
+    resolved_ui_dir = default_ui_dir() if ui_dir is None else ui_dir
+    app.register_blueprint(create_ui_blueprint(resolved_ui_dir))
 
-    return jsonify(data)
+    # Routes
+    @app.route("/")
+    def dashboard():
+        return render_template("dashboard.html", data=dashboard_data)
+
+    # Kafka / Real-time Setup
+    if start_consumer:
+        # We attach the client to the app to keep it alive
+        app.msg_client = consumer.setup_bridge(db_client, socketio)  # type: ignore
+
+    return app
 
 
 # Handle client connection
 @socketio.on("connect")
 def connect():
-    global connection_status
-    logger.info(f"Client connected: {request.sid}")  # pyright: ignore[]
-    socketio.emit("connection_status", {"connected": connection_status})
+    """Handle a new client connection to the SocketIO server.
+
+    This function is called when a new client establishes a connection. It
+    logs the connection and emits the current connection status to the
+    client.
+    """
+    logger.info("Client connected")
+    socketio.emit("connection_status", {"connected": consumer.connection_status})
+    with consumer.latest_by_topic_lock:
+        cached = list(consumer.latest_by_topic.items())
+    for topic, payload in cached:
+        socketio.emit(topic, payload)
+    with consumer.active_alerts_lock:
+        cached_alerts = list(consumer.active_alerts_by_key.values())
+    for payload in cached_alerts:
+        socketio.emit("alerts_update", payload)
 
 
-# Handle client disconnection
 @socketio.on("disconnect")
 def disconnect():
-    logger.info(f"Client disconnected: {request.sid}")  # pyright: ignore[]
+    """Handle a client disconnection from the SocketIO server.
 
-
-# Handle message from SensorManager and forward to web client via socketio
-def forward_to_socketio(topic: Topics):
-    def callback(payload: SensorData):
-        value = payload.value
-        time = payload.timestamp
-        # TODO: Use only the topic inside the SensorData object. Currently, the topic is passed as an argument for debugging
-        socketio_topic = topic.short_name  # Get the last part of the topic (sensor's data)
-        logger.info(f"Received message from broker: {value} at {time}")
-        payload.py_to_js_timestamp()
-        socketio.emit(socketio_topic, payload.shrink_data())
-
-    return callback
-
-
-def setup_bridge():
-    global connection_status
-    # Generate a unique client ID to prevent conflicts
-    unique_id = f"webapp_{uuid.uuid4().hex[:8]}"
-    msg_client: MessagingService = KafkaService(
-        host=Config.KAFKA_URL, client_id=unique_id, group_id="webapp_consumer_group"
-    )
-    if not msg_client.connect():
-        logger.error("Failed to connect to Messaging Service's broker")
-        return
-    connection_status = True
-
-    # Subscribe to topics
-    msg_client.subscribe(Topics.SOIL_MOISTURE.processed, forward_to_socketio(Topics.SOIL_MOISTURE))
-    msg_client.subscribe(Topics.TEMPERATURE.processed, forward_to_socketio(Topics.TEMPERATURE))
-    msg_client.subscribe(Topics.HUMIDITY.processed, forward_to_socketio(Topics.HUMIDITY))
-    msg_client.subscribe(
-        Topics.LIGHT_INTENSITY.processed, forward_to_socketio(Topics.LIGHT_INTENSITY)
-    )
-    msg_client.subscribe(Topics.CAMERA_IMAGE.processed, forward_to_socketio(Topics.CAMERA_IMAGE))
-
-    # Return the client so it doesn't go out of scope
-    return msg_client
+    This function is called when a client disconnects. It logs the
+    disconnection event.
+    """
+    logger.info("Client disconnected")
 
 
 if __name__ == "__main__":
-    # TODO: Make queries to the database to get the latest data for the dashboard of data from a specific time to now
-
-    # Only setup bridge in the child process when using debug mode
+    import argparse
     import os
 
+    # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     debug_mode = True
 
-    # Store the Messaging Service's client to prevent it from being garbage collected
-    msg_client = None
+    parser = argparse.ArgumentParser(
+        description="Run the Digital Twin dashboard webapp.",
+        epilog="Example: python -m dt.webapp.app --demo --demo-interval 0.5",
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Emit synthetic readings/alerts via Socket.IO (no Kafka required).",
+    )
+    parser.add_argument(
+        "--demo-interval",
+        type=float,
+        default=1.0,
+        help="Seconds between demo emissions (default: 1.0).",
+    )
+    args = parser.parse_args()
 
-    if debug_mode and in_reloader:
-        # Only setup in child process in debug mode
-        msg_client = setup_bridge()
-    elif not debug_mode:
-        # Setup normally in production mode
-        msg_client = setup_bridge()
+    start_consumer = not args.demo
+    app = create_app(start_consumer=(start_consumer and (not debug_mode or in_reloader)))
 
-    # Run the Flask app
-    socketio.run(app, debug=debug_mode, host="127.0.0.1", port=5000)
+    if args.demo and (not debug_mode or in_reloader):
+        from dt.webapp.demo import DemoConfig, start_demo_emitter
+
+        start_demo_emitter(
+            socketio,
+            DemoConfig(plant_id=1, interval_seconds=args.demo_interval),
+        )
+
+    socketio.run(app, debug=debug_mode, host=args.host, port=args.port)

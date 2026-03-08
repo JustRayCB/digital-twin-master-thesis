@@ -8,7 +8,8 @@ environmental monitoring systems.
 
 import dataclasses
 import os
-from typing import Any, Dict, Iterable, List, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -116,7 +117,7 @@ class RLSState:
             errors=errors,
         )
 
-    def to_tuple(self) -> Tuple:
+    def to_tuple(self) -> tuple:
         """Convert the state to a tuple format for Spark state storage.
 
         Returns:
@@ -133,7 +134,7 @@ class RLSState:
         )
 
     @classmethod
-    def from_tuple(cls, state_data: Tuple) -> "RLSState":
+    def from_tuple(cls, state_data: tuple) -> "RLSState":
         """Create an RLSState from a tuple of state values.
 
         Args:
@@ -188,7 +189,7 @@ class RLSPredictor:
         state: RLSState,
         x: np.ndarray,
         y: float,
-    ) -> Tuple[np.ndarray, np.ndarray, float, float]:
+    ) -> tuple[np.ndarray, np.ndarray, float, float]:
         """Perform one step of Recursive Least Squares update
 
         Parameters
@@ -234,7 +235,7 @@ class RLSPredictor:
 
     def update(
         self, state: RLSState, x: np.ndarray, y: float
-    ) -> Tuple[RLSState, float, float, float]:
+    ) -> tuple[RLSState, float, float, float]:
         """Update the RLS state with new observation
 
         Parameters
@@ -284,7 +285,7 @@ class RLSPredictor:
 
     def predict_future(
         self, state: RLSState, steps_ahead: int = 1, timestamp_increment: float = 1.0
-    ) -> List[Dict[str, float]]:
+    ) -> list[dict[str, float]]:
         """Predict future values based on current state
 
         Args:
@@ -305,7 +306,7 @@ class RLSPredictor:
 
         most_recent_data = state.recent_data[most_recent_idx]
         original_timestamp = most_recent_data[2]  # Timestamp is at index 2
-        last_value = most_recent_data[0]  # Value is at index 0
+        last_value = most_recent_data[0]  # noqa: F841  # Value is at index 0
 
         # TODO: Calculate average time difference between recent samples if not provided
 
@@ -347,7 +348,7 @@ class RLSPredictor:
 
         return predictions
 
-    def engineer_features(self, new_value: Dict[str, Any], state: RLSState) -> np.ndarray:
+    def engineer_features(self, new_value: dict[str, Any], state: RLSState) -> np.ndarray:
         """
         Create feature vector from current value and historical data
 
@@ -394,7 +395,7 @@ class RLSPredictor:
 
 def process_batch(
     _: Any, new_values_iter: Iterable[pd.DataFrame], current_state: GroupState
-) -> List[pd.DataFrame]:
+) -> list[pd.DataFrame]:
     """Process a batch of sensor data with RLS prediction.
 
     This function is used with Spark's applyInPandasWithState to process

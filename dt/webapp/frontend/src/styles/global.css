@@ -1,0 +1,28 @@
+/* Global Base Styles */
+body {
+    background-color: #fdfbf7;
+    color: #1c1917;
+}
+
+/* Utilities */
+.pixel-art {
+    image-rendering: pixelated;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+}
+::-webkit-scrollbar-track {
+    background: #fdfbf7;
+    border-left: 2px solid #1c1917;
+}
+::-webkit-scrollbar-thumb {
+    background: #dcd6f7;
+    border: 2px solid #1c1917;
+    border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #c7cee3;
+}
+

@@ -1,5 +1,14 @@
 """
-kafka_manager.py - A utility script to manage Kafka topics in KRaft mode.
+A utility script for managing Kafka topics in a KRaft-based cluster.
+
+This script provides a command-line interface to wrap the standard Kafka
+management shell scripts (`kafka-topics.sh`, `kafka-configs.sh`), making it
+easier to perform common operations like creating, deleting, listing, and
+altering topics.
+
+It also includes a `setup` command to create all the necessary topics for
+the digital twin project with default configurations.
+
 Usage:
   python3 kafka_manager.py <command> [options]
 
@@ -10,6 +19,7 @@ Commands:
   describe <topic>
   alter <topic> --partitions <num> [--config <key=value>]
   config [--add <key=value>] [--delete <key>] <topic>
+  setup
 
 Examples:
   python3 kafka_manager.py create sensor-data --partitions 3 --replication-factor 1
@@ -21,12 +31,10 @@ Examples:
 """
 
 import argparse
-import json
-import os
 import subprocess
 import sys
 
-from dt.communication import Topics
+from dt.communication.topics import Topics
 
 # Configuration
 KAFKA_DIR = "/opt/kafka"  # Match your installation directory
@@ -39,7 +47,23 @@ class KafkaManager:
         self.bootstrap_server = KAFKA_BOOTSTRAP_SERVER
 
     def run_command(self, command):
-        """Execute a shell command and return its output"""
+        """Execute a shell command and return its output.
+
+        Parameters
+        ----------
+        command : str
+            The shell command to be executed.
+
+        Returns
+        -------
+        str
+            The standard output of the command.
+
+        Raises
+        ------
+        SystemExit
+            If the command execution fails.
+        """
         try:
             result = subprocess.run(
                 command,
@@ -55,7 +79,24 @@ class KafkaManager:
             sys.exit(1)
 
     def create_topic(self, topic_name, partitions, replication_factor, config=None):
-        """Create a new Kafka topic"""
+        """Create a new Kafka topic.
+
+        Parameters
+        ----------
+        topic_name : str
+            The name of the topic to create.
+        partitions : int
+            The number of partitions for the topic.
+        replication_factor : int
+            The replication factor for the topic.
+        config : dict, optional
+            A dictionary of topic-level configurations, by default None.
+
+        Returns
+        -------
+        str
+            The output of the command execution.
+        """
         cmd = (
             f"{self.kafka_dir}/bin/kafka-topics.sh --bootstrap-server {self.bootstrap_server} "
             f"--create --topic {topic_name} --partitions {partitions} "
@@ -71,7 +112,18 @@ class KafkaManager:
         return output
 
     def delete_topic(self, topic_name):
-        """Delete a Kafka topic"""
+        """Delete a Kafka topic.
+
+        Parameters
+        ----------
+        topic_name : str
+            The name of the topic to delete.
+
+        Returns
+        -------
+        str
+            The output of the command execution.
+        """
         cmd = (
             f"{self.kafka_dir}/bin/kafka-topics.sh --bootstrap-server {self.bootstrap_server} "
             f"--delete --topic {topic_name}"
@@ -83,7 +135,13 @@ class KafkaManager:
         return output
 
     def list_topics(self):
-        """List all available Kafka topics"""
+        """List all available Kafka topics.
+
+        Returns
+        -------
+        list[str]
+            A list of topic names.
+        """
         cmd = (
             f"{self.kafka_dir}/bin/kafka-topics.sh --bootstrap-server {self.bootstrap_server} "
             f"--list"
@@ -104,7 +162,18 @@ class KafkaManager:
         return topics
 
     def describe_topic(self, topic_name):
-        """Describe a Kafka topic"""
+        """Describe a Kafka topic, showing its configuration and partition info.
+
+        Parameters
+        ----------
+        topic_name : str
+            The name of the topic to describe.
+
+        Returns
+        -------
+        str
+            The output of the command execution.
+        """
         cmd = (
             f"{self.kafka_dir}/bin/kafka-topics.sh --bootstrap-server {self.bootstrap_server} "
             f"--describe --topic {topic_name}"
@@ -189,18 +258,30 @@ class KafkaManager:
         return output
 
     def setup_kafka(self):
-        """Setup Kafka with default topics and configurations"""
-        for topic in Topics.list_topics():
+        """Set up all Kafka topics required for the digital twin project.
+
+        This creates raw and processed topics for each sensor, as well as the
+        alerts topic.
+        """
+        for topic in Topics.list_sensor_topics():
             self.create_topic(topic_name=topic.raw, partitions=2, replication_factor=1)
             self.create_topic(topic_name=topic.processed, partitions=2, replication_factor=1)
-        self.create_topic(topic_name="alerts", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="commands", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="commands-response", partitions=1, replication_factor=1)
-        self.create_topic(topic_name="health-status", partitions=1, replication_factor=1)
+        self.create_topic(topic_name=str(Topics.ALERTS), partitions=1, replication_factor=1)
 
 
 def parse_config_option(config_str):
-    """Parse key=value config options into a dictionary"""
+    """Parse a list of 'key=value' strings into a dictionary.
+
+    Parameters
+    ----------
+    config_str : list[str]
+        A list of strings, where each string is in 'key=value' format.
+
+    Returns
+    -------
+    dict
+        A dictionary of the parsed configuration options.
+    """
     if not config_str:
         return {}
 
@@ -254,7 +335,7 @@ def parse_arguments():
     config_parser.add_argument("--add", nargs="+", help="Add configuration in format key=value")
     config_parser.add_argument("--delete", nargs="+", help="Delete configuration keys")
 
-    conifg_parser = subparsers.add_parser("setup", help="Setup Kafka")
+    config_parser = subparsers.add_parser("setup", help="Setup Kafka")
 
     return parser.parse_args()
 

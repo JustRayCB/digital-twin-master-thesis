@@ -2,19 +2,35 @@ import adafruit_bh1750
 import board
 from typing_extensions import override
 
-from dt.collector.kinds.base_sensor import Sensor
-from dt.communication import Topics
+from dt.collector.kinds.base_sensor import Pin, Sensor
+from dt.communication.topics import Topics
 
 
 class LightSensor(Sensor):
-    """BH1750 light sensor."""
+    """Represents a BH1750 light sensor.
 
-    def __init__(self, name: str, read_interval: int, pin: "Pin") -> None:
+    This class interfaces with a BH1750 light sensor to read ambient light
+    intensity in lux. It communicates with the sensor over the I2C bus.
+
+    Parameters
+    ----------
+    name : str
+        The name of the sensor.
+    read_interval : int
+        The interval in seconds at which the sensor should be read.
+    pin : board.Pin
+        The GPIO pin for the sensor. For I2C sensors like the BH1750, this
+        is not directly used in the initialization of the sensor object but
+        is required by the base `Sensor` class. The I2C bus is typically
+        configured system-wide.
+    """
+
+    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "lx"
         self._sensor = adafruit_bh1750.BH1750(board.I2C())
 
-        self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
+        self.logger.info(f"Initialized {self.name} on I2C bus.")
 
     @property
     @override
@@ -36,7 +52,3 @@ class LightSensor(Sensor):
         else:
             self.logger.info(f"Light intensity: {light_intensity} lx")
         return light_intensity
-
-    @override
-    def process_data(self, raw_data: float) -> float:
-        return raw_data

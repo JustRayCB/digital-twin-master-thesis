@@ -1,16 +1,11 @@
-import sys
+from time import sleep
 
 import board
 
-sys.dont_write_bytecode = True
-
-
-from time import sleep
-
 from dt.collector import (
+    CameraSensor,
     HumiditySensor,
     LightSensor,
-    MockMoistureSensor,
     SensorManager,
     SoilMoistureSensor,
     TemperatureSensor,
@@ -19,6 +14,13 @@ from dt.utils import get_logger
 
 
 def main():
+    """Initializes and runs the sensor data collector.
+
+    This function sets up the sensor manager, adds all the required sensors
+    (soil moisture, temperature, humidity, and light), and then enters an
+    infinite loop to continuously read data from them. The loop can be
+    exited with a keyboard interrupt (Ctrl+C).
+    """
     logger = get_logger(__name__)
     logger.info("Starting main")
 
@@ -33,23 +35,25 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisture_sensor = SoilMoistureSensor("moisture_sensor", 5, board.D1)
-    temperature_sensor = TemperatureSensor("temperature_sensor", 5, board.D17)
-    humidity_sensor = HumiditySensor("humidity_sensor", 5, board.D17)
-    light_sensor = LightSensor("light_sensor", 5, board.D3)
+    moisture_sensor = SoilMoistureSensor("sensors.basil.stemma.001.soil_moisture", 19, board.D1)
+    temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 7, board.D17)
+    humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 17, board.D17)
+    light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 15, board.D3)
+    camera_sensor = CameraSensor("sensors.basil.picamera2.001.camera_image", 30)
 
     sensor_manager.add_sensor(moisture_sensor)
     sensor_manager.add_sensor(temperature_sensor)
     sensor_manager.add_sensor(humidity_sensor)
     sensor_manager.add_sensor(light_sensor)
+    sensor_manager.add_sensor(camera_sensor)
 
-    wait = input("Press Enter to start data collector module ...")
+    input("Press Enter to start data collector module ...")
 
     try:
         while True:
             sensor_manager.read_all_sensors()
             print("Reading all sensors")
-            sleep(1)
+            sleep(sensor_manager.seconds_until_next_read())
     except KeyboardInterrupt:
         logger.info("Exiting main")
     finally:

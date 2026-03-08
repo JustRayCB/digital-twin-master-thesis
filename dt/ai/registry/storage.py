@@ -2,7 +2,7 @@ import json
 import os
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from typing_extensions import override
 
@@ -23,22 +23,22 @@ class RegistryStorage(ABC):
         pass
 
     @abstractmethod
-    def load_model(self, model_name: str, version: Optional[float]) -> Optional[BaseModel]:
+    def load_model(self, model_name: str, version: float | None) -> BaseModel | None:
         """Load a model from storage."""
         pass
 
     @abstractmethod
-    def delete_model(self, model_name: str, version: Optional[float]) -> bool:
+    def delete_model(self, model_name: str, version: float | None) -> bool:
         """Delete a model from storage."""
         pass
 
     @abstractmethod
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         """List all models in storage."""
         pass
 
     @abstractmethod
-    def get_model_info(self, model_name: str, version: Optional[float]) -> Optional[Dict[str, Any]]:
+    def get_model_info(self, model_name: str, version: float | None) -> dict[str, Any] | None:
         """Get model metadata without loading the full model."""
         pass
 
@@ -65,7 +65,7 @@ class FileSystemStorage(RegistryStorage):
                 json.dump({}, f)
 
     def get_next_version(self, model_name: str) -> float:
-        with open(self.registry_file, "r") as f:
+        with open(self.registry_file) as f:
             registry = json.load(f)
 
         if model_name not in registry:
@@ -95,7 +95,7 @@ class FileSystemStorage(RegistryStorage):
     def _update_registry(self, model: BaseModel, new_version: float) -> None:
         """Update the registry with the new model version."""
         try:
-            with open(self.registry_file, "r") as f:
+            with open(self.registry_file) as f:
                 registry = json.load(f)
 
             if model.name not in registry:
@@ -116,9 +116,9 @@ class FileSystemStorage(RegistryStorage):
             self.logger.error(f"Failed to update registry for model {model.name}: {e}")
 
     @override
-    def load_model(self, model_name: str, version: Optional[float]) -> Optional[BaseModel]:
+    def load_model(self, model_name: str, version: float | None) -> BaseModel | None:
         """Load a model from storage."""
-        with open(self.registry_file, "r") as f:
+        with open(self.registry_file) as f:
             registry = json.load(f)
         if model_name not in registry:
             self.logger.warning(f"Model {model_name} not found in registry.")
@@ -142,10 +142,10 @@ class FileSystemStorage(RegistryStorage):
             return None
 
     @override
-    def delete_model(self, model_name: str, version: Optional[float]) -> bool:
+    def delete_model(self, model_name: str, version: float | None) -> bool:
         """Delete a model from storage."""
         try:
-            with open(self.registry_file, "r") as f:
+            with open(self.registry_file) as f:
                 registry = json.load(f)
 
             if model_name not in registry:
@@ -182,11 +182,11 @@ class FileSystemStorage(RegistryStorage):
             return False
 
     @override
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         """List all models in storage."""
         models = []
         try:
-            with open(self.registry_file, "r") as f:
+            with open(self.registry_file) as f:
                 registry = json.load(f)
 
             for model_name, versions in registry.items():
@@ -207,10 +207,10 @@ class FileSystemStorage(RegistryStorage):
         return models
 
     @override
-    def get_model_info(self, model_name: str, version: Optional[float]) -> Optional[Dict[str, Any]]:
+    def get_model_info(self, model_name: str, version: float | None) -> dict[str, Any] | None:
         """Get model metadata without loading the full model."""
         try:
-            with open(self.registry_file, "r") as f:
+            with open(self.registry_file) as f:
                 registry = json.load(f)
 
             if model_name not in registry:
