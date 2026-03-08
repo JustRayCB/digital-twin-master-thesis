@@ -11,6 +11,7 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      RoutineUpdate)
 
 
+@serializes(RoutineUpdate, "db_row")
 @serializes(Routine, "db_row")
 class RoutineDbSerializer(DbSerializer[Routine | RoutineUpdate]):
     def dump(self, obj: Routine | RoutineUpdate) -> dict[str, Any]:
