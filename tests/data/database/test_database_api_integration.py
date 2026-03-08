@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from dt.alerts.rules import SeverityLevel
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
+from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertHistoryEvent,
@@ -190,6 +190,44 @@ def test_get_readings_rejects_invalid_query_params(client) -> None:
     assert "error" in payload
 
 
+def test_get_latest_camera_snapshot_returns_404_when_absent(client) -> None:
+    """Latest snapshot endpoint returns 404 when no snapshot is available."""
+    response = client.get("/camera/snapshots/latest", query_string={"plant_id": 1})
+
+    assert response.status_code == 404
+    payload = response.get_json()
+    assert isinstance(payload, dict)
+    assert "error" in payload
+
+
+def test_get_latest_camera_snapshot_returns_camera_payload(
+    client, storage: TimescaleStorage, sample_sensor: SensorDescriptor
+) -> None:
+    """Latest snapshot endpoint returns persisted camera payload in API shape."""
+    snapshot = CameraSnapshot(
+        plant_id=sample_sensor.plant_id,
+        sensor_id=sample_sensor.id,
+        timestamp=1234567890.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-123",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
+    storage.ingest_camera_snapshot(snapshot)
+
+    response = client.get(
+        "/camera/snapshots/latest",
+        query_string={"plant_id": sample_sensor.plant_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload, dict)
+    assert load("generic", CameraSnapshot, payload) == snapshot
+
+
 def test_list_actuators_returns_persisted_actuators(
     client, storage: TimescaleStorage, sample_plant_id: int
 ) -> None:
@@ -209,7 +247,7 @@ def test_list_actuators_returns_persisted_actuators(
     None
         The assertions raise if /actuators output regresses.
     """
-    actuator_id = storage.register_actuator(sample_plant_id, "water_pump", 0)
+    actuator_id = storage.register_actuator(sample_plant_id, "water_pump", 17, 0)
 
     response = client.get("/actuators")
 

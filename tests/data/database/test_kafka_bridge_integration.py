@@ -1,12 +1,11 @@
 """Integration tests for the database messaging bridge."""
 
 import time
-from collections.abc import Callable
 
 import pytest
 
 from dt.alerts.rules import SeverityLevel
-from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertStatus,
@@ -14,44 +13,15 @@ from dt.communication.dataclasses.alerts.alert_record import (
     SensorAlertEvent,
 )
 from dt.communication.dataclasses.alerts.alert_type import AlertType
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.queries import AlertHistoryQuery, ReadingsQuery
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
 from dt.data.database.consumer import setup_bridge
 from dt.data.database.timescale_storage import TimescaleStorage
+from tests.data.database.helpers import wait_for_kafka_service_ready, wait_until
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
-
-
-def wait_for_kafka_service_ready(
-    bridge: KafkaService, wait_until_condition: Callable[..., None], expected_topics: set[str]
-) -> None:
-    """Wait until the KafkaService consumer has joined and subscribed.
-
-    Parameters
-    ----------
-    bridge : KafkaService
-        Service returned by the database bridge setup.
-    wait_until_condition : Callable[..., None]
-        Polling helper from fixtures.
-    expected_topics : set[str]
-        Topics expected to be in the consumer subscription.
-
-    Returns
-    -------
-    None
-        Raises on timeout.
-    """
-
-    def is_ready() -> bool:
-        if bridge.consumer is None:
-            return False
-        subscription = bridge.consumer.subscription()
-        if not expected_topics.issubset(subscription):
-            return False
-        return bool(bridge.consumer.assignment())
-
-    wait_until_condition(is_ready, timeout_seconds=15.0, interval_seconds=0.25)
 
 
 def test_bridge_persists_processed_reading(
@@ -59,7 +29,6 @@ def test_bridge_persists_processed_reading(
     kafka_service: KafkaService,
     storage: TimescaleStorage,
     sample_sensor,
-    wait_until_condition: Callable[..., None],
 ) -> None:
     """Persist processed readings received from Kafka.
 
@@ -73,24 +42,13 @@ def test_bridge_persists_processed_reading(
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
-    wait_until_condition : Callable[..., None]
-        Polling helper for async conditions.
-
-    Returns
-    -------
-    None
-        The assertions raise if bridge persistence regresses.
     """
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
     bridge = setup_bridge(config=test_config, storage=storage)
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(
-            bridge,
-            wait_until_condition,
-            expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS},
-        )
+        wait_for_kafka_service_ready(bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS})
 
         test_reading = ProcessedSensorData(
             plant_id=sample_sensor.plant_id,
@@ -112,7 +70,7 @@ def test_bridge_persists_processed_reading(
             )
             return any(reading.correlation_id == "kafka-integration-test" for reading in readings)
 
-        wait_until_condition(reading_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+        wait_until(reading_persisted, timeout_seconds=10.0, interval_seconds=0.25)
 
     finally:
         bridge.disconnect()
@@ -123,7 +81,6 @@ def test_bridge_persists_multiple_processed_readings(
     kafka_service: KafkaService,
     storage: TimescaleStorage,
     sample_sensor,
-    wait_until_condition: Callable[..., None],
 ) -> None:
     """Persist multiple processed readings received from Kafka.
 
@@ -137,24 +94,13 @@ def test_bridge_persists_multiple_processed_readings(
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
-    wait_until_condition : Callable[..., None]
-        Polling helper for async conditions.
-
-    Returns
-    -------
-    None
-        The assertions raise if multi-message ingestion regresses.
     """
     test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
     bridge = setup_bridge(config=test_config, storage=storage)
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(
-            bridge,
-            wait_until_condition,
-            expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS},
-        )
+        wait_for_kafka_service_ready(bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS})
 
         base_time = time.time()
         for i in range(3):
@@ -181,7 +127,56 @@ def test_bridge_persists_multiple_processed_readings(
             recent = {reading.correlation_id for reading in readings}
             return {"multi-test-0", "multi-test-1", "multi-test-2"}.issubset(recent)
 
-        wait_until_condition(readings_persisted, timeout_seconds=12.0, interval_seconds=0.25)
+        wait_until(readings_persisted, timeout_seconds=12.0, interval_seconds=0.25)
+
+    finally:
+        bridge.disconnect()
+
+
+def test_bridge_persists_camera_snapshot(
+    kafka_bootstrap_servers: str,
+    kafka_service: KafkaService,
+    storage: TimescaleStorage,
+    sample_sensor,
+) -> None:
+    """Persist camera snapshots received from Kafka.
+
+    Parameters
+    ----------
+    kafka_bootstrap_servers : str
+        Kafka bootstrap servers for the test broker.
+    kafka_service : KafkaService
+        Producer service for publishing camera snapshots.
+    storage : TimescaleStorage
+        Storage instance used by the bridge.
+    sample_sensor : dt.communication.dataclasses.SensorDescriptor
+        Registered sensor descriptor.
+    """
+    test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
+    bridge = setup_bridge(config=test_config, storage=storage)
+    assert isinstance(bridge, KafkaService)
+
+    try:
+        wait_for_kafka_service_ready(bridge, expected_topics={Topics.CAMERA_IMAGE.processed, Topics.ALERTS})
+
+        snapshot = CameraSnapshot(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=time.time(),
+            topic=Topics.CAMERA_IMAGE,
+            correlation_id="camera-kafka-integration-test",
+            mime_type="image/jpeg",
+            image="aGVsbG8=",
+            width=640,
+            height=480,
+        )
+        kafka_service.publish(Topics.CAMERA_IMAGE.processed, snapshot)
+
+        def snapshot_persisted() -> bool:
+            latest = storage.get_latest_camera_snapshot(plant_id=sample_sensor.plant_id)
+            return latest is not None and latest.correlation_id == "camera-kafka-integration-test"
+
+        wait_until(snapshot_persisted, timeout_seconds=10.0, interval_seconds=0.25)
 
     finally:
         bridge.disconnect()
@@ -192,7 +187,6 @@ def test_bridge_persists_sensor_alert_event(
     kafka_service: KafkaService,
     storage: TimescaleStorage,
     sample_sensor,
-    wait_until_condition: Callable[..., None],
 ) -> None:
     """Persist sensor alert events received from Kafka.
 
@@ -206,13 +200,6 @@ def test_bridge_persists_sensor_alert_event(
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
-    wait_until_condition : Callable[..., None]
-        Polling helper for async conditions.
-
-    Returns
-    -------
-    None
-        The assertions raise if alert event persistence regresses.
     """
     alert_key = "high_temp:sensor_test"
     storage.save_alert_definition(
@@ -234,7 +221,7 @@ def test_bridge_persists_sensor_alert_event(
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(bridge, wait_until_condition, {Topics.ALERTS})
+        wait_for_kafka_service_ready(bridge, {Topics.ALERTS})
 
         test_timestamp = time.time()
         kafka_service.publish(
@@ -270,7 +257,7 @@ def test_bridge_persists_sensor_alert_event(
             )
             return any(event.correlation_id == "alert-integration-test-1" for event in history)
 
-        wait_until_condition(event_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+        wait_until(event_persisted, timeout_seconds=10.0, interval_seconds=0.25)
 
     finally:
         bridge.disconnect()
@@ -281,7 +268,6 @@ def test_bridge_persists_external_alert_event(
     kafka_service: KafkaService,
     storage: TimescaleStorage,
     sample_sensor,
-    wait_until_condition: Callable[..., None],
 ) -> None:
     """Persist external alert events received from Kafka.
 
@@ -295,13 +281,6 @@ def test_bridge_persists_external_alert_event(
         Storage instance used by the bridge.
     sample_sensor : dt.communication.dataclasses.SensorDescriptor
         Registered sensor descriptor.
-    wait_until_condition : Callable[..., None]
-        Polling helper for async conditions.
-
-    Returns
-    -------
-    None
-        The assertions raise if external alert persistence regresses.
     """
     alert_key = "ai_anomaly:plant_test"
     storage.save_alert_definition(
@@ -323,7 +302,7 @@ def test_bridge_persists_external_alert_event(
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(bridge, wait_until_condition, {Topics.ALERTS})
+        wait_for_kafka_service_ready(bridge, {Topics.ALERTS})
 
         kafka_service.publish(
             Topics.ALERTS,
@@ -345,7 +324,48 @@ def test_bridge_persists_external_alert_event(
             )
             return any(event.correlation_id == "alert-integration-test-2" for event in history)
 
-        wait_until_condition(event_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+        wait_until(event_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+
+    finally:
+        bridge.disconnect()
+
+
+def test_bridge_persists_action_status_events(
+    kafka_bootstrap_servers: str,
+    kafka_service: KafkaService,
+    storage: TimescaleStorage,
+    sample_plant_id: int,
+) -> None:
+    """Persist action status events received from Kafka."""
+    actuator_id = storage.register_actuator(sample_plant_id, "water_pump", 17, 1)
+    test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
+    bridge = setup_bridge(config=test_config, storage=storage)
+    assert isinstance(bridge, KafkaService)
+
+    try:
+        wait_for_kafka_service_ready(bridge, {Topics.ACTIONS})
+
+        kafka_service.publish(
+            Topics.ACTIONS,
+            ActionCommand(
+                plant_id=sample_plant_id,
+                action_id="manual:plant-test:pump:on",
+                actuator_id=actuator_id,
+                started_at=time.time(),
+                duration=0.0,
+                command="ON",
+                reason="bridge integration test",
+                correlation_id="action-integration-test",
+                source="manual",
+                status="completed",
+            ),
+        )
+
+        def action_persisted() -> bool:
+            history = storage.get_action_history(sample_plant_id, limit=20)
+            return any(item.correlation_id == "action-integration-test" for item in history)
+
+        wait_until(action_persisted, timeout_seconds=10.0, interval_seconds=0.25)
 
     finally:
         bridge.disconnect()

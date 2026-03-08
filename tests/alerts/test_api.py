@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from dt.alerts.publisher import AlertPublisher
 from dt.alerts.registry import AlertRegistry
 from dt.alerts.rule_manager import AlertRuleManager
 from dt.alerts.rules import SeverityLevel
@@ -14,7 +13,7 @@ from dt.communication.dataclasses.alerts.alert_record import (
     AlertStatus,
     ExternalAlertEvent,
 )
-from tests.alerts.conftest import poll_alert_event
+from tests.alerts.helpers import poll_alert_event
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 

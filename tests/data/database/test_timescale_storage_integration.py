@@ -8,17 +8,16 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from dt.alerts.rules import SeverityLevel
-from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
+from dt.communication.dataclasses import (CameraSnapshot, ProcessedSensorData,
+                                          SensorDescriptor)
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    AlertStatus,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
+    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
+    SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  ReadingsQuery)
 from dt.communication.topics import Topics
 from dt.data.database.timescale_storage import TimescaleStorage
 
@@ -134,11 +133,13 @@ def test_register_and_list_actuators(storage: TimescaleStorage) -> None:
         The assertions raise if actuator persistence regresses.
     """
     plant_id = storage.upsert_plant(name="Test Plant")
-    storage.register_actuator(plant_id, "Water Pump", 1)
-    storage.register_actuator(plant_id, "Light", 2)
+    storage.register_actuator(plant_id, "Water Pump", 17, 1)
+    storage.register_actuator(plant_id, "Light", 18, 2)
 
     actuators = storage.list_actuators()
     assert [actuator["name"] for actuator in actuators] == ["Water Pump", "Light"]
+    assert [actuator["pin"] for actuator in actuators] == [17, 18]
+    assert [actuator["relay_channel"] for actuator in actuators] == [1, 2]
 
 
 def test_ingest_reading_persists_and_can_query_raw(storage: TimescaleStorage) -> None:
@@ -417,6 +418,121 @@ def test_save_and_load_external_alert_event(storage: TimescaleStorage) -> None:
     assert saved_event.metadata["wind_speed"] == "100km/h"
 
 
+def test_sensor_alert_details_reject_duplicate_rows(storage: TimescaleStorage) -> None:
+    """Enforce one sensor detail row per alert_history event."""
+    plant_id = storage.upsert_plant(name="Test Plant")
+    sensor_id = storage.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
+    )
+
+    definition = AlertDefinition(
+        alert_key="high_temp:temperature",
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        source="temperature",
+        rule_id="rule-1",
+        rule_name="High Temperature",
+        kind=AlertType.SENSOR,
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+    storage.save_alert_definition(definition)
+
+    reading = ProcessedSensorData(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=time.time(),
+        value=35.0,
+        unit="°C",
+        topic=Topics.TEMPERATURE,
+        correlation_id="corr-dup-sensor-1",
+        flags={ValidationFlag.VALID: True},
+        dq_score=1.0,
+        imputed=False,
+    )
+    event = SensorAlertEvent(
+        alert_key=definition.alert_key,
+        plant_id=plant_id,
+        timestamp=time.time(),
+        status=AlertStatus.ACTIVE,
+        severity=SeverityLevel.WARNING,
+        message="Too hot!",
+        correlation_id="corr-dup-sensor-1",
+        reading=reading,
+        threshold_op=">",
+        threshold_value=30.0,
+    )
+
+    event_id = storage.save_alert_event(event)
+
+    duplicate_query = """
+        INSERT INTO alert_sensors (
+            alert_history_id, sensor_id, plant_id, timestamp,
+            value, unit, topic, correlation_id,
+            flags, dq_score, imputed,
+            raw_value, calibrated_value, normalized_value,
+            calibration_profile_id, normalization_profile_id,
+            threshold_op, threshold_value, range_min, range_max
+        )
+        SELECT
+            alert_history_id, sensor_id, plant_id, timestamp,
+            value, unit, topic, correlation_id,
+            flags, dq_score, imputed,
+            raw_value, calibrated_value, normalized_value,
+            calibration_profile_id, normalization_profile_id,
+            threshold_op, threshold_value, range_min, range_max
+        FROM alert_sensors
+        WHERE alert_history_id = :alert_history_id AND plant_id = :plant_id
+    """
+    with storage.engine.begin() as conn, pytest.raises(IntegrityError):
+        conn.execute(
+            text(duplicate_query),
+            {"alert_history_id": event_id, "plant_id": plant_id},
+        )
+
+
+def test_external_alert_details_reject_duplicate_rows(storage: TimescaleStorage) -> None:
+    """Enforce one external detail row per alert_history event."""
+    plant_id = storage.upsert_plant(name="Test Plant")
+    definition = AlertDefinition(
+        alert_key="weather:storm",
+        plant_id=plant_id,
+        sensor_id=None,
+        source="weather_api",
+        rule_id=None,
+        rule_name="Storm Warning",
+        kind=AlertType.EXTERNAL,
+        persistence_count=0,
+        cooldown_seconds=0,
+    )
+    storage.save_alert_definition(definition)
+
+    event = ExternalAlertEvent(
+        alert_key=definition.alert_key,
+        plant_id=plant_id,
+        timestamp=time.time(),
+        status=AlertStatus.ACTIVE,
+        severity=SeverityLevel.CRITICAL,
+        message="Storm approaching",
+        correlation_id="corr-dup-ext-1",
+        metadata={"wind_speed": "100km/h", "direction": "NW"},
+    )
+
+    event_id = storage.save_alert_event(event)
+
+    duplicate_query = """
+        INSERT INTO alert_external (alert_history_id, plant_id, metadata)
+        SELECT alert_history_id, plant_id, metadata
+        FROM alert_external
+        WHERE alert_history_id = :alert_history_id AND plant_id = :plant_id
+    """
+    with storage.engine.begin() as conn, pytest.raises(IntegrityError):
+        conn.execute(
+            text(duplicate_query),
+            {"alert_history_id": event_id, "plant_id": plant_id},
+        )
+
+
 def test_get_active_alerts_excludes_cleared(storage: TimescaleStorage) -> None:
     """Exclude cleared alerts from the active alerts response.
 
@@ -472,3 +588,97 @@ def test_get_active_alerts_excludes_cleared(storage: TimescaleStorage) -> None:
     )
     active = storage.get_active_alerts(ActiveAlertsQuery(plant_id=plant_id))
     assert active == []
+
+
+def test_ingest_camera_snapshot_and_get_latest_returns_newest(
+    storage: TimescaleStorage,
+) -> None:
+    """Persist camera snapshots and return the latest snapshot for the plant/topic."""
+    plant_id = storage.upsert_plant(name="Camera Plant")
+    sensor_id = storage.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+    )
+
+    older = CameraSnapshot(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=1_735_689_600.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-older",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
+    newer = CameraSnapshot(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=1_735_689_700.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-newer",
+        mime_type="image/jpeg",
+        image="AQM=",
+        width=640,
+        height=480,
+    )
+
+    first_id = storage.ingest_camera_snapshot(older)
+    second_id = storage.ingest_camera_snapshot(newer)
+
+    assert first_id > 0
+    assert second_id > first_id
+
+    latest = storage.get_latest_camera_snapshot(plant_id=plant_id)
+
+    assert latest is not None
+    assert latest.correlation_id == "camera-newer"
+    assert latest.image == "AQM="
+    assert latest.topic is Topics.CAMERA_IMAGE
+    assert latest.width == 640
+    assert latest.height == 480
+
+
+def test_get_latest_camera_snapshot_filters_by_plant_and_topic(storage: TimescaleStorage) -> None:
+    """Filter latest camera snapshot by requested plant and topic."""
+    plant_one = storage.upsert_plant(name="Plant One")
+    plant_two = storage.upsert_plant(name="Plant Two")
+    sensor_one = storage.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_one, name="Camera One", pin=-1, read_interval=60)
+    )
+    sensor_two = storage.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_two, name="Camera Two", pin=-1, read_interval=60)
+    )
+
+    storage.ingest_camera_snapshot(
+        CameraSnapshot(
+            plant_id=plant_one,
+            sensor_id=sensor_one,
+            timestamp=1_735_689_600.0,
+            topic=Topics.CAMERA_IMAGE,
+            correlation_id="camera-plant-1",
+            mime_type="image/jpeg",
+            image="AQI=",
+            width=640,
+            height=480,
+        )
+    )
+    storage.ingest_camera_snapshot(
+        CameraSnapshot(
+            plant_id=plant_two,
+            sensor_id=sensor_two,
+            timestamp=1_735_689_700.0,
+            topic=Topics.CAMERA_IMAGE,
+            correlation_id="camera-plant-2",
+            mime_type="image/jpeg",
+            image="AQM=",
+            width=640,
+            height=480,
+        )
+    )
+
+    latest_plant_one = storage.get_latest_camera_snapshot(plant_id=plant_one)
+    missing_plant = storage.get_latest_camera_snapshot(plant_id=999_999)
+
+    assert latest_plant_one is not None
+    assert latest_plant_one.correlation_id == "camera-plant-1"
+    assert missing_plant is None

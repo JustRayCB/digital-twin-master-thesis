@@ -2,7 +2,6 @@
 
 import pytest
 
-from dt.alerts.publisher import AlertPublisher
 from dt.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
@@ -14,7 +13,7 @@ from dt.communication.dataclasses.alerts.alert_record import (
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.topics import Topics
-from tests.alerts.conftest import collect_alert_events, poll_alert_event
+from tests.alerts.helpers import collect_alert_events, poll_alert_event
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 

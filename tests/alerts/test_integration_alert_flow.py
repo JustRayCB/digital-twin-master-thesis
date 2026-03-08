@@ -6,7 +6,7 @@ import pytest
 
 from dt.alerts.evaluator import RuleEvaluator
 from dt.alerts.registry import AlertRegistry
-from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.alerts.rules import SeverityLevel
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertHistoryEvent,
@@ -15,7 +15,7 @@ from dt.communication.dataclasses.alerts.alert_record import (
 )
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.topics import Topics
-from tests.alerts.conftest import build_processed_reading, poll_alert_event, running_alert_service
+from tests.alerts.helpers import build_processed_reading, poll_alert_event, running_alert_service
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 

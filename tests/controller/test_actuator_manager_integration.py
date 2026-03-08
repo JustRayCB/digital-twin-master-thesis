@@ -10,8 +10,7 @@ from dt.communication.adapters import load
 from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.db_client import DatabaseApiClient
 from dt.controller.actuator_manager import ActuatorManager
-from tests.controller.conftest import (poll_action_messages,
-                                       wait_for_action_history)
+from tests.controller.helpers import poll_action_messages, wait_for_action_history
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 

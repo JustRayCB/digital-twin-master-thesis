@@ -3,11 +3,10 @@
 import pytest
 
 from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.registry import AlertRegistry
 from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
 from dt.communication.dataclasses.alerts.alert_record import AlertStatus
 from dt.communication.topics import Topics
-from tests.alerts.conftest import (
+from tests.alerts.helpers import (
     build_processed_reading,
     collect_alert_events,
     poll_alert_event,

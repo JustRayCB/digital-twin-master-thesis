@@ -20,8 +20,7 @@ from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
 from dt.controller.service import ControllerService
-from tests.controller.conftest import (poll_action_messages,
-                                       wait_for_action_history)
+from tests.controller.helpers import poll_action_messages, wait_for_action_history
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
