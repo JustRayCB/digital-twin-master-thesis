@@ -8,6 +8,7 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      ActuatorConfig)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import MessagingService
+from dt.communication.topics import Topics
 from dt.controller.action_keys import build_action_key
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
@@ -59,7 +60,7 @@ class ActuatorManager:
     def execute(self, action: ActionCommand) -> bool:
         self.logger.info(f"Received action: {action}")
         action.status = "running"
-        self.database_client.log_action_execution(action)
+        self._log_action(action)
 
         actuator = self.actuators.get(action.actuator_id)
         if not actuator:
@@ -119,11 +120,11 @@ class ActuatorManager:
         success = self.execute(off_action)
         if success:
             original_action.status = "completed"
-            self.database_client.log_action_execution(original_action)
+            self._log_action(original_action)
         else:
             original_action.status = "failed"
             original_action.error_message = "Auto-off execution failed"
-            self.database_client.log_action_execution(original_action)
+            self._log_action(original_action)
 
     def _validate_policy(self, action: ActionCommand, policy: ActuatorConfig) -> bool:
         # Always allow OFF commands to ensure we can stop actuators if needed
@@ -155,13 +156,12 @@ class ActuatorManager:
         self.logger.warning(f"Action {action.action_id} REJECTED: {reason}")
         action.status = "rejected"
         action.error_message = reason
-        self.database_client.log_action_execution(action)
+        self._log_action(action)
 
     def _complete(self, action: ActionCommand) -> None:
         self.logger.info(f"Action {action.action_id} COMPLETED")
         action.status = "completed"
-        self.database_client.log_action_execution(action)
-        # self.messaging_service.publish(Topics.ACTIONS, action)
+        self._log_action(action)
         with self.lock:
             self.active_executions.pop(action.actuator_id, None)
             self.last_completed[action.actuator_id] = time.time()
@@ -170,6 +170,10 @@ class ActuatorManager:
         self.logger.error(f"Action {action.action_id} FAILED: {reason}")
         action.status = "failed"
         action.error_message = reason
-        self.database_client.log_action_execution(action)
+        self._log_action(action)
         with self.lock:
             self.active_executions.pop(action.actuator_id, None)
+
+    def _log_action(self, action: ActionCommand) -> None:
+        if not self.messaging_service.publish(Topics.ACTIONS, action):
+            self.logger.warning(f"Failed to publish action status for {action.action_id}")

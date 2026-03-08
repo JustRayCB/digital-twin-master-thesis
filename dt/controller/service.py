@@ -302,7 +302,7 @@ class ControllerService:
             if self._ai_autopilot_enabled(routine.plant_id):
                 cmd.status = "skipped"
                 cmd.error_message = "Routine suspended while AI auto-pilot mode is enabled"
-                self.database_client.log_action_execution(cmd)
+                self.messaging_service.publish(Topics.ACTIONS, cmd)
                 continue
             self._execute_action(cmd)
 

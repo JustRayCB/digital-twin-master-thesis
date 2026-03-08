@@ -6,6 +6,7 @@ from dt.communication.messaging_service import MessagingService
 from dt.communication.topics import Topics
 from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import AlertHistoryEvent
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.messaging_service import KafkaService
 from dt.data.database.storage import Storage
 from dt.utils import get_logger
@@ -92,6 +93,14 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
         )
         storage.ingest_camera_snapshot(snapshot)
 
+    def persist_action_execution(action: ActionCommand):
+        """Persist action execution events received on the actions topic."""
+        logger.info(
+            f"Received action event: action_id={action.action_id}, "
+            f"status={action.status}, correlation_id={action.correlation_id}"
+        )
+        storage.log_action_execution(action)
+
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
     client: MessagingService = KafkaService(
         host=config.KAFKA_URL, client_id=unique_id, group_id="database_consumer_group"
@@ -109,6 +118,7 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
 
     # Subscribe to alerts topic
     client.subscribe(Topics.ALERTS, persist_alert_event)
+    client.subscribe(Topics.ACTIONS, persist_action_execution)
 
     logger.info("Messaging bridge setup complete")
     return client
