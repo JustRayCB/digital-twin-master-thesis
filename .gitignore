@@ -173,9 +173,6 @@ cython_debug/
 connections.json
 path/to/HDFS/dir
 report
-docs/briefs/roadmap.md
-AGENTS.md
-Roadmap — Digital Twin For Plant Health Monitoring.pdf
 poetry.lock
 package-lock.json
 /dt/webapp/frontend/node_modules
