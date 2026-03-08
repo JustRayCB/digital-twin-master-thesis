@@ -6,7 +6,7 @@ from typing import Optional
 from flask import Blueprint, Response, send_from_directory
 
 
-def create_ui_blueprint(ui_dir: Path, url_prefix: str = "/ui") -> Blueprint:
+def create_ui_blueprint(ui_dir: Path, url_prefix: str = "") -> Blueprint:
     bp = Blueprint("ui", __name__, url_prefix=url_prefix)
 
     def _index_missing() -> Response:

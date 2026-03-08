@@ -12,7 +12,7 @@ npm run dev
 
 ## Build for Flask
 
-The Flask webapp serves the built UI under `/ui/`. Build output is written to `dt/webapp/static/ui`.
+The Flask webapp serves the built UI from `/`. Build output is written to `dt/webapp/static/ui`.
 
 ```bash
 cd dt/webapp/frontend
@@ -21,5 +21,4 @@ npm run build
 ```
 
 Then run the dashboard backend and open:
-- `http://127.0.0.1:5000/ui/`
-
+- `http://127.0.0.1:5000/`

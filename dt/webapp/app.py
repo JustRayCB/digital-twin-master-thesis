@@ -1,11 +1,9 @@
 """Main Flask application for the web dashboard.
 
-This application serves the main dashboard for the digital twin project.
+This application serves the dashboard backend for the digital twin project.
 It has the following key responsibilities:
 
-1.  Web Interface: Renders the main `dashboard.html` template, which
-    provides the user interface for monitoring and controlling the digital
-    twin.
+1.  Web Interface: Serves the built Svelte single-page application.
 
 2.  Real-time Updates: Sets up a Flask-SocketIO server to push real-time
     sensor data to connected web clients.
@@ -19,11 +17,10 @@ It has the following key responsibilities:
     historical data from the database service.
 """
 
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask, render_template
+from flask import Flask
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -37,39 +34,6 @@ from dt.webapp.ui import create_ui_blueprint, default_ui_dir
 # Global SocketIO instance (initialized in create_app)
 socketio = SocketIO(cors_allowed_origins="*")
 logger = get_logger(__name__)
-
-
-# Simulated data for initial render (to be replaced by real data fetching)
-dashboard_data = {
-    # Plant Status Data
-    "last_update": datetime.now().strftime("%H:%M"),
-    "temperature": 23,
-    "humidity": 45,
-    "light": 780,
-    "connection_status": "Connected",
-    "health_status": "Good",
-    "health_details": "Growing normally, soil drying",
-    "alerts": [],
-    # Parameter Controls Data
-    "control_mode": "Auto",
-    "temp_setpoint": 23,
-    "humidity_setpoint": 45,
-    "soil_setpoint": 25,
-    "soil_moisture": 25,
-    # Real-time Monitoring Data (placeholders)
-    "monitoring_period": "24h",
-    "temp_history": [],
-    "humidity_history": [],
-    "soil_history": [],
-    "light_history": [],
-    # Quick Actions & Insights Data
-    "recommendations": [
-        "Water within next 8 hours",
-        "Light levels optimal",
-        "Temperature trending higher",
-        "Soil pH stable",
-    ],
-}
 
 
 def create_app(
@@ -117,11 +81,6 @@ def create_app(
     # Register UI Blueprint
     resolved_ui_dir = default_ui_dir() if ui_dir is None else ui_dir
     app.register_blueprint(create_ui_blueprint(resolved_ui_dir))
-
-    # Routes
-    @app.route("/")
-    def dashboard():
-        return render_template("dashboard.html", data=dashboard_data)
 
     # Kafka / Real-time Setup
     if start_consumer:
