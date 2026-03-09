@@ -18,6 +18,9 @@ class Config(StrEnum):
     DB_MIGRATIONS_DIR = os.getenv(
         "DB_MIGRATIONS_DIR", "dt/data/database/migrations"
     )  # Migrations directory
+    SNAPSHOT_STORAGE_ROOT = os.getenv(
+        "SNAPSHOT_STORAGE_ROOT", "data/camera_snapshots"
+    )  # Filesystem root for persisted camera snapshots
 
     # Flask server URLs
     FLASK_DASHBOARD_URL = os.getenv(
