@@ -40,7 +40,7 @@ def test_get_latest_camera_snapshot_returns_none_on_real_404(
     database_api_client: DatabaseApiClient,
 ) -> None:
     """Return None when the real database API has no snapshot for the plant."""
-    assert database_api_client.get_latest_camera_snapshot(plant_id=1) is None
+    assert database_api_client.get_latest_camera_snapshot(plant_id=999) is None
 
 
 def test_get_latest_camera_snapshot_wraps_real_request_failures() -> None:

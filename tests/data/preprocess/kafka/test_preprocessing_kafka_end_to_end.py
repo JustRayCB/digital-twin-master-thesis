@@ -11,7 +11,7 @@ from dt.communication.topics import Topics
 from dt.data.preprocess import main as preprocess_main
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.spark_adapter import SparkStreamingAdapter
-from tests.conftest import create_topic_consumer, ensure_kafka_topics
+from tests.helpers import create_topic_consumer, ensure_kafka_topics
 
 
 @pytest.fixture(scope="module")

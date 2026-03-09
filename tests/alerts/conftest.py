@@ -18,7 +18,7 @@ from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
-from tests.conftest import create_topic_consumer
+from tests.helpers import create_topic_consumer
 
 
 @pytest.fixture

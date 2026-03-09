@@ -16,7 +16,7 @@ from dt.controller.actuator_manager import ActuatorManager
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
 from dt.data.database.consumer import setup_bridge
-from tests.conftest import create_topic_consumer
+from tests.helpers import create_topic_consumer
 
 
 class RecordingDriver:
