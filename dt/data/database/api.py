@@ -16,6 +16,7 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
                                                   AlertHistoryQuery,
+                                                  CameraSnapshotQuery,
                                                   ReadingsQuery)
 from dt.data.database import (AlertStorage, ControllerStorage, MetadataStorage,
                               ReadingsStorage, SnapshotStorage)
@@ -104,6 +105,18 @@ def create_database_blueprint(
             return jsonify({"error": "No camera snapshot found"}), 404
 
         return jsonify(dump("generic", snapshot)), 200
+
+    @bp.route("/camera/snapshots", methods=["GET"])
+    def query_camera_snapshots():
+        """Return camera snapshots for a plant within an optional time interval."""
+        try:
+            query_params = load("generic", CameraSnapshotQuery, request.args.to_dict())
+        except Exception as exc:
+            logger.error(f"Invalid camera snapshot query parameters: {exc}")
+            return jsonify({"error": str(exc)}), 400
+
+        snapshots = snapshot_storage.query_camera_snapshots(query_params)
+        return jsonify([dump("generic", snapshot) for snapshot in snapshots]), 200
 
     @bp.route("/actuators", methods=["GET"])
     def list_actuators():

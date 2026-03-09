@@ -1,5 +1,4 @@
 import mimetypes
-import re
 from abc import ABC, abstractmethod
 from base64 import b64decode, b64encode
 from datetime import datetime, timezone
@@ -9,6 +8,7 @@ from sqlalchemy import text
 
 from dt.communication.adapters import dump
 from dt.communication.dataclasses import CameraSnapshot
+from dt.communication.dataclasses.queries import CameraSnapshotQuery
 from dt.communication.topics import Topics
 from dt.data.database.base_storage import DatabaseStorage
 from dt.utils import Config
@@ -46,6 +46,11 @@ class SnapshotStorage(DatabaseStorage, ABC):
         CameraSnapshot | None
             Latest snapshot if present, otherwise None.
         """
+        ...
+
+    @abstractmethod
+    def query_camera_snapshots(self, query: CameraSnapshotQuery) -> list[CameraSnapshot]:
+        """Fetch camera snapshots for a plant within an optional time interval."""
         ...
 
 
@@ -144,3 +149,30 @@ class SnapshotStore(SnapshotStorage):
 
         image = self._load_snapshot_image(Path(row.file_ref))
         return self._snapshot_from_row(row, image)
+
+    def query_camera_snapshots(self, query: CameraSnapshotQuery) -> list[CameraSnapshot]:
+        sql = """
+            SELECT id, plant_id, sensor_id, timestamp, topic, correlation_id, mime_type,
+                   width, height, file_ref
+            FROM camera_snapshots
+            WHERE plant_id = :plant_id
+        """
+        params: dict[str, float | int] = {"plant_id": query.plant_id}
+
+        if query.since is not None:
+            sql += " AND timestamp >= to_timestamp(:since)"
+            params["since"] = query.since
+        if query.until is not None:
+            sql += " AND timestamp <= to_timestamp(:until)"
+            params["until"] = query.until
+
+        sql += " ORDER BY timestamp ASC"
+
+        with self._get_connection() as conn:
+            rows = conn.execute(text(sql), params).fetchall()
+
+        snapshots: list[CameraSnapshot] = []
+        for row in rows:
+            image = self._load_snapshot_image(Path(row.file_ref))
+            snapshots.append(self._snapshot_from_row(row, image))
+        return snapshots

@@ -29,7 +29,10 @@ from dt.communication.dataclasses.controller import (
     Routine,
     RoutineUpdate,
 )
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  CameraSnapshotQuery,
+                                                  ReadingsQuery)
 from dt.utils import Config, get_logger
 
 
@@ -282,6 +285,24 @@ class DatabaseApiClient:
         except requests.RequestException as exc:
             self.logger.error(f"Error fetching latest camera snapshot: {exc}")
             raise RuntimeError(f"Failed to fetch latest camera snapshot: {exc}") from exc
+
+    def query_camera_snapshots(self, query: CameraSnapshotQuery) -> list[CameraSnapshot]:
+        """Fetch camera snapshots for a plant within an optional time interval."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/camera/snapshots",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error querying camera snapshots: {exc}")
+            raise RuntimeError(f"Failed to query camera snapshots: {exc}") from exc
+
+        return [load("generic", CameraSnapshot, item) for item in payload]
 
     # ---------------------------------------------------------------------- #
     # Alerts
