@@ -10,18 +10,17 @@ from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorDa
 from dt.communication.dataclasses.queries import ReadingsQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
-from dt.data.database.timescale_storage import TimescaleStorage
 
 pytestmark = [pytest.mark.requires_timescale]
 
 
 def test_query_readings_raw_structures_processed_readings(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    readings_store,
     reading: ProcessedSensorData,
 ) -> None:
     """Query raw readings and deserialize ProcessedSensorData instances."""
-    test_storage.ingest_reading(reading)
+    readings_store.ingest_reading(reading)
 
     readings = database_api_client.query_readings(
         ReadingsQuery(
@@ -39,12 +38,12 @@ def test_query_readings_raw_structures_processed_readings(
 
 def test_query_readings_1h_structures_aggregated_readings(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    readings_store,
     reading: ProcessedSensorData,
 ) -> None:
     """Query 1h aggregates and deserialize AggregatedReading instances."""
-    test_storage.ingest_reading(reading)
-    with test_storage.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+    readings_store.ingest_reading(reading)
+    with readings_store.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);"))
 
     readings = database_api_client.query_readings(

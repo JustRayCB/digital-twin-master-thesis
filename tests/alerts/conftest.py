@@ -45,30 +45,32 @@ def alerts_consumer(kafka_bootstrap_servers, kafka_topics):
 
 
 @pytest.fixture(scope="module")
-def sample_plant_id(shared_storage) -> int:
+def sample_plant_id(shared_metadata_store) -> int:
     """Create a sample plant in the test database.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    shared_metadata_store : MetadataStore
+        Metadata store backed by the test database.
 
     Returns
     -------
     int
         Plant identifier for alert tests.
     """
-    return shared_storage.upsert_plant(name="Alert Test Plant", notes="Alert service tests")
+    return shared_metadata_store.upsert_plant(
+        name="Alert Test Plant", notes="Alert service tests"
+    )
 
 
 @pytest.fixture(scope="module")
-def sample_sensor(shared_storage, sample_plant_id) -> SensorDescriptor:
+def sample_sensor(shared_metadata_store, sample_plant_id) -> SensorDescriptor:
     """Create a sample sensor in the test database.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    shared_metadata_store : MetadataStore
+        Metadata store backed by the test database.
     sample_plant_id : int
         Plant identifier for the test sensor.
 
@@ -80,7 +82,7 @@ def sample_sensor(shared_storage, sample_plant_id) -> SensorDescriptor:
     sensor = SensorDescriptor(
         id=0, plant_id=sample_plant_id, name="alert_sensor", pin=4, read_interval=60
     )
-    sensor_id = shared_storage.register_sensor(sensor)
+    sensor_id = shared_metadata_store.register_sensor(sensor)
     sensor.id = sensor_id
     return sensor
 

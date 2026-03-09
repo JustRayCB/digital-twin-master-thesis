@@ -18,8 +18,12 @@ from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
 from dt.communication.db_client import DatabaseApiClient
 from dt.data.database.app import create_app
+from dt.data.database.alerts_storage import AlertsStore
+from dt.data.database.controller_storage import ControllerStore
 from dt.data.database.migrations.runner import MigrationRunner
-from dt.data.database.timescale_storage import TimescaleStorage
+from dt.data.database.metadata_storage import MetadataStore
+from dt.data.database.readings_storage import ReadingsStore
+from dt.data.database.snapshot_storage import SnapshotStore
 from dt.utils import Config
 from tests.helpers import ensure_kafka_topics
 
@@ -152,25 +156,74 @@ def kafka_service(
 
 
 @pytest.fixture(scope="module")
-def shared_storage(db_engine: Engine) -> TimescaleStorage:
-    """Timescale storage shared across a test module."""
+def shared_metadata_store(db_engine: Engine) -> MetadataStore:
     truncate_timescale_database(db_engine)
-    return TimescaleStorage(engine=db_engine)
+    return MetadataStore(engine=db_engine)
 
 
 @pytest.fixture
-def test_storage(db_engine: Engine) -> TimescaleStorage:
-    """Clean Timescale storage for per-test isolation."""
+def metadata_store(db_engine: Engine) -> MetadataStore:
     truncate_timescale_database(db_engine)
-    return TimescaleStorage(engine=db_engine)
+    return MetadataStore(engine=db_engine)
+
+
+@pytest.fixture(scope="module")
+def shared_readings_store(db_engine: Engine) -> ReadingsStore:
+    return ReadingsStore(engine=db_engine)
+
+
+@pytest.fixture
+def readings_store(db_engine: Engine) -> ReadingsStore:
+    return ReadingsStore(engine=db_engine)
+
+
+@pytest.fixture(scope="module")
+def shared_alert_store(db_engine: Engine) -> AlertsStore:
+    return AlertsStore(engine=db_engine)
+
+
+@pytest.fixture
+def alert_store(db_engine: Engine) -> AlertsStore:
+    return AlertsStore(engine=db_engine)
+
+
+@pytest.fixture(scope="module")
+def shared_controller_store(db_engine: Engine) -> ControllerStore:
+    return ControllerStore(engine=db_engine)
+
+
+@pytest.fixture
+def controller_store(db_engine: Engine) -> ControllerStore:
+    return ControllerStore(engine=db_engine)
+
+
+@pytest.fixture(scope="module")
+def shared_snapshot_store(db_engine: Engine) -> SnapshotStore:
+    return SnapshotStore(engine=db_engine)
+
+
+@pytest.fixture
+def snapshot_store(db_engine: Engine) -> SnapshotStore:
+    return SnapshotStore(engine=db_engine)
 
 
 @pytest.fixture(scope="module")
 def database_service_base_url(
-    shared_storage: TimescaleStorage,
+    shared_metadata_store: MetadataStore,
+    shared_readings_store: ReadingsStore,
+    shared_alert_store: AlertsStore,
+    shared_controller_store: ControllerStore,
+    shared_snapshot_store: SnapshotStore,
 ) -> Generator[str, None, None]:
     """Start the database service and return its base URL."""
-    app = create_app(config=Config, storage=shared_storage)
+    app = create_app(
+        config=Config,
+        metadata_storage=shared_metadata_store,
+        readings_storage=shared_readings_store,
+        alert_storage=shared_alert_store,
+        controller_storage=shared_controller_store,
+        snapshot_storage=shared_snapshot_store,
+    )
     server = make_server("127.0.0.1", 0, app)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

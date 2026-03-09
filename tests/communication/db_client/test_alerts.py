@@ -18,14 +18,13 @@ from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
-from dt.data.database.timescale_storage import TimescaleStorage
 
 pytestmark = [pytest.mark.requires_timescale]
 
 
 def test_get_alert_history_parses_polymorphic_events(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    alert_store,
     sensor: SensorDescriptor,
 ) -> None:
     """Return sensor, external, and base alert history events from the real API."""
@@ -40,8 +39,8 @@ def test_get_alert_history_parses_polymorphic_events(
         persistence_count=3,
         cooldown_seconds=300,
     )
-    test_storage.save_alert_definition(definition)
-    test_storage.save_alert_definition(
+    alert_store.save_alert_definition(definition)
+    alert_store.save_alert_definition(
         AlertDefinition(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -54,7 +53,7 @@ def test_get_alert_history_parses_polymorphic_events(
             cooldown_seconds=0,
         )
     )
-    test_storage.save_alert_definition(
+    alert_store.save_alert_definition(
         AlertDefinition(
             alert_key="base:event",
             plant_id=sensor.plant_id,
@@ -68,7 +67,7 @@ def test_get_alert_history_parses_polymorphic_events(
         )
     )
 
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         SensorAlertEvent(
             alert_key="rule1:temp",
             plant_id=sensor.plant_id,
@@ -91,7 +90,7 @@ def test_get_alert_history_parses_polymorphic_events(
             ),
         )
     )
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         ExternalAlertEvent(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -103,7 +102,7 @@ def test_get_alert_history_parses_polymorphic_events(
             metadata={"model": "demo"},
         )
     )
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         AlertHistoryEvent(
             alert_key="base:event",
             plant_id=sensor.plant_id,
@@ -133,7 +132,7 @@ def test_get_alert_history_parses_polymorphic_events(
 
 def test_get_active_alerts_returns_real_active_events(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    alert_store,
     sensor: SensorDescriptor,
 ) -> None:
     """Return active alerts and deserialize sensor payloads from the real API."""
@@ -148,8 +147,8 @@ def test_get_active_alerts_returns_real_active_events(
         persistence_count=3,
         cooldown_seconds=300,
     )
-    test_storage.save_alert_definition(definition)
-    test_storage.save_alert_definition(
+    alert_store.save_alert_definition(definition)
+    alert_store.save_alert_definition(
         AlertDefinition(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -162,7 +161,7 @@ def test_get_active_alerts_returns_real_active_events(
             cooldown_seconds=0,
         )
     )
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         SensorAlertEvent(
             alert_key="rule1:temp",
             plant_id=sensor.plant_id,
@@ -185,7 +184,7 @@ def test_get_active_alerts_returns_real_active_events(
             ),
         )
     )
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         ExternalAlertEvent(
             alert_key="ai:anomaly",
             plant_id=sensor.plant_id,
@@ -210,7 +209,7 @@ def test_get_active_alerts_returns_real_active_events(
 
 def test_ensure_alert_definition_posts_to_real_api(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    alert_store,
     sensor: SensorDescriptor,
 ) -> None:
     """Persist alert definitions through the database API."""
@@ -228,7 +227,7 @@ def test_ensure_alert_definition_posts_to_real_api(
 
     database_api_client.ensure_alert_definition(definition)
 
-    with test_storage.engine.begin() as conn:
+    with alert_store.engine.begin() as conn:
         stored = conn.execute(
             text(
                 """

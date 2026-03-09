@@ -7,14 +7,13 @@ import pytest
 from dt.communication.dataclasses import CameraSnapshot, SensorDescriptor
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
-from dt.data.database.timescale_storage import TimescaleStorage
 
 pytestmark = [pytest.mark.requires_timescale]
 
 
 def test_get_latest_camera_snapshot_reads_real_api_payload(
     database_api_client: DatabaseApiClient,
-    test_storage: TimescaleStorage,
+    snapshot_store,
     sensor: SensorDescriptor,
 ) -> None:
     """Fetch the latest camera snapshot from the real database API."""
@@ -29,7 +28,7 @@ def test_get_latest_camera_snapshot_reads_real_api_payload(
         width=640,
         height=480,
     )
-    test_storage.ingest_camera_snapshot(snapshot)
+    snapshot_store.ingest_camera_snapshot(snapshot)
 
     result = database_api_client.get_latest_camera_snapshot(plant_id=sensor.plant_id)
 

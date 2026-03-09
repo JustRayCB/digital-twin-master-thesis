@@ -1,4 +1,4 @@
-"""Integration tests for the TimescaleStorage implementation."""
+"""Integration tests for database persistence stores."""
 
 import time
 from datetime import datetime, timezone
@@ -19,88 +19,86 @@ from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
                                                   AlertHistoryQuery,
                                                   ReadingsQuery)
 from dt.communication.topics import Topics
-from dt.data.database.timescale_storage import TimescaleStorage
-
 pytestmark = [pytest.mark.requires_timescale]
 
 
-def test_upsert_plant_inserts_row(test_storage: TimescaleStorage) -> None:
+def test_upsert_plant_inserts_row(metadata_store) -> None:
     """Insert a plant record and return its identifier.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store backed by the test database.
 
     Returns
     -------
     None
         The assertions raise if plant insertion regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Tomato Plant", notes="Test plant")
+    plant_id = metadata_store.upsert_plant(name="Tomato Plant", notes="Test plant")
 
     assert plant_id > 0
-    plants = test_storage.list_plants()
+    plants = metadata_store.list_plants()
     assert plants == [{"id": plant_id, "name": "Tomato Plant", "notes": "Test plant"}]
 
 
-def test_upsert_plant_updates_existing_row(test_storage: TimescaleStorage) -> None:
+def test_upsert_plant_updates_existing_row(metadata_store) -> None:
     """Update an existing plant record in place.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store backed by the test database.
 
     Returns
     -------
     None
         The assertions raise if updating a plant regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Tomato Plant", notes="Initial notes")
-    updated_id = test_storage.upsert_plant(
+    plant_id = metadata_store.upsert_plant(name="Tomato Plant", notes="Initial notes")
+    updated_id = metadata_store.upsert_plant(
         plant_id=plant_id, name="Updated Tomato", notes="Updated notes"
     )
 
     assert updated_id == plant_id
-    plants = test_storage.list_plants()
+    plants = metadata_store.list_plants()
     assert plants[0]["name"] == "Updated Tomato"
     assert plants[0]["notes"] == "Updated notes"
 
 
-def test_register_and_list_sensors(test_storage: TimescaleStorage) -> None:
+def test_register_and_list_sensors(metadata_store) -> None:
     """Register sensors and list them back.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store backed by the test database.
 
     Returns
     -------
     None
         The assertions raise if sensor persistence regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
 
     sensor1 = SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
     sensor2 = SensorDescriptor(id=-1, plant_id=plant_id, name="BH1750", pin=5, read_interval=60)
 
-    id1 = test_storage.register_sensor(sensor1)
-    id2 = test_storage.register_sensor(sensor2)
+    id1 = metadata_store.register_sensor(sensor1)
+    id2 = metadata_store.register_sensor(sensor2)
 
-    sensors = test_storage.list_sensors()
+    sensors = metadata_store.list_sensors()
     assert [sensor.id for sensor in sensors] == [id1, id2]
     assert [sensor.name for sensor in sensors] == ["DHT22", "BH1750"]
 
 
-def test_register_sensor_rejects_unknown_plant(test_storage: TimescaleStorage) -> None:
+def test_register_sensor_rejects_unknown_plant(metadata_store) -> None:
     """Reject sensor registration when the plant foreign key is missing.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store backed by the test database.
 
     Returns
     -------
@@ -116,47 +114,49 @@ def test_register_sensor_rejects_unknown_plant(test_storage: TimescaleStorage) -
     )
 
     with pytest.raises(IntegrityError):
-        test_storage.register_sensor(sensor)
+        metadata_store.register_sensor(sensor)
 
 
-def test_register_and_list_actuators(test_storage: TimescaleStorage) -> None:
+def test_register_and_list_actuators(metadata_store) -> None:
     """Register actuators and list them back.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store backed by the test database.
 
     Returns
     -------
     None
         The assertions raise if actuator persistence regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
-    test_storage.register_actuator(plant_id, "Water Pump", 17, 1)
-    test_storage.register_actuator(plant_id, "Light", 18, 2)
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    metadata_store.register_actuator(plant_id, "Water Pump", 17, 1)
+    metadata_store.register_actuator(plant_id, "Light", 18, 2)
 
-    actuators = test_storage.list_actuators()
+    actuators = metadata_store.list_actuators()
     assert [actuator["name"] for actuator in actuators] == ["Water Pump", "Light"]
     assert [actuator["pin"] for actuator in actuators] == [17, 18]
     assert [actuator["relay_channel"] for actuator in actuators] == [1, 2]
 
 
-def test_ingest_reading_persists_and_can_query_raw(test_storage: TimescaleStorage) -> None:
+def test_ingest_reading_persists_and_can_query_raw(metadata_store, readings_store) -> None:
     """Persist a processed reading and retrieve it by query filters.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    readings_store : ReadingsStore
+        Store used for time-series persistence.
 
     Returns
     -------
     None
         The assertions raise if ingest/query regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
-    sensor_id = test_storage.register_sensor(
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    sensor_id = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
     )
 
@@ -178,9 +178,9 @@ def test_ingest_reading_persists_and_can_query_raw(test_storage: TimescaleStorag
         calibration_profile_id="default",
         normalization_profile_id="temp_norm",
     )
-    test_storage.ingest_reading(reading)
+    readings_store.ingest_reading(reading)
 
-    readings = test_storage.query_readings(
+    readings = readings_store.query_readings(
         ReadingsQuery(sensor_id=sensor_id, since=now - 60, until=now + 60, window="raw")
     )
 
@@ -190,20 +190,22 @@ def test_ingest_reading_persists_and_can_query_raw(test_storage: TimescaleStorag
     assert readings[0].raw_value == 22.3
 
 
-def test_ingest_reading_rejects_unknown_sensor(test_storage: TimescaleStorage) -> None:
+def test_ingest_reading_rejects_unknown_sensor(metadata_store, readings_store) -> None:
     """Reject reading ingest when the sensor foreign key is missing.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    readings_store : ReadingsStore
+        Store used for time-series persistence.
 
     Returns
     -------
     None
         The assertions raise if FK enforcement regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
     reading = ProcessedSensorData(
         plant_id=plant_id,
         sensor_id=9999,
@@ -218,30 +220,32 @@ def test_ingest_reading_rejects_unknown_sensor(test_storage: TimescaleStorage) -
     )
 
     with pytest.raises(IntegrityError):
-        test_storage.ingest_reading(reading)
+        readings_store.ingest_reading(reading)
 
 
-def test_query_aggregates_returns_1h_buckets(test_storage: TimescaleStorage) -> None:
+def test_query_aggregates_returns_1h_buckets(metadata_store, readings_store) -> None:
     """Aggregate readings into 1-hour buckets via the continuous aggregate.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    readings_store : ReadingsStore
+        Store used for time-series persistence.
 
     Returns
     -------
     None
         The assertions raise if aggregate queries regress.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
-    sensor_id = test_storage.register_sensor(
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    sensor_id = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
     )
 
     base_time = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp()
     for i in range(6):
-        test_storage.ingest_reading(
+        readings_store.ingest_reading(
             ProcessedSensorData(
                 plant_id=plant_id,
                 sensor_id=sensor_id,
@@ -256,11 +260,11 @@ def test_query_aggregates_returns_1h_buckets(test_storage: TimescaleStorage) -> 
             )
         )
 
-    with test_storage.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+    with readings_store.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);"))
         conn.commit()
 
-    aggregates = test_storage.query_aggregates(
+    aggregates = readings_store.query_aggregates(
         ReadingsQuery(
             sensor_id=sensor_id, since=base_time - 60, until=base_time + 7200, window="1h"
         )
@@ -272,20 +276,22 @@ def test_query_aggregates_returns_1h_buckets(test_storage: TimescaleStorage) -> 
     assert aggregates[0].max_value == 25.0
 
 
-def test_save_alert_event_requires_registered_definition(test_storage: TimescaleStorage) -> None:
+def test_save_alert_event_requires_registered_definition(metadata_store, alert_store) -> None:
     """Fail fast when saving an event without a pre-registered definition.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    alert_store : AlertsStore
+        Store used for alert persistence.
 
     Returns
     -------
     None
         The assertions raise if alert definition enforcement regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
     event = AlertHistoryEvent(
         alert_key="missing:def",
         plant_id=plant_id,
@@ -297,27 +303,29 @@ def test_save_alert_event_requires_registered_definition(test_storage: Timescale
     )
 
     with pytest.raises(ValueError, match="alert definition"):
-        test_storage.save_alert_event(event)
+        alert_store.save_alert_event(event)
 
-    with test_storage.engine.connect() as conn:
+    with alert_store.engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM alert_history")).scalar_one() == 0
 
 
-def test_save_and_load_sensor_alert_event(test_storage: TimescaleStorage) -> None:
+def test_save_and_load_sensor_alert_event(metadata_store, alert_store) -> None:
     """Persist a sensor alert event and reconstruct it from storage.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    alert_store : AlertsStore
+        Store used for alert persistence.
 
     Returns
     -------
     None
         The assertions raise if alert event persistence regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
-    sensor_id = test_storage.register_sensor(
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    sensor_id = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
     )
 
@@ -332,7 +340,7 @@ def test_save_and_load_sensor_alert_event(test_storage: TimescaleStorage) -> Non
         persistence_count=1,
         cooldown_seconds=300,
     )
-    test_storage.save_alert_definition(definition)
+    alert_store.save_alert_definition(definition)
 
     reading = ProcessedSensorData(
         plant_id=plant_id,
@@ -359,10 +367,10 @@ def test_save_and_load_sensor_alert_event(test_storage: TimescaleStorage) -> Non
         threshold_value=30.0,
     )
 
-    event_id = test_storage.save_alert_event(event)
+    event_id = alert_store.save_alert_event(event)
     assert event_id > 0
 
-    history = test_storage.get_alert_history(AlertHistoryQuery(plant_id=plant_id))
+    history = alert_store.get_alert_history(AlertHistoryQuery(plant_id=plant_id))
     assert len(history) == 1
     saved_event = history[0]
 
@@ -371,20 +379,22 @@ def test_save_and_load_sensor_alert_event(test_storage: TimescaleStorage) -> Non
     assert saved_event.threshold_op == ">"
 
 
-def test_save_and_load_external_alert_event(test_storage: TimescaleStorage) -> None:
+def test_save_and_load_external_alert_event(metadata_store, alert_store) -> None:
     """Persist an external alert event and reconstruct it from storage.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    alert_store : AlertsStore
+        Store used for alert persistence.
 
     Returns
     -------
     None
         The assertions raise if external alert persistence regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
     definition = AlertDefinition(
         alert_key="weather:storm",
         plant_id=plant_id,
@@ -396,7 +406,7 @@ def test_save_and_load_external_alert_event(test_storage: TimescaleStorage) -> N
         persistence_count=0,
         cooldown_seconds=0,
     )
-    test_storage.save_alert_definition(definition)
+    alert_store.save_alert_definition(definition)
 
     event = ExternalAlertEvent(
         alert_key=definition.alert_key,
@@ -409,8 +419,8 @@ def test_save_and_load_external_alert_event(test_storage: TimescaleStorage) -> N
         metadata={"wind_speed": "100km/h", "direction": "NW"},
     )
 
-    test_storage.save_alert_event(event)
-    history = test_storage.get_alert_history(AlertHistoryQuery(plant_id=plant_id))
+    alert_store.save_alert_event(event)
+    history = alert_store.get_alert_history(AlertHistoryQuery(plant_id=plant_id))
 
     assert len(history) == 1
     saved_event = history[0]
@@ -418,10 +428,10 @@ def test_save_and_load_external_alert_event(test_storage: TimescaleStorage) -> N
     assert saved_event.metadata["wind_speed"] == "100km/h"
 
 
-def test_sensor_alert_details_reject_duplicate_rows(test_storage: TimescaleStorage) -> None:
+def test_sensor_alert_details_reject_duplicate_rows(metadata_store, alert_store) -> None:
     """Enforce one sensor detail row per alert_history event."""
-    plant_id = test_storage.upsert_plant(name="Test Plant")
-    sensor_id = test_storage.register_sensor(
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    sensor_id = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
     )
 
@@ -436,7 +446,7 @@ def test_sensor_alert_details_reject_duplicate_rows(test_storage: TimescaleStora
         persistence_count=1,
         cooldown_seconds=300,
     )
-    test_storage.save_alert_definition(definition)
+    alert_store.save_alert_definition(definition)
 
     reading = ProcessedSensorData(
         plant_id=plant_id,
@@ -463,7 +473,7 @@ def test_sensor_alert_details_reject_duplicate_rows(test_storage: TimescaleStora
         threshold_value=30.0,
     )
 
-    event_id = test_storage.save_alert_event(event)
+    event_id = alert_store.save_alert_event(event)
 
     duplicate_query = """
         INSERT INTO alert_sensors (
@@ -484,16 +494,16 @@ def test_sensor_alert_details_reject_duplicate_rows(test_storage: TimescaleStora
         FROM alert_sensors
         WHERE alert_history_id = :alert_history_id AND plant_id = :plant_id
     """
-    with test_storage.engine.begin() as conn, pytest.raises(IntegrityError):
+    with alert_store.engine.begin() as conn, pytest.raises(IntegrityError):
         conn.execute(
             text(duplicate_query),
             {"alert_history_id": event_id, "plant_id": plant_id},
         )
 
 
-def test_external_alert_details_reject_duplicate_rows(test_storage: TimescaleStorage) -> None:
+def test_external_alert_details_reject_duplicate_rows(metadata_store, alert_store) -> None:
     """Enforce one external detail row per alert_history event."""
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
     definition = AlertDefinition(
         alert_key="weather:storm",
         plant_id=plant_id,
@@ -505,7 +515,7 @@ def test_external_alert_details_reject_duplicate_rows(test_storage: TimescaleSto
         persistence_count=0,
         cooldown_seconds=0,
     )
-    test_storage.save_alert_definition(definition)
+    alert_store.save_alert_definition(definition)
 
     event = ExternalAlertEvent(
         alert_key=definition.alert_key,
@@ -518,7 +528,7 @@ def test_external_alert_details_reject_duplicate_rows(test_storage: TimescaleSto
         metadata={"wind_speed": "100km/h", "direction": "NW"},
     )
 
-    event_id = test_storage.save_alert_event(event)
+    event_id = alert_store.save_alert_event(event)
 
     duplicate_query = """
         INSERT INTO alert_external (alert_history_id, plant_id, metadata)
@@ -526,27 +536,29 @@ def test_external_alert_details_reject_duplicate_rows(test_storage: TimescaleSto
         FROM alert_external
         WHERE alert_history_id = :alert_history_id AND plant_id = :plant_id
     """
-    with test_storage.engine.begin() as conn, pytest.raises(IntegrityError):
+    with alert_store.engine.begin() as conn, pytest.raises(IntegrityError):
         conn.execute(
             text(duplicate_query),
             {"alert_history_id": event_id, "plant_id": plant_id},
         )
 
 
-def test_get_active_alerts_excludes_cleared(test_storage: TimescaleStorage) -> None:
+def test_get_active_alerts_excludes_cleared(metadata_store, alert_store) -> None:
     """Exclude cleared alerts from the active alerts response.
 
     Parameters
     ----------
-    test_storage : TimescaleStorage
-        Storage instance backed by the test database.
+    metadata_store : MetadataStore
+        Store used for relational setup.
+    alert_store : AlertsStore
+        Store used for alert persistence.
 
     Returns
     -------
     None
         The assertions raise if active alert selection regresses.
     """
-    plant_id = test_storage.upsert_plant(name="Test Plant")
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
     definition = AlertDefinition(
         alert_key="high_temp:temperature",
         plant_id=plant_id,
@@ -558,9 +570,9 @@ def test_get_active_alerts_excludes_cleared(test_storage: TimescaleStorage) -> N
         persistence_count=3,
         cooldown_seconds=300,
     )
-    test_storage.save_alert_definition(definition)
+    alert_store.save_alert_definition(definition)
 
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         AlertHistoryEvent(
             alert_key=definition.alert_key,
             plant_id=plant_id,
@@ -571,10 +583,10 @@ def test_get_active_alerts_excludes_cleared(test_storage: TimescaleStorage) -> N
             correlation_id="corr-1",
         )
     )
-    active = test_storage.get_active_alerts(ActiveAlertsQuery(plant_id=plant_id))
+    active = alert_store.get_active_alerts(ActiveAlertsQuery(plant_id=plant_id))
     assert len(active) == 1
 
-    test_storage.save_alert_event(
+    alert_store.save_alert_event(
         AlertHistoryEvent(
             alert_key=definition.alert_key,
             plant_id=plant_id,
@@ -586,16 +598,17 @@ def test_get_active_alerts_excludes_cleared(test_storage: TimescaleStorage) -> N
             cleared_ts=time.time() + 5,
         )
     )
-    active = test_storage.get_active_alerts(ActiveAlertsQuery(plant_id=plant_id))
+    active = alert_store.get_active_alerts(ActiveAlertsQuery(plant_id=plant_id))
     assert active == []
 
 
 def test_ingest_camera_snapshot_and_get_latest_returns_newest(
-    test_storage: TimescaleStorage,
+    metadata_store,
+    snapshot_store,
 ) -> None:
     """Persist camera snapshots and return the latest snapshot for the plant/topic."""
-    plant_id = test_storage.upsert_plant(name="Camera Plant")
-    sensor_id = test_storage.register_sensor(
+    plant_id = metadata_store.upsert_plant(name="Camera Plant")
+    sensor_id = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
     )
 
@@ -622,13 +635,13 @@ def test_ingest_camera_snapshot_and_get_latest_returns_newest(
         height=480,
     )
 
-    first_id = test_storage.ingest_camera_snapshot(older)
-    second_id = test_storage.ingest_camera_snapshot(newer)
+    first_id = snapshot_store.ingest_camera_snapshot(older)
+    second_id = snapshot_store.ingest_camera_snapshot(newer)
 
     assert first_id > 0
     assert second_id > first_id
 
-    latest = test_storage.get_latest_camera_snapshot(plant_id=plant_id)
+    latest = snapshot_store.get_latest_camera_snapshot(plant_id=plant_id)
 
     assert latest is not None
     assert latest.correlation_id == "camera-newer"
@@ -638,18 +651,20 @@ def test_ingest_camera_snapshot_and_get_latest_returns_newest(
     assert latest.height == 480
 
 
-def test_get_latest_camera_snapshot_filters_by_plant_and_topic(test_storage: TimescaleStorage) -> None:
+def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
+    metadata_store, snapshot_store
+) -> None:
     """Filter latest camera snapshot by requested plant and topic."""
-    plant_one = test_storage.upsert_plant(name="Plant One")
-    plant_two = test_storage.upsert_plant(name="Plant Two")
-    sensor_one = test_storage.register_sensor(
+    plant_one = metadata_store.upsert_plant(name="Plant One")
+    plant_two = metadata_store.upsert_plant(name="Plant Two")
+    sensor_one = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_one, name="Camera One", pin=-1, read_interval=60)
     )
-    sensor_two = test_storage.register_sensor(
+    sensor_two = metadata_store.register_sensor(
         SensorDescriptor(id=-1, plant_id=plant_two, name="Camera Two", pin=-1, read_interval=60)
     )
 
-    test_storage.ingest_camera_snapshot(
+    snapshot_store.ingest_camera_snapshot(
         CameraSnapshot(
             plant_id=plant_one,
             sensor_id=sensor_one,
@@ -662,7 +677,7 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(test_storage: Tim
             height=480,
         )
     )
-    test_storage.ingest_camera_snapshot(
+    snapshot_store.ingest_camera_snapshot(
         CameraSnapshot(
             plant_id=plant_two,
             sensor_id=sensor_two,
@@ -676,8 +691,8 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(test_storage: Tim
         )
     )
 
-    latest_plant_one = test_storage.get_latest_camera_snapshot(plant_id=plant_one)
-    missing_plant = test_storage.get_latest_camera_snapshot(plant_id=999_999)
+    latest_plant_one = snapshot_store.get_latest_camera_snapshot(plant_id=plant_one)
+    missing_plant = snapshot_store.get_latest_camera_snapshot(plant_id=999_999)
 
     assert latest_plant_one is not None
     assert latest_plant_one.correlation_id == "camera-plant-1"
