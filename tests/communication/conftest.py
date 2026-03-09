@@ -76,15 +76,15 @@ def processed_sensor_data_full() -> ProcessedSensorData:
 
 
 @pytest.fixture
-def plant_id(test_storage) -> int:
+def plant_id(metadata_store) -> int:
     """Create a plant used by client integration tests."""
-    return test_storage.upsert_plant(
+    return metadata_store.upsert_plant(
         name="Communication Test Plant", notes="db_client integration tests"
     )
 
 
 @pytest.fixture
-def sensor(test_storage, plant_id: int) -> SensorDescriptor:
+def sensor(metadata_store, plant_id: int) -> SensorDescriptor:
     """Register a sensor for client integration tests."""
     sensor = SensorDescriptor(
         id=0,
@@ -93,7 +93,7 @@ def sensor(test_storage, plant_id: int) -> SensorDescriptor:
         pin=17,
         read_interval=5,
     )
-    sensor.id = test_storage.register_sensor(sensor)
+    sensor.id = metadata_store.register_sensor(sensor)
     return sensor
 
 
