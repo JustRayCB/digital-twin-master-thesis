@@ -158,11 +158,7 @@ class SensorManager:
                     continue
 
                 data[sensor.name] = reading
-                topic = (
-                    sensor.topic.processed
-                    if sensor.topic == Topics.CAMERA_IMAGE
-                    else sensor.topic.raw
-                )
+                topic = sensor.topic.raw
                 self.messaging_service.publish(
                     topic, data[sensor.name]
                 )  # Publish the data to whoever is subscribed to the topic
