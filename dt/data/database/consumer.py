@@ -2,19 +2,25 @@
 
 import uuid
 
-from dt.communication.messaging_service import MessagingService
-from dt.communication.topics import Topics
 from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import AlertHistoryEvent
 from dt.communication.dataclasses.controller import ActionCommand
-from dt.communication.messaging_service import KafkaService
-from dt.data.database.storage import Storage
+from dt.communication.messaging_service import KafkaService, MessagingService
+from dt.communication.topics import Topics
+from dt.data.database import (AlertStorage, ControllerStorage, ReadingsStorage,
+                              SnapshotStorage)
 from dt.utils import get_logger
 
 logger = get_logger(__name__)
 
 
-def setup_bridge(config, storage: Storage) -> MessagingService:
+def setup_bridge(
+    config,
+    readings_storage: ReadingsStorage,
+    alert_storage: AlertStorage,
+    controller_storage: ControllerStorage,
+    snapshot_storage: SnapshotStorage,
+) -> MessagingService:
     """Set up the messaging bridge to the database.
 
     This function initializes a Kafka client, connects to the broker, and
@@ -25,8 +31,8 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
     ----------
     config : Config
         Configuration object containing Kafka settings.
-    storage : Storage
-        Storage backend to persist messages to.
+    readings_storage, alert_storage, controller_storage, snapshot_storage
+        Storage backends required to persist bridge messages.
 
     Returns
     -------
@@ -56,7 +62,7 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
             f"Received processed measurement: sensor_id={payload.sensor_id}, "
             f"value={payload.value}, timestamp={payload.timestamp}"
         )
-        storage.ingest_reading(payload)
+        readings_storage.ingest_reading(payload)
 
     def persist_alert_event(event: AlertHistoryEvent):
         """Callback function for alert events from the messaging service.
@@ -76,7 +82,7 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
         )
 
         # Save the alert history event
-        event_id = storage.save_alert_event(event)
+        event_id = alert_storage.save_alert_event(event)
         logger.info(f"Persisted alert event with ID {event_id}")
 
     def persist_camera_snapshot(snapshot: CameraSnapshot):
@@ -91,7 +97,7 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
             f"Received camera snapshot: sensor_id={snapshot.sensor_id}, "
             f"timestamp={snapshot.timestamp}"
         )
-        storage.ingest_camera_snapshot(snapshot)
+        snapshot_storage.ingest_camera_snapshot(snapshot)
 
     def persist_action_execution(action: ActionCommand):
         """Persist action execution events received on the actions topic."""
@@ -99,7 +105,7 @@ def setup_bridge(config, storage: Storage) -> MessagingService:
             f"Received action event: action_id={action.action_id}, "
             f"status={action.status}, correlation_id={action.correlation_id}"
         )
-        storage.log_action_execution(action)
+        controller_storage.log_action_execution(action)
 
     unique_id = f"database_{uuid.uuid4().hex[:8]}"
     client: MessagingService = KafkaService(

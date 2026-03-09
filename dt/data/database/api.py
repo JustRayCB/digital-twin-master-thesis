@@ -10,22 +10,33 @@ from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import SensorDescriptor
-from dt.communication.dataclasses.controller import ActionCommand, ControlMode, RoutineUpdate
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
-from dt.data.database.storage import Storage
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ControlMode,
+                                                     RoutineUpdate)
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  ReadingsQuery)
+from dt.data.database import (AlertStorage, ControllerStorage, MetadataStorage,
+                              ReadingsStorage, SnapshotStorage)
 from dt.utils import get_logger
 
 logger = get_logger(__name__)
 
 
-def create_database_blueprint(storage: Storage) -> Blueprint:
+def create_database_blueprint(
+    metadata_storage: MetadataStorage,
+    readings_storage: ReadingsStorage,
+    alert_storage: AlertStorage,
+    controller_storage: ControllerStorage,
+    snapshot_storage: SnapshotStorage,
+) -> Blueprint:
     """Create a Flask blueprint for the database service API.
 
     Parameters
     ----------
-    storage : Storage
-        The storage backend instance used for data persistence and retrieval.
+    metadata_storage, readings_storage, alert_storage, controller_storage, snapshot_storage
+        Storage backends used by the routes in this blueprint.
 
     Returns
     -------
@@ -49,7 +60,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid sensor data: {e}")
             return jsonify({"error": "Invalid sensor data format"}), 400
 
-        sensor_id = storage.register_sensor(sensor)
+        sensor_id = metadata_storage.register_sensor(sensor)
         logger.info(f"Sensor bound successfully with ID: {sensor_id}")
         return jsonify({"status": "Sensor bound successfully", "sensor_id": sensor_id}), 200
 
@@ -57,7 +68,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
     def list_sensors():
         """Return all registered sensors with relational metadata."""
         logger.info("Listing registered sensors")
-        descriptors = storage.list_sensors()
+        descriptors = metadata_storage.list_sensors()
         return jsonify([dump("generic", descriptor) for descriptor in descriptors])
 
     @bp.route("/readings", methods=["GET"])
@@ -72,10 +83,10 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             return jsonify({"error": str(e)}), 400
 
         if query_params.window == "raw":
-            data = storage.query_readings(query_params)
+            data = readings_storage.query_readings(query_params)
             result = [dump("generic", reading) for reading in data]
         else:  # window == "1h"
-            data = storage.query_aggregates(query_params)
+            data = readings_storage.query_aggregates(query_params)
             result = [dump("generic", aggregate) for aggregate in data]
 
         logger.info(f"Found {len(result)} readings")
@@ -88,7 +99,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400
 
-        snapshot = storage.get_latest_camera_snapshot(plant_id=plant_id)
+        snapshot = snapshot_storage.get_latest_camera_snapshot(plant_id=plant_id)
         if snapshot is None:
             return jsonify({"error": "No camera snapshot found"}), 404
 
@@ -98,7 +109,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
     def list_actuators():
         """Return all registered actuators."""
         logger.info("Listing actuators")
-        actuators = storage.list_actuators()
+        actuators = metadata_storage.list_actuators()
         logger.info(f"Found {len(actuators)} actuators")
         return jsonify(actuators)
 
@@ -106,7 +117,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
     def list_plants():
         """Return all registered plants."""
         logger.info("Listing plants")
-        plants = storage.list_plants()
+        plants = metadata_storage.list_plants()
         logger.info(f"Found {len(plants)} plants")
         return jsonify(plants)
 
@@ -132,7 +143,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid actuator payload: {exc}")
             return jsonify({"error": "Invalid actuator payload"}), 400
 
-        actuator_id = storage.register_actuator(plant_id, name, pin, relay_channel)
+        actuator_id = metadata_storage.register_actuator(plant_id, name, pin, relay_channel)
         return jsonify({"status": "Actuator bound successfully", "actuator_id": actuator_id}), 200
 
     @bp.route("/actions/log", methods=["POST"])
@@ -155,7 +166,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if action.status is None:
             return jsonify({"error": "Invalid action logging payload"}), 400
 
-        storage.log_action_execution(action=action)
+        controller_storage.log_action_execution(action=action)
         return jsonify({"status": "ok"}), 200
 
     # ---------------------------------------------------------------------- #
@@ -168,7 +179,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400
 
-        mode = storage.get_mode(plant_id)
+        mode = controller_storage.get_mode(plant_id)
         return jsonify(dump("generic", mode))
 
     @bp.route("/controller/mode", methods=["PUT"])
@@ -188,7 +199,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid controller mode payload: {exc}")
             return jsonify({"error": "Invalid controller mode payload"}), 400
 
-        storage.set_mode(mode)
+        controller_storage.set_mode(mode)
         return jsonify({"status": "ok"}), 200
 
     @bp.route("/controller/routines", methods=["GET"])
@@ -198,7 +209,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400
 
-        routines = storage.get_routines(plant_id)
+        routines = controller_storage.get_routines(plant_id)
         return jsonify([dump("generic", routine) for routine in routines])
 
     @bp.route("/controller/routines", methods=["POST"])
@@ -223,7 +234,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if routine.compiled_rules is None:
             return jsonify({"error": "compiled_rules is required"}), 400
 
-        routine_id = storage.create_routine(routine)
+        routine_id = controller_storage.create_routine(routine)
         return jsonify({"id": routine_id, "status": "created"}), 201
 
     @bp.route("/controller/routines/<int:routine_id>", methods=["PUT"])
@@ -243,13 +254,13 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid routine update payload: {exc}")
             return jsonify({"error": "Invalid routine update payload"}), 400
 
-        storage.update_routine(routine_id, updates)
+        controller_storage.update_routine(routine_id, updates)
         return jsonify({"status": "updated"}), 200
 
     @bp.route("/controller/routines/<int:routine_id>", methods=["DELETE"])
     def delete_controller_routine(routine_id: int):
         """Delete a routine."""
-        storage.delete_routine(routine_id)
+        controller_storage.delete_routine(routine_id)
         return jsonify({"status": "deleted"}), 200
 
     @bp.route("/controller/actions/history", methods=["GET"])
@@ -261,7 +272,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400
 
-        history = storage.get_action_history(plant_id, limit)
+        history = controller_storage.get_action_history(plant_id, limit)
         return jsonify([dump("generic", item) for item in history])
 
     @bp.route("/alerts/definitions", methods=["POST"])
@@ -281,7 +292,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid alert definition payload: {exc}")
             return jsonify({"error": "Invalid alert definition"}), 400
 
-        storage.save_alert_definition(definition)
+        alert_storage.save_alert_definition(definition)
         return jsonify({"status": "ok"}), 200
 
     @bp.route("/alerts/history", methods=["GET"])
@@ -295,7 +306,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid query parameters: {e}")
             return jsonify({"error": str(e)}), 400
 
-        events = storage.get_alert_history(query)
+        events = alert_storage.get_alert_history(query)
         result = [dump("generic", event) for event in events]
 
         logger.info(f"Retrieved {len(result)} alert events")
@@ -312,7 +323,7 @@ def create_database_blueprint(storage: Storage) -> Blueprint:
             logger.error(f"Invalid query parameters: {e}")
             return jsonify({"error": str(e)}), 400
 
-        events = storage.get_active_alerts(query)
+        events = alert_storage.get_active_alerts(query)
         result = [dump("generic", event) for event in events]
 
         logger.info(f"Retrieved {len(result)} active alerts")
