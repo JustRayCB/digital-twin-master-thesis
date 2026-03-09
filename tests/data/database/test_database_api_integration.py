@@ -14,7 +14,10 @@ from dt.communication.dataclasses.alerts.alert_record import (
     SensorAlertEvent,
 )
 from dt.communication.dataclasses.alerts.alert_type import AlertType
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  CameraSnapshotQuery,
+                                                  ReadingsQuery)
 from dt.communication.topics import Topics
 
 pytestmark = [pytest.mark.requires_timescale]
@@ -225,6 +228,48 @@ def test_get_latest_camera_snapshot_returns_camera_payload(
     payload = response.get_json()
     assert isinstance(payload, dict)
     assert load("generic", CameraSnapshot, payload) == snapshot
+
+
+def test_query_camera_snapshots_returns_interval_filtered_payloads(
+    client, snapshot_store, sample_sensor: SensorDescriptor
+) -> None:
+    """Camera snapshots endpoint returns snapshots within the requested interval."""
+    for timestamp, correlation_id in (
+        (1_735_689_600.0, "camera-early"),
+        (1_735_689_700.0, "camera-middle"),
+        (1_735_689_800.0, "camera-late"),
+    ):
+        snapshot_store.ingest_camera_snapshot(
+            CameraSnapshot(
+                plant_id=sample_sensor.plant_id,
+                sensor_id=sample_sensor.id,
+                timestamp=timestamp,
+                topic=Topics.CAMERA_IMAGE,
+                correlation_id=correlation_id,
+                mime_type="image/jpeg",
+                image="AQI=",
+                width=640,
+                height=480,
+            )
+        )
+
+    response = client.get(
+        "/camera/snapshots",
+        query_string=dump(
+            "generic",
+            CameraSnapshotQuery(
+                plant_id=sample_sensor.plant_id,
+                since=1_735_689_650.0,
+                until=1_735_689_750.0,
+            ),
+        ),
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload, list)
+    snapshots = [load("generic", CameraSnapshot, item) for item in payload]
+    assert [snapshot.correlation_id for snapshot in snapshots] == ["camera-middle"]
 
 
 def test_list_actuators_returns_persisted_actuators(

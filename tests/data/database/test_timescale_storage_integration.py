@@ -17,7 +17,7 @@ from dt.communication.dataclasses.alerts.alert_record import (
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                  AlertHistoryQuery,
+                                                  AlertHistoryQuery, CameraSnapshotQuery,
                                                   ReadingsQuery)
 from dt.communication.topics import Topics
 
@@ -699,6 +699,39 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
     assert latest_plant_one is not None
     assert latest_plant_one.correlation_id == "camera-plant-1"
     assert missing_plant is None
+
+
+def test_query_camera_snapshots_filters_by_time_interval(metadata_store, snapshot_store) -> None:
+    """Return only snapshots within the requested time interval."""
+    plant_id = metadata_store.upsert_plant(name="Interval Plant")
+    sensor_id = metadata_store.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+    )
+
+    for timestamp, correlation_id in (
+        (1_735_689_600.0, "camera-early"),
+        (1_735_689_700.0, "camera-middle"),
+        (1_735_689_800.0, "camera-late"),
+    ):
+        snapshot_store.ingest_camera_snapshot(
+            CameraSnapshot(
+                plant_id=plant_id,
+                sensor_id=sensor_id,
+                timestamp=timestamp,
+                topic=Topics.CAMERA_IMAGE,
+                correlation_id=correlation_id,
+                mime_type="image/jpeg",
+                image="AQI=",
+                width=640,
+                height=480,
+            )
+        )
+
+    snapshots = snapshot_store.query_camera_snapshots(
+        CameraSnapshotQuery(plant_id=plant_id, since=1_735_689_650.0, until=1_735_689_750.0)
+    )
+
+    assert [snapshot.correlation_id for snapshot in snapshots] == ["camera-middle"]
 
 
 def test_ingest_camera_snapshot_persists_file_backed_blob(metadata_store, snapshot_store) -> None:
