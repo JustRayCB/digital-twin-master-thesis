@@ -13,11 +13,13 @@ from dt.utils.ids import new_correlation_id
 
 
 class CameraSensor(Sensor):
-    def __init__(self, name: str, read_interval: int, pin: Pin = -1) -> None:
+    def __init__(
+        self, name: str, read_interval: int, pin: Pin = -1, width: int = 1920, height: int = 1080
+    ) -> None:
         super().__init__(name, read_interval, pin)
+        self.width = width
+        self.height = height
         self._mime_type = "image/jpeg"
-        self._width = 640
-        self._height = 480
 
     @property
     @override
@@ -48,7 +50,7 @@ class CameraSensor(Sensor):
     def read(self) -> CameraSnapshot | None:
         current_time = time.time()
         try:
-            image_bytes = self._capture_jpeg(self._width, self._height)
+            image_bytes = self._capture_jpeg(self.width, self.height)
         except Exception as exc:
             self.logger.error(f"Failed to read {self.name}: {exc}")
             return None
@@ -69,8 +71,8 @@ class CameraSensor(Sensor):
             correlation_id=new_correlation_id(),
             mime_type=self._mime_type,
             image=image_b64,
-            width=self._width,
-            height=self._height,
+            width=self.width,
+            height=self.height,
         )
 
     @override
