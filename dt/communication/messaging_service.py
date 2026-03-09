@@ -208,7 +208,7 @@ class KafkaService(MessagingService):
                                     else:
                                         data = load("generic", AlertHistoryEvent, raw_data)
 
-                                elif topic == Topics.CAMERA_IMAGE.processed:
+                                elif topic == Topics.CAMERA_IMAGE.raw:
                                     # Deserialize camera snapshots separately from generic processed data
                                     data = load("generic", CameraSnapshot, message.value)
                                 elif "processed" in topic:

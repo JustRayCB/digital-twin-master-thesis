@@ -7,18 +7,16 @@ import pytest
 from dt.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertStatus,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
+    AlertDefinition, AlertStatus, ExternalAlertEvent, SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.controller import ActionCommand
-from dt.communication.dataclasses.queries import AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (AlertHistoryQuery,
+                                                  ReadingsQuery)
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
 from dt.data.database.consumer import setup_bridge
-from tests.data.database.helpers import wait_for_kafka_service_ready, wait_until
+from tests.data.database.helpers import (wait_for_kafka_service_ready,
+                                         wait_until)
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
@@ -56,7 +54,9 @@ def test_bridge_persists_processed_reading(
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS})
+        wait_for_kafka_service_ready(
+            bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS}
+        )
 
         test_reading = ProcessedSensorData(
             plant_id=sample_sensor.plant_id,
@@ -117,7 +117,9 @@ def test_bridge_persists_multiple_processed_readings(
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS})
+        wait_for_kafka_service_ready(
+            bridge, expected_topics={Topics.TEMPERATURE.processed, Topics.ALERTS}
+        )
 
         base_time = time.time()
         for i in range(3):
@@ -183,7 +185,9 @@ def test_bridge_persists_camera_snapshot(
     assert isinstance(bridge, KafkaService)
 
     try:
-        wait_for_kafka_service_ready(bridge, expected_topics={Topics.CAMERA_IMAGE.processed, Topics.ALERTS})
+        wait_for_kafka_service_ready(
+            bridge, expected_topics={Topics.CAMERA_IMAGE.raw, Topics.ALERTS}
+        )
 
         snapshot = CameraSnapshot(
             plant_id=sample_sensor.plant_id,
@@ -196,7 +200,7 @@ def test_bridge_persists_camera_snapshot(
             width=640,
             height=480,
         )
-        kafka_service.publish(Topics.CAMERA_IMAGE.processed, snapshot)
+        kafka_service.publish(Topics.CAMERA_IMAGE.raw, snapshot)
 
         def snapshot_persisted() -> bool:
             latest = snapshot_store.get_latest_camera_snapshot(plant_id=sample_sensor.plant_id)
