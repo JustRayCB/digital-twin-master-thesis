@@ -104,7 +104,7 @@ def forward_to_socketio(socketio: SocketIO, topic: Topics):
 
 def forward_camera_snapshot_to_socketio(socketio: SocketIO):
     """Create a callback that forwards camera snapshots to Socket.IO."""
-    socketio_topic = Topics.CAMERA_IMAGE.processed
+    socketio_topic = Topics.CAMERA_IMAGE.raw
 
     def callback(snapshot: CameraSnapshot):
         shaped = shape_camera_snapshot_payload(snapshot)
@@ -165,7 +165,7 @@ def setup_bridge(db_client: DatabaseApiClient, socketio: SocketIO) -> MessagingS
             with latest_by_topic_lock:
                 update_latest_payload_cache(
                     latest_by_topic,
-                    Topics.CAMERA_IMAGE.processed,
+                    Topics.CAMERA_IMAGE.raw,
                     shape_camera_snapshot_payload(latest_snapshot),
                 )
     except Exception as exc:
@@ -173,7 +173,7 @@ def setup_bridge(db_client: DatabaseApiClient, socketio: SocketIO) -> MessagingS
 
     for topic in Topics.list_sensor_topics():
         if topic == Topics.CAMERA_IMAGE:
-            msg_client.subscribe(topic.processed, forward_camera_snapshot_to_socketio(socketio))
+            msg_client.subscribe(topic.raw, forward_camera_snapshot_to_socketio(socketio))
             continue
         msg_client.subscribe(topic.processed, forward_to_socketio(socketio, topic))
 

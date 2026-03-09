@@ -118,7 +118,7 @@ def setup_bridge(
     # Subscribe to all processed sensor topics
     for topic in Topics.list_sensor_topics():
         if topic == Topics.CAMERA_IMAGE:
-            client.subscribe(topic.processed, persist_camera_snapshot)
+            client.subscribe(topic.raw, persist_camera_snapshot)
             continue
         client.subscribe(topic.processed, forward_to_database)
 
