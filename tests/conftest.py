@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from docker.errors import DockerException
@@ -198,13 +199,19 @@ def controller_store(db_engine: Engine) -> ControllerStore:
 
 
 @pytest.fixture(scope="module")
-def shared_snapshot_store(db_engine: Engine) -> SnapshotStore:
-    return SnapshotStore(engine=db_engine)
+def shared_snapshot_storage_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Return a stable filesystem root for module-scoped snapshot stores."""
+    return tmp_path_factory.mktemp("shared-snapshot-storage")
+
+
+@pytest.fixture(scope="module")
+def shared_snapshot_store(db_engine: Engine, shared_snapshot_storage_root: Path) -> SnapshotStore:
+    return SnapshotStore(engine=db_engine, storage_root=shared_snapshot_storage_root)
 
 
 @pytest.fixture
-def snapshot_store(db_engine: Engine) -> SnapshotStore:
-    return SnapshotStore(engine=db_engine)
+def snapshot_store(db_engine: Engine, shared_snapshot_storage_root: Path) -> SnapshotStore:
+    return SnapshotStore(engine=db_engine, storage_root=shared_snapshot_storage_root)
 
 
 @pytest.fixture(scope="module")

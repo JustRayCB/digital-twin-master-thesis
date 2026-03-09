@@ -1,6 +1,7 @@
 """Integration tests for database persistence stores."""
 
 import time
+from base64 import b64decode
 from datetime import datetime, timezone
 
 import pytest
@@ -19,6 +20,7 @@ from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
                                                   AlertHistoryQuery,
                                                   ReadingsQuery)
 from dt.communication.topics import Topics
+
 pytestmark = [pytest.mark.requires_timescale]
 
 
@@ -697,3 +699,121 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
     assert latest_plant_one is not None
     assert latest_plant_one.correlation_id == "camera-plant-1"
     assert missing_plant is None
+
+
+def test_ingest_camera_snapshot_persists_file_backed_blob(metadata_store, snapshot_store) -> None:
+    """Persist snapshot metadata in the DB and raw bytes on the filesystem."""
+    plant_id = metadata_store.upsert_plant(name="File-backed Plant")
+    sensor_id = metadata_store.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+    )
+    snapshot = CameraSnapshot(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=1_735_689_800.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-file-backed",
+        mime_type="image/jpeg",
+        image="aGVsbG8=",
+        width=320,
+        height=240,
+    )
+
+    snapshot_id = snapshot_store.ingest_camera_snapshot(snapshot)
+
+    with snapshot_store._get_connection() as conn:
+        row = conn.execute(
+            text("""
+                SELECT file_ref
+                FROM camera_snapshots
+                WHERE id = :snapshot_id
+                """),
+            {"snapshot_id": snapshot_id},
+        ).fetchone()
+
+    assert row is not None
+    assert row.file_ref
+
+    file_path = snapshot_store.storage_root / row.file_ref
+    assert file_path.exists()
+    assert file_path.read_bytes() == b64decode(snapshot.image)
+
+
+def test_ingest_camera_snapshot_rolls_back_when_file_write_fails(
+    metadata_store, snapshot_store, monkeypatch
+) -> None:
+    """Do not commit DB metadata when the snapshot file write fails."""
+    plant_id = metadata_store.upsert_plant(name="Rollback Plant")
+    sensor_id = metadata_store.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+    )
+    snapshot = CameraSnapshot(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=1_735_689_900.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-write-failure",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=320,
+        height=240,
+    )
+
+    def raise_write_failure(*_args, **_kwargs) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(snapshot_store, "_write_snapshot_file", raise_write_failure)
+
+    with pytest.raises(OSError, match="disk full"):
+        snapshot_store.ingest_camera_snapshot(snapshot)
+
+    with snapshot_store._get_connection() as conn:
+        count = conn.execute(
+            text("""
+                SELECT COUNT(*)
+                FROM camera_snapshots
+                WHERE correlation_id = :correlation_id
+                """),
+            {"correlation_id": snapshot.correlation_id},
+        ).scalar_one()
+
+    assert count == 0
+
+
+def test_get_latest_camera_snapshot_raises_clear_error_when_file_missing(
+    metadata_store, snapshot_store
+) -> None:
+    """Raise a clear runtime error when file-backed snapshot bytes are missing."""
+    plant_id = metadata_store.upsert_plant(name="Missing File Plant")
+    sensor_id = metadata_store.register_sensor(
+        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+    )
+    snapshot = CameraSnapshot(
+        plant_id=plant_id,
+        sensor_id=sensor_id,
+        timestamp=1_735_690_000.0,
+        topic=Topics.CAMERA_IMAGE,
+        correlation_id="camera-missing-file",
+        mime_type="image/jpeg",
+        image="AQM=",
+        width=320,
+        height=240,
+    )
+    snapshot_store.ingest_camera_snapshot(snapshot)
+
+    latest_row = None
+    with snapshot_store._get_connection() as conn:
+        latest_row = conn.execute(
+            text("""
+                SELECT file_ref
+                FROM camera_snapshots
+                WHERE correlation_id = :correlation_id
+                """),
+            {"correlation_id": snapshot.correlation_id},
+        ).fetchone()
+
+    assert latest_row is not None
+    (snapshot_store.storage_root / latest_row.file_ref).unlink()
+
+    with pytest.raises(RuntimeError, match="Snapshot file not found"):
+        snapshot_store.get_latest_camera_snapshot(plant_id=plant_id)

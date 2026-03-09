@@ -1,5 +1,5 @@
 -- Migration 003: Camera snapshots table
--- Stores latest camera image snapshots as binary payloads.
+-- Stores snapshot metadata in PostgreSQL and raw image bytes on the filesystem.
 
 CREATE TABLE IF NOT EXISTS camera_snapshots (
     id SERIAL, -- PRIMARY KEY,
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS camera_snapshots (
     plant_id INTEGER NOT NULL,
     topic VARCHAR(100) NOT NULL,
     mime_type VARCHAR(50) NOT NULL,
-    image BYTEA NOT NULL,
+    file_ref TEXT NOT NULL,
     correlation_id VARCHAR(255) NOT NULL,
     width INTEGER,
     height INTEGER,
@@ -17,4 +17,3 @@ CREATE TABLE IF NOT EXISTS camera_snapshots (
     CONSTRAINT fk_camera_snapshots_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
     CONSTRAINT fk_camera_snapshots_plant_id FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
 );
-

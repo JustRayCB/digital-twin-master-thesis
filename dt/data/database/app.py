@@ -132,7 +132,7 @@ if __name__ == "__main__":
     readings_storage = ReadingsStore(engine=engine)
     alert_storage = AlertsStore(engine=engine)
     controller_storage = ControllerStore(engine=engine)
-    snapshot_storage = SnapshotStore(engine=engine)
+    snapshot_storage = SnapshotStore(engine=engine, storage_root=Config.SNAPSHOT_STORAGE_ROOT)
 
     # Create Flask app using factory
     app = create_app(
