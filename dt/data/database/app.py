@@ -15,10 +15,17 @@ It performs two primary functions:
 from flask import Flask
 from flask_cors import CORS
 
+from dt.data.database import (AlertStorage, ControllerStorage, MetadataStorage,
+                              ReadingsStorage, SnapshotStorage)
+from dt.data.database.alerts_storage import AlertsStore
 from dt.data.database.api import create_database_blueprint
+from dt.data.database.base_storage import create_database_engine
 from dt.data.database.consumer import setup_bridge
+from dt.data.database.controller_storage import ControllerStore
+from dt.data.database.metadata_storage import MetadataStore
 from dt.data.database.migrations.runner import MigrationRunner
-from dt.data.database.storage import Storage
+from dt.data.database.readings_storage import ReadingsStore
+from dt.data.database.snapshot_storage import SnapshotStore
 from dt.utils import Config, get_logger
 
 logger = get_logger(__name__)
@@ -44,7 +51,14 @@ def run_startup_migrations(db_url: str, migrations_dir: str) -> None:
     runner.run_migrations()
 
 
-def create_app(config, storage: Storage) -> Flask:
+def create_app(
+    config,
+    metadata_storage: MetadataStorage,
+    readings_storage: ReadingsStorage,
+    alert_storage: AlertStorage,
+    controller_storage: ControllerStorage,
+    snapshot_storage: SnapshotStorage,
+) -> Flask:
     """Create and configure the Flask application with dependency-injected storage.
 
     This factory function creates a Flask app instance, registers the database
@@ -54,28 +68,41 @@ def create_app(config, storage: Storage) -> Flask:
     ----------
     config : Config
         Configuration object containing application settings.
-    storage : Storage
-        Storage backend instance.
+    metadata_storage, readings_storage, alert_storage, controller_storage, snapshot_storage
+        Storage backends required by the HTTP API routes.
 
     Returns
     -------
     Flask
         Configured Flask application instance.
     """
-    if storage is None:
-        raise ValueError("Storage instance is required")
+    if any(
+        storage is None
+        for storage in (
+            metadata_storage,
+            readings_storage,
+            alert_storage,
+            controller_storage,
+            snapshot_storage,
+        )
+    ):
+        raise ValueError("All storage instances are required")
 
     app = Flask(__name__)
     CORS(app)
 
-    # Store config and storage in app context
-    app.config["STORAGE"] = storage
     app.config["DT_CONFIG"] = config
 
-    logger.info(f"Creating Flask app with storage: {type(storage).__name__}")
+    logger.info("Creating Flask app with explicit database stores")
 
     # Register Blueprint
-    db_bp = create_database_blueprint(storage)
+    db_bp = create_database_blueprint(
+        metadata_storage=metadata_storage,
+        readings_storage=readings_storage,
+        alert_storage=alert_storage,
+        controller_storage=controller_storage,
+        snapshot_storage=snapshot_storage,
+    )
     app.register_blueprint(db_bp)
 
     return app
@@ -84,7 +111,6 @@ def create_app(config, storage: Storage) -> Flask:
 if __name__ == "__main__":
     import os
 
-    from dt.data.database import TimescaleStorage
     from dt.utils import Config
 
     # Ensure the setup runs only once, not in the reloader process
@@ -101,17 +127,40 @@ if __name__ == "__main__":
             db_url=Config.PG_DATABASE_URL, migrations_dir=Config.DB_MIGRATIONS_DIR
         )
 
-    # Initialize storage backend (TimescaleDB)
-    storage = TimescaleStorage()
+    engine = create_database_engine()
+    metadata_storage = MetadataStore(engine=engine)
+    readings_storage = ReadingsStore(engine=engine)
+    alert_storage = AlertsStore(engine=engine)
+    controller_storage = ControllerStore(engine=engine)
+    snapshot_storage = SnapshotStore(engine=engine)
 
     # Create Flask app using factory
-    app = create_app(config=Config, storage=storage)
+    app = create_app(
+        config=Config,
+        metadata_storage=metadata_storage,
+        readings_storage=readings_storage,
+        alert_storage=alert_storage,
+        controller_storage=controller_storage,
+        snapshot_storage=snapshot_storage,
+    )
 
     # Setup Kafka bridge
     msg_client = None
     if debug_mode and in_reloader:
-        msg_client = setup_bridge(config=Config, storage=storage)
+        msg_client = setup_bridge(
+            config=Config,
+            readings_storage=readings_storage,
+            alert_storage=alert_storage,
+            controller_storage=controller_storage,
+            snapshot_storage=snapshot_storage,
+        )
     elif not debug_mode:
-        msg_client = setup_bridge(config=Config, storage=storage)
+        msg_client = setup_bridge(
+            config=Config,
+            readings_storage=readings_storage,
+            alert_storage=alert_storage,
+            controller_storage=controller_storage,
+            snapshot_storage=snapshot_storage,
+        )
 
     app.run(host="0.0.0.0", port=5001, debug=debug_mode)
