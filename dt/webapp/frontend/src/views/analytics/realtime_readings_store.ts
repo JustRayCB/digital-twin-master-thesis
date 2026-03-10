@@ -149,18 +149,11 @@ export function createRealtimeReadingsStore(maxPoints = 600) {
     started = true;
     realtimeClient.start();
 
-    realtimeClient.subscribe(processedTopics.temperature, (payload) =>
-      onReading(processedTopics.temperature, payload as ProcessedReadingPayload),
-    );
-    realtimeClient.subscribe(processedTopics.humidity, (payload) =>
-      onReading(processedTopics.humidity, payload as ProcessedReadingPayload),
-    );
-    realtimeClient.subscribe(processedTopics.soilMoisture, (payload) =>
-      onReading(processedTopics.soilMoisture, payload as ProcessedReadingPayload),
-    );
-    realtimeClient.subscribe(processedTopics.lightIntensity, (payload) =>
-      onReading(processedTopics.lightIntensity, payload as ProcessedReadingPayload),
-    );
+    for (const topic of Object.values(processedTopics)) {
+      realtimeClient.subscribe(topic, (payload) =>
+        onReading(topic, payload as ProcessedReadingPayload),
+      );
+    }
   }
 
   function subscribe(subscriber: Subscriber) {
