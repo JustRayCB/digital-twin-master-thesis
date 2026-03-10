@@ -234,3 +234,102 @@ def test_build_preprocessing_stream_emits_invalid_record_when_imputation_drops(
     assert record["flags"][ValidationFlag.VALID.value] is False
     assert record["flags"][ValidationFlag.RANGE.value] is True
     assert record["dq_score"] == 0.0
+
+
+def test_build_preprocessing_stream_isolates_state_per_topic(
+    spark_session: SparkSession,
+    tmp_path,
+    config_writer,
+    configure_preprocess_db_client,
+    sensor_registry,
+) -> None:
+    """Distinct topics on one sensor ID should not share validation state."""
+    sensor = sensor_registry["register"]("sensors.basil.picamera2.001.camera_image")
+    config_path = config_writer(
+        {
+            "system": {
+                "windows": {"small_sec": 60, "medium_sec": 300, "big_sec": 1000},
+                "weights": {"range_ok": 0.4, "roc_ok": 0.4, "stuck_ok": 0.2},
+            },
+            "templates": {
+                "camera.temperature": {
+                    "units": "C",
+                    "validation": {
+                        "range": {"min": -40.0, "max": 80.0},
+                        "roc": {"max_per_minute": 10.0},
+                        "stuck": {"max_flat_seconds": 300},
+                    },
+                    "imputation": {"strategy": "forward_fill_with_decay"},
+                    "calibration": {"strategy": "identity"},
+                    "normalization": {"strategy": "identity"},
+                    "smoothing": {"strategy": "pass_through"},
+                },
+                "camera.green_ratio": {
+                    "units": "ratio",
+                    "validation": {
+                        "range": {"min": 0.0, "max": 1.0},
+                        "roc": {"max_per_minute": 1.0},
+                        "stuck": {"max_flat_seconds": 300},
+                    },
+                    "imputation": {"strategy": "forward_fill_with_decay"},
+                    "calibration": {"strategy": "identity"},
+                    "normalization": {"strategy": "identity"},
+                    "smoothing": {"strategy": "pass_through"},
+                },
+            },
+            "streams": [
+                {
+                    "sensor": "sensors.basil.picamera2.001.camera_image",
+                    "topic": "temperature",
+                    "template": "camera.temperature",
+                },
+                {
+                    "sensor": "sensors.basil.picamera2.001.camera_image",
+                    "topic": "green_ratio",
+                    "template": "camera.green_ratio",
+                },
+            ],
+        },
+        filename="camera_multi_topic.yml",
+    )
+
+    adapter = SparkStreamingAdapter(ConfigurationManager(config_path))
+    raw_events = _write_stream_source(
+        spark_session,
+        tmp_path,
+        [
+            make_event(
+                plant_id=sensor.plant_id,
+                sensor_id=sensor.id,
+                timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp(),
+                value=24.0,
+                unit="C",
+                topic=Topics.TEMPERATURE,
+                correlation_id="adapter-topic-temp",
+            ),
+            make_event(
+                plant_id=sensor.plant_id,
+                sensor_id=sensor.id,
+                timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp() + 5,
+                value=0.25,
+                unit="ratio",
+                topic=Topics.GREEN_RATIO,
+                correlation_id="adapter-topic-ratio",
+            ),
+        ],
+    )
+
+    processed_stream = adapter.build_preprocessing_stream(spark_session, raw_events)
+    checkpoint_dir = tmp_path / "adapter_checkpoint_topic_state"
+    query_name = "adapter_results_topic_state"
+    rows = _collect_stream_rows(
+        spark_session,
+        processed_stream,
+        checkpoint_dir,
+        query_name,
+    )
+
+    assert len(rows) == 2
+    records = {row.asDict()["topic"]: row.asDict() for row in rows}
+    assert records[Topics.TEMPERATURE.value]["flags"][ValidationFlag.VALID.value] is True
+    assert records[Topics.GREEN_RATIO.value]["flags"][ValidationFlag.VALID.value] is True
