@@ -6,7 +6,8 @@ import pytest
 
 from dt.alerts.evaluator import RuleEvaluator
 from dt.alerts.registry import AlertRegistry
-from dt.alerts.rules import SeverityLevel
+from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
     AlertHistoryEvent,
@@ -14,6 +15,7 @@ from dt.communication.dataclasses.alerts.alert_record import (
     SensorAlertEvent,
 )
 from dt.communication.dataclasses.alerts.alert_type import AlertType
+from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.topics import Topics
 from tests.alerts.helpers import build_processed_reading, poll_alert_event, running_alert_service
 
@@ -313,3 +315,55 @@ def test_multiple_rules_trigger_independently(
         "temp_high:temperature",
         "dq_low:temperature",
     }
+
+
+def test_green_ratio_threshold_alert_flow(
+    publisher,
+    consumer_service,
+    alerts_consumer,
+    kafka_service,
+    sample_sensor,
+) -> None:
+    """Processed green-ratio readings should trigger alert rules like any numeric topic."""
+    rule = AlertRule(
+        rule_id="green_ratio_high",
+        name="High Green Ratio",
+        description="Green ratio exceeds {threshold}",
+        severity=SeverityLevel.WARNING,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="green_ratio",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 0.8},
+        ),
+        persistence_count=1,
+        cooldown_seconds=300,
+    )
+    registry = AlertRegistry()
+    evaluator = RuleEvaluator([rule])
+
+    with running_alert_service(consumer_service, evaluator, registry, publisher):
+        reading = ProcessedSensorData(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=time.time(),
+            value=0.9,
+            unit="ratio",
+            topic=Topics.GREEN_RATIO,
+            correlation_id="green-ratio-alert-1",
+            flags={ValidationFlag.VALID: True},
+            dq_score=1.0,
+            imputed=False,
+        )
+
+        assert kafka_service.publish(Topics.GREEN_RATIO.processed, reading)
+
+        payload = poll_alert_event(alerts_consumer, timeout_seconds=10.0)
+        assert payload is not None
+        assert type(payload) is SensorAlertEvent
+        assert payload.status == AlertStatus.ACTIVE
+        assert payload.alert_key == "green_ratio_high:green_ratio"
+        assert payload.severity == SeverityLevel.WARNING
+        assert payload.correlation_id == "green-ratio-alert-1"
+        assert payload.reading.topic == Topics.GREEN_RATIO
+        assert payload.reading.value == 0.9

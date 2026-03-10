@@ -50,6 +50,7 @@ def test_service_subscribes_to_processed_topics_excluding_camera(
         # Verify all non-camera processed topics were subscribed to
         for expected_topic in expected_topics:
             assert expected_topic in subscribed_topics
+        assert Topics.GREEN_RATIO.processed in subscribed_topics
         assert Topics.CAMERA_IMAGE.processed not in subscribed_topics
 
 
