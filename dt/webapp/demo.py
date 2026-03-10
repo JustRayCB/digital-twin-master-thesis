@@ -29,7 +29,6 @@ class DemoConfig:
 
 
 def build_demo_processed_payload(
-    *,
     plant_id: int,
     sensor_id: int,
     unit: str,
@@ -56,8 +55,12 @@ def build_demo_processed_payload(
         "unit": str(unit),
         "value": float(value),
         "raw_value": raw_value if raw_value is None else float(raw_value),
-        "calibrated_value": calibrated_value if calibrated_value is None else float(calibrated_value),
-        "normalized_value": normalized_value if normalized_value is None else float(normalized_value),
+        "calibrated_value": (
+            calibrated_value if calibrated_value is None else float(calibrated_value)
+        ),
+        "normalized_value": (
+            normalized_value if normalized_value is None else float(normalized_value)
+        ),
         "dq_score": float(dq_score),
         "imputed": bool(imputed),
         "flags": {str(k): bool(v) for k, v in dict(flags).items()},
@@ -72,7 +75,6 @@ def build_demo_processed_payload(
 
 
 def build_demo_alert_payload(
-    *,
     plant_id: int,
     alert_key: str,
     time_ms: int,
@@ -113,17 +115,23 @@ def start_demo_emitter(socketio: SocketIO, config: DemoConfig) -> Event:
 
 def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) -> None:
     """Emit synthetic sensor readings and alerts until stop_event is set."""
+
+    def clamp(value: float, lower: float, upper: float) -> float:
+        return max(lower, min(upper, value))
+
     sensor_topics = [
         Topics.TEMPERATURE,
         Topics.HUMIDITY,
         Topics.SOIL_MOISTURE,
         Topics.LIGHT_INTENSITY,
+        Topics.GREEN_RATIO,
     ]
     sensor_units = {
         Topics.TEMPERATURE: "C",
         Topics.HUMIDITY: "%",
         Topics.SOIL_MOISTURE: "%",
         Topics.LIGHT_INTENSITY: "lux",
+        Topics.GREEN_RATIO: "ratio",
     }
 
     start = time.time()
@@ -146,6 +154,8 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
                 base = 30.0 + 5.0 * math.sin(phase + 2.1)
             elif topic == Topics.LIGHT_INTENSITY:
                 base = 800.0 + 200.0 * math.sin(phase + 0.7)
+            elif topic == Topics.GREEN_RATIO:
+                base = 0.65 + 0.2 * math.sin(phase + 0.4)
 
             # Raw value: what a physical sensor might read (includes a small wobble).
             raw_value = base + 0.15 * math.sin((now - start) * 3.0 + index)
@@ -156,6 +166,11 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
             # Processed value: simple smoothing to differ from raw/calibrated.
             processed_value = (0.9 * base) + (0.1 * calibrated_value)
 
+            if topic == Topics.GREEN_RATIO:
+                raw_value = clamp(raw_value, 0.0, 1.0)
+                calibrated_value = clamp(calibrated_value, 0.0, 1.0)
+                processed_value = clamp(processed_value, 0.0, 1.0)
+
             # Occasionally mark a point as imputed to exercise UI flags.
             imputed = False
             if int(now - start) % 30 == 0 and int((now - start) * 10) % 10 == 0:
@@ -165,6 +180,9 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
             if topic == Topics.LIGHT_INTENSITY:
                 # BH1750 reference range: 0–65,535 lux.
                 normalized_value = max(0.0, min(1.0, calibrated_value / 65535.0))
+            elif topic == Topics.GREEN_RATIO:
+                processed_value = clamp(processed_value, 0.0, 1.0)
+                normalized_value = processed_value
             elif topic in (Topics.TEMPERATURE, Topics.HUMIDITY, Topics.SOIL_MOISTURE):
                 normalized_value = max(0.0, min(1.0, calibrated_value / 100.0))
 
