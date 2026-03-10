@@ -15,6 +15,7 @@ import { PlantHealthState, type Routine } from "../../types";
 import { cameraSnapshotTopic, processedTopics } from "../analytics/realtime_topics";
 import { realtimeClient } from "../analytics/realtime_client";
 import { realtimeReadings } from "../analytics/realtime_readings_store";
+import { buildVitalitySnapshot, type VitalitySnapshot } from "./vitality";
 
 type ActuatorControl = {
   id: number;
@@ -187,6 +188,7 @@ export function createOverviewModel() {
   const connectionStatus = writable("Disconnected");
   const lastUpdate = writable("—");
   const currentTime = writable(formatCurrentTime(new Date()));
+  const vitality = writable<VitalitySnapshot>(buildVitalitySnapshot(null));
   const telemetry = writable<TelemetrySnapshot>({
     temperature: { value: "—", label1: "Room Ambient", label2: "Normal Range" },
     humidity: { value: "—", label1: "Air Sensor", label2: "Stable" },
@@ -319,6 +321,11 @@ export function createOverviewModel() {
     unsubscribeReadings = realtimeReadings.subscribe((topic, payload) => {
       lastUpdate.set(formatLastUpdate(Number(payload.time)));
       const snapshot = realtimeReadings.getSnapshot(topic);
+      if (topic === processedTopics.greenRatio) {
+        const value = extractLatestValue(snapshot, "value");
+        vitality.set(buildVitalitySnapshot(value));
+        return;
+      }
       telemetry.update((current) => {
         if (topic === processedTopics.temperature) {
           const value = extractLatestValue(snapshot, "value");
@@ -416,6 +423,7 @@ export function createOverviewModel() {
     connectionStatus,
     lastUpdate,
     currentTime,
+    vitality,
     telemetry,
     toggleRoutine,
     editRoutine,

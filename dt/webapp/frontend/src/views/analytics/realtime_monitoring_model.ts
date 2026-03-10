@@ -2,7 +2,7 @@ import { get, writable } from "svelte/store";
 
 import { fetchReadings } from "../../api";
 import type { DqHoverState, ProcessedReadingPayload } from "./realtime_types";
-import { processedTopics, type ProcessedTopicName } from "./realtime_topics";
+import { analyticsTopics, processedTopics, type ProcessedTopicName } from "./realtime_topics";
 import { realtimeReadings } from "./realtime_readings_store";
 
 const SEED_POINT_LIMIT = 300;
@@ -200,7 +200,7 @@ export function createRealtimeMonitoringModel() {
     const until = Date.now();
     const since = until - windowMs;
 
-    const topics = Object.values(processedTopics);
+    const topics = analyticsTopics;
     const responses = await Promise.allSettled(
       topics.map((topic) => fetchReadings({ topic, since, until, window: "raw" })),
     );
@@ -219,7 +219,7 @@ export function createRealtimeMonitoringModel() {
     const plotly = ensurePlotlyAvailable();
     const elements = get(chartElements);
 
-    const configByTopic: Record<ProcessedTopicName, { title: string; yAxisTitle: string; yAxisRange?: [number, number] }> =
+    const configByTopic: Partial<Record<ProcessedTopicName, { title: string; yAxisTitle: string; yAxisRange?: [number, number] }>> =
       {
         [processedTopics.temperature]: { title: "Temperature", yAxisTitle: "Value (°C)" },
         [processedTopics.humidity]: { title: "Humidity", yAxisTitle: "Value (%)", yAxisRange: [0, 100] },
@@ -235,6 +235,9 @@ export function createRealtimeMonitoringModel() {
         continue;
       }
       const cfg = configByTopic[topic];
+      if (!cfg) {
+        continue;
+      }
       const snapshot = realtimeReadings.getSnapshot(topic);
       const initialData = SERIES.map((s) => ({
         x: snapshot[s.key].map((p) => p.x).slice(-SEED_POINT_LIMIT),

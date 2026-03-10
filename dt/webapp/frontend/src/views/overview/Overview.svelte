@@ -12,6 +12,7 @@
   const routines = model.routines;
   const actuators = model.actuators;
   const telemetry = model.telemetry;
+  const vitality = model.vitality;
   const currentTime = model.currentTime;
   const latestPhotoSrc = model.latestPhotoSrc;
 
@@ -125,8 +126,8 @@
           <div>
             <h3 class="font-retro text-2xl text-gray-500 uppercase tracking-widest">Vitality</h3>
             <div class="flex items-baseline gap-3 mt-1">
-              <span class="text-5xl font-bold text-ink font-sans">98%</span>
-              <span class="text-xl font-retro text-green-600 bg-green-100 px-2 rounded border border-green-200">Excellent</span>
+              <span class="text-5xl font-bold text-ink font-sans">{$vitality.value}</span>
+              <span class={`text-xl font-retro px-2 rounded border ${$vitality.statusClass}`}>{$vitality.status}</span>
             </div>
           </div>
           <div class="size-12 rounded-full border-2 border-ink bg-pop-red flex items-center justify-center shadow-hard-sm">
@@ -134,7 +135,10 @@
           </div>
         </div>
         <div class="w-full h-6 bg-gray-100 rounded-full border-2 border-ink overflow-hidden p-1">
-          <div class="h-full bg-cozy-mint rounded-full w-[98%] border border-ink/20 relative">
+          <div
+            class={`h-full rounded-full border border-ink/20 relative ${$vitality.meterClass}`}
+            style={`width: ${$vitality.meterWidth};`}
+          >
             <div class="absolute inset-0" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.5) 10px, rgba(255,255,255,0.5) 20px)"></div>
           </div>
         </div>
