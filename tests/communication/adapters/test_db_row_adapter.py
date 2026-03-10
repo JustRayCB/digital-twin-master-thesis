@@ -361,12 +361,15 @@ def test_load_aggregated_reading_from_row(adapter):
             "bucket": datetime.fromtimestamp(1234567800.0),
             "topic": "temperature",
             "unit": "Celsius",
-            "avg_value": 25.0,
+            "mean_value": 25.0,
             "min_value": 24.0,
             "max_value": 26.0,
             "sample_count": 10,
             "avg_dq_score": 0.9,
             "imputed_count": 0,
+            "variance_value": 2.5,
+            "stddev_value": 1.5811388300841898,
+            "skewness_value": 0.25,
         },
         datetime_fields={"bucket"},
     )
@@ -375,7 +378,10 @@ def test_load_aggregated_reading_from_row(adapter):
 
     assert isinstance(result, AggregatedReading)
     assert result.bucket == 1234567800.0
-    assert result.avg_value == 25.0
+    assert result.mean_value == 25.0
+    assert result.variance_value == 2.5
+    assert result.stddev_value == 1.5811388300841898
+    assert result.skewness_value == 0.25
     # AggregatedReading stores the topic as a Topics enum.
     assert result.topic == Topics.TEMPERATURE
 

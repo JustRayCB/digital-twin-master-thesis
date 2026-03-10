@@ -58,6 +58,11 @@ def test_query_readings_1h_structures_aggregated_readings(
     assert len(readings) == 1
     assert isinstance(readings[0], AggregatedReading)
     assert readings[0].topic is Topics.TEMPERATURE
+    assert readings[0].mean_value == pytest.approx(reading.value)
+    assert readings[0].sample_count == 1
+    assert readings[0].variance_value is None
+    assert readings[0].stddev_value is None
+    assert readings[0].skewness_value is None
 
 
 def test_query_readings_wraps_real_request_exceptions() -> None:

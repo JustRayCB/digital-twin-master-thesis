@@ -105,12 +105,15 @@ def test_aggregated_reading_serializer_loads_topic_and_bucket() -> None:
             "plant_id": 1,
             "topic": Topics.TEMPERATURE.short_name,
             "unit": "Celsius",
-            "avg_value": 25.0,
+            "mean_value": 25.0,
             "min_value": 20.0,
             "max_value": 30.0,
             "sample_count": 10,
             "avg_dq_score": 0.9,
             "imputed_count": 2,
+            "variance_value": 4.0,
+            "stddev_value": 2.0,
+            "skewness_value": 0.0,
         },
         datetime_fields={"bucket"},
     )
@@ -118,6 +121,9 @@ def test_aggregated_reading_serializer_loads_topic_and_bucket() -> None:
     assert isinstance(loaded, AggregatedReading)
     assert loaded.bucket == 1234567800.0
     assert loaded.topic == Topics.TEMPERATURE
+    assert loaded.variance_value == 4.0
+    assert loaded.stddev_value == 2.0
+    assert loaded.skewness_value == 0.0
 
 
 def test_camera_snapshot_serializer_loads_binary_image() -> None:

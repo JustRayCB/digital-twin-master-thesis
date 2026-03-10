@@ -17,12 +17,15 @@ def test_aggregated_reading_serialization_roundtrip() -> None:
         plant_id=2,
         topic=Topics.TEMPERATURE,
         unit="C",
-        avg_value=20.0,
+        mean_value=20.0,
         min_value=18.0,
         max_value=22.0,
         sample_count=12,
         avg_dq_score=0.95,
         imputed_count=1,
+        variance_value=1.2,
+        stddev_value=1.095445115,
+        skewness_value=0.0,
     )
 
     encoded = dump("generic", payload)

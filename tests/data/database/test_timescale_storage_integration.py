@@ -275,9 +275,12 @@ def test_query_aggregates_returns_1h_buckets(metadata_store, readings_store) -> 
     )
 
     assert aggregates
-    assert aggregates[0].avg_value == 22.5
+    assert aggregates[0].mean_value == 22.5
     assert aggregates[0].min_value == 20.0
     assert aggregates[0].max_value == 25.0
+    assert aggregates[0].variance_value == pytest.approx(3.5)
+    assert aggregates[0].stddev_value == pytest.approx(3.5**0.5)
+    assert aggregates[0].skewness_value == pytest.approx(0.0, abs=1e-12)
 
 
 def test_save_alert_event_requires_registered_definition(metadata_store, alert_store) -> None:

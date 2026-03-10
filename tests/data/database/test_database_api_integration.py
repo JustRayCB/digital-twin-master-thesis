@@ -171,6 +171,46 @@ def test_get_readings_returns_raw_data(client, readings_store, sample_sensor) ->
     assert any(reading.correlation_id == "test-123" for reading in readings)
 
 
+def test_get_readings_returns_1h_aggregate_stats(client, readings_store, sample_sensor) -> None:
+    """Readings endpoint returns hourly aggregate statistics for a sensor."""
+    base_timestamp = 1_735_689_600.0
+    for index in range(6):
+        readings_store.ingest_reading(
+            ProcessedSensorData(
+                plant_id=sample_sensor.plant_id,
+                sensor_id=sample_sensor.id,
+                timestamp=base_timestamp + index * 600,
+                value=20.0 + index,
+                unit="°C",
+                topic=Topics.TEMPERATURE,
+                correlation_id=f"agg-{index}",
+                flags={},
+                dq_score=1.0,
+                imputed=False,
+            )
+        )
+
+    with readings_store.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);"))
+
+    query = ReadingsQuery(
+        window="1h",
+        sensor_id=sample_sensor.id,
+        since=base_timestamp - 60,
+        until=base_timestamp + 7200,
+    )
+    response = client.get("/readings", query_string=dump("generic", query))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    assert payload[0]["mean_value"] == pytest.approx(22.5)
+    assert payload[0]["variance_value"] == pytest.approx(3.5)
+    assert payload[0]["stddev_value"] == pytest.approx(3.5**0.5)
+    assert payload[0]["skewness_value"] == pytest.approx(0.0, abs=1e-12)
+
+
 def test_get_readings_rejects_invalid_query_params(client) -> None:
     """Readings endpoint rejects invalid query parameters.
 
