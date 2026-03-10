@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    debug_mode = True
+    debug_mode = Config.DEBUG_MODE.value == "True"
 
     # Ensure schema is initialized before starting the service
     if debug_mode and in_reloader:

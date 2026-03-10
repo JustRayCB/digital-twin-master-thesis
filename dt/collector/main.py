@@ -2,14 +2,8 @@ from time import sleep
 
 import board
 
-from dt.collector import (
-    CameraSensor,
-    HumiditySensor,
-    LightSensor,
-    SensorManager,
-    SoilMoistureSensor,
-    TemperatureSensor,
-)
+from dt.collector import (CameraSensor, HumiditySensor, LightSensor,
+                          SensorManager, SoilMoistureSensor, TemperatureSensor)
 from dt.utils import get_logger
 
 TEMPERATURE_INTERVAL_SECONDS = 120
@@ -72,12 +66,10 @@ def main():
     sensor_manager.add_sensor(light_sensor)
     sensor_manager.add_sensor(camera_sensor)
 
-    input("Press Enter to start data collector module ...")
-
     try:
         while True:
             sensor_manager.read_all_sensors()
-            print("Reading all sensors")
+            logger.info("Reading all sensors")
             sleep(sensor_manager.seconds_until_next_read())
     except KeyboardInterrupt:
         logger.info("Exiting main")

@@ -28,6 +28,7 @@ class Config(StrEnum):
     )  # Dashboard URL
     FLASK_DB_URL = os.getenv("FLASK_DB_URL", "http://localhost:5001/")  # Database service URL
     FLASK_AI_URL = os.getenv("FLASK_AI_URL", "http://localhost:5002/")  # AI service URL
+    DEBUG_MODE = os.getenv("FLASK_DEBUG", "True")  # Flask debug toggle
 
     MODELS_DIR = os.getenv("MODELS_DIR", "models/")  # Directory to save/load models
 
@@ -49,12 +50,8 @@ class Config(StrEnum):
     SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv(
         "SPARK_SQL_SHUFFLE_PARTITIONS", "2"
     )  # Shuffle partitions
-    SPARK_DEFAULT_PARALLELISM = os.getenv(
-        "SPARK_DEFAULT_PARALLELISM", "2"
-    )  # Default parallelism
-    SPARK_AQE_ENABLED = os.getenv(
-        "SPARK_AQE_ENABLED", "false"
-    )  # Adaptive query execution
+    SPARK_DEFAULT_PARALLELISM = os.getenv("SPARK_DEFAULT_PARALLELISM", "2")  # Default parallelism
+    SPARK_AQE_ENABLED = os.getenv("SPARK_AQE_ENABLED", "false")  # Adaptive query execution
     SPARK_MAX_OFFSETS_PER_TRIGGER = os.getenv(
         "SPARK_MAX_OFFSETS_PER_TRIGGER", "500"
     )  # Kafka offsets per trigger

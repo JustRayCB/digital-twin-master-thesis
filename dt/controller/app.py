@@ -75,7 +75,7 @@ if __name__ == "__main__":
     import os
 
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    debug_mode = True
+    debug_mode = Config.DEBUG_MODE.value == "True"
 
     policy_manager = PolicyManager()
     database_client = DatabaseApiClient(base_url=Config.FLASK_DB_URL)

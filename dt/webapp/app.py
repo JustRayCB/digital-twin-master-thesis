@@ -27,7 +27,7 @@ from flask_socketio import SocketIO
 import dt.webapp.consumer as consumer
 from dt.communication.controller_client import ControllerClient
 from dt.communication.db_client import DatabaseApiClient
-from dt.utils import get_logger
+from dt.utils import Config, get_logger
 from dt.webapp.api import create_webapp_blueprint
 from dt.webapp.ui import create_ui_blueprint, default_ui_dir
 
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 
     # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    debug_mode = True
+    debug_mode = Config.DEBUG_MODE.value == "True"
 
     parser = argparse.ArgumentParser(
         description="Run the Digital Twin dashboard webapp.",
