@@ -34,4 +34,4 @@ def create_ui_blueprint(ui_dir: Path, url_prefix: str = "") -> Blueprint:
 
 
 def default_ui_dir() -> Path:
-    return Path(__file__).resolve().parent / "static" / "ui"
+    return Path(__file__).resolve().parent / "frontend" / "ui"
