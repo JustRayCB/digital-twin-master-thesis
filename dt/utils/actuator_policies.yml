@@ -6,19 +6,19 @@ defaults:
 
 actuators:
   pump:
-    max_duration_seconds: 5
-    min_cooldown_seconds: 120
+    max_duration_seconds: 3
+    min_cooldown_seconds: 21600
     allow_overlap: false
   light:
-    max_duration_seconds: 43200
+    max_duration_seconds: 28800
     min_cooldown_seconds: 0
     allow_overlap: false
   fan:
-    max_duration_seconds: 600
-    min_cooldown_seconds: 20
+    max_duration_seconds: 7200
+    min_cooldown_seconds: 1800
   heater:
-    max_duration_seconds: 300
-    min_cooldown_seconds: 30
+    max_duration_seconds: 1800
+    min_cooldown_seconds: 1800
 
 # plants: # Per plants overrides
 #   1: # Plant nb 1

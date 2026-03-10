@@ -38,7 +38,7 @@ fi
 echo "[2/7] Installing PostgreSQL and TimescaleDB packages"
 sudo apt-get update -y
 # Install meta package; it will select the correct PG version (e.g., 16/18)
-sudo apt-get install -y timescaledb-2-postgresql-18 postgresql-client-18
+sudo apt-get install -y timescaledb-2-postgresql-18 postgresql-client-18 timescaledb-toolkit-postgresql-18
 
 echo "[3/7] Running timescaledb-tune (auto-yes)"
 if command -v timescaledb-tune >/dev/null 2>&1; then
@@ -72,7 +72,7 @@ else
 fi
 
 echo "[6/7] Enabling TimescaleDB extension on ${DB_NAME} and granting privileges"
-sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS timescaledb; CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;"
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME}" -c "GRANT ALL ON SCHEMA public TO \"${DB_USER}\";"
 
 echo "[7/7] Writing .env configuration"
