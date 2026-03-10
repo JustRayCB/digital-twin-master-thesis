@@ -120,8 +120,10 @@ templates:
         enabled: false
     imputation:
       strategy: forward_fill_with_decay
-      max_gap_seconds: 600
-      decay_seconds: 300
+      # 10 min sampling -> tolerate one missed snapshot before dropping the signal
+      max_gap_seconds: 1200
+      # decay over one snapshot interval so stale image-derived values fade predictably
+      decay_seconds: 600
       baseline: null
     calibration:
       strategy: identity
