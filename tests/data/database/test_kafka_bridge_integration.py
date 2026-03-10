@@ -152,6 +152,81 @@ def test_bridge_persists_multiple_processed_readings(
         bridge.disconnect()
 
 
+def test_bridge_persists_processed_green_ratio_reading(
+    kafka_bootstrap_servers: str,
+    kafka_service: KafkaService,
+    readings_store,
+    alert_store,
+    controller_store,
+    snapshot_store,
+    sample_sensor,
+) -> None:
+    """Persist processed green-ratio readings received from Kafka."""
+    test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
+    bridge = setup_bridge(
+        config=test_config,
+        readings_storage=readings_store,
+        alert_storage=alert_store,
+        controller_storage=controller_store,
+        snapshot_storage=snapshot_store,
+    )
+    assert isinstance(bridge, KafkaService)
+
+    try:
+        wait_for_kafka_service_ready(
+            bridge, expected_topics={Topics.GREEN_RATIO.processed, Topics.ALERTS}
+        )
+
+        test_reading = ProcessedSensorData(
+            plant_id=sample_sensor.plant_id,
+            sensor_id=sample_sensor.id,
+            timestamp=time.time(),
+            value=0.42,
+            unit="ratio",
+            topic=Topics.GREEN_RATIO,
+            correlation_id="green-ratio-kafka-integration-test",
+            flags={},
+            dq_score=0.98,
+            imputed=False,
+        )
+        kafka_service.publish(Topics.GREEN_RATIO.processed, test_reading)
+
+        def green_ratio_reading_persisted() -> bool:
+            readings = readings_store.query_readings(
+                ReadingsQuery(
+                    sensor_id=sample_sensor.id,
+                    topic=Topics.GREEN_RATIO,
+                    since=test_reading.timestamp - 60,
+                )
+            )
+            return any(
+                reading.correlation_id == "green-ratio-kafka-integration-test" for reading in readings
+            )
+
+        wait_until(green_ratio_reading_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+
+        persisted_readings = readings_store.query_readings(
+            ReadingsQuery(
+                sensor_id=sample_sensor.id,
+                topic=Topics.GREEN_RATIO,
+                since=test_reading.timestamp - 60,
+            )
+        )
+        persisted_reading = next(
+            reading
+            for reading in persisted_readings
+            if reading.correlation_id == "green-ratio-kafka-integration-test"
+        )
+
+        assert persisted_reading.topic == Topics.GREEN_RATIO
+        assert persisted_reading.unit == "ratio"
+        assert persisted_reading.sensor_id == sample_sensor.id
+        assert persisted_reading.correlation_id == "green-ratio-kafka-integration-test"
+
+    finally:
+        bridge.disconnect()
+
+
 def test_bridge_persists_camera_snapshot(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,

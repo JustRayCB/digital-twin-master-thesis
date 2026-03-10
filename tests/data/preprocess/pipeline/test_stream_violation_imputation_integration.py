@@ -200,6 +200,50 @@ def test_stuck_detection_flags_flatline(
     assert processed[-1].normalization_profile_id == DEFAULT_TEMPLATE_KEY
 
 
+def test_stuck_detection_can_be_disabled_per_stream(
+    spark_session: SparkSession,
+    base_config: dict[str, Any],
+    tmp_path,
+    config_writer,
+    configure_preprocess_db_client,
+    sensor_registry,
+) -> None:
+    """Flatlined values should pass unchanged when stuck detection is disabled."""
+    sensors = register_sensors(sensor_registry, ["greenhouse.temperature"])
+    sensor = sensors["greenhouse.temperature"]
+
+    config = copy.deepcopy(base_config)
+    config["templates"][DEFAULT_TEMPLATE_KEY]["validation"]["stuck"] = {"enabled": False}
+    config_path = config_writer(config)
+
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        make_event(
+            plant_id=sensor.plant_id,
+            sensor_id=sensor.id,
+            timestamp=(base_time + timedelta(seconds=offset)).timestamp(),
+            value=19.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id=f"stuck-disabled-{offset}",
+        )
+        for offset in (0, 15, 45)
+    ]
+
+    processed = run_pipeline(spark_session, tmp_path, config_path, events)
+    result = processed[-1]
+    assert result.flags[ValidationFlag.STUCK] is False
+    assert result.flags[ValidationFlag.VALID] is True
+    assert result.imputed is False
+    assert result.value == 19.0
+    assert result.dq_score == 1.0
+    assert result.raw_value == 19.0
+    assert result.calibrated_value == 19.0
+    assert result.normalized_value == 19.0
+    assert result.calibration_profile_id == DEFAULT_TEMPLATE_KEY
+    assert result.normalization_profile_id == DEFAULT_TEMPLATE_KEY
+
+
 def test_valid_reading_passes_through(
     spark_session: SparkSession,
     base_config: dict[str, Any],
