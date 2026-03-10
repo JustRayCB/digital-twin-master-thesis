@@ -3,16 +3,18 @@
 Evaluates configured alert rules against processed sensor payloads.
 """
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from dt.alerts.rules import AlertRule, ConditionType, EvaluationStage
 from dt.communication.adapters import dump
 from dt.communication.dataclasses import ProcessedSensorData
-from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertStatus,
-    SensorAlertEvent,
-)
+from dt.communication.dataclasses.alerts.alert_record import (AlertDefinition,
+                                                              AlertStatus,
+                                                              SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
+from dt.utils import Config
 
 
 class RuleEvaluator:
@@ -33,6 +35,7 @@ class RuleEvaluator:
             List of alert rules to evaluate.
         """
         self.rules = rules
+        self._timezone = ZoneInfo(str(Config.TIMEZONE))
 
     def evaluate(
         self, payload: ProcessedSensorData
@@ -61,6 +64,9 @@ class RuleEvaluator:
             if rule.source != "*" and rule.source != source:
                 continue
 
+            if not self._is_rule_active(rule, payload):
+                continue
+
             # Evaluate the condition
             if self._evaluate_condition(rule, payload):
                 event = self._create_candidate_alert(rule, payload, source)
@@ -68,6 +74,20 @@ class RuleEvaluator:
                 candidates.append((definition, event))
 
         return candidates
+
+    def _is_rule_active(self, rule: AlertRule, payload: ProcessedSensorData) -> bool:
+        """Return whether the rule is active for the payload timestamp."""
+        if rule.active_hours is None:
+            return True
+
+        local_time = datetime.fromtimestamp(payload.timestamp, self._timezone).time()
+        start = rule.active_hours.start
+        end = rule.active_hours.end
+
+        if start <= end:
+            return start <= local_time < end
+
+        return local_time >= start or local_time < end
 
     def _evaluate_condition(self, rule: AlertRule, payload: ProcessedSensorData) -> bool:
         """Evaluate a single rule's condition against payload.

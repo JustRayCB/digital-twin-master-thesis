@@ -4,9 +4,13 @@ Defines the schema for alert rules including severity levels, evaluation stages,
 and condition types.
 """
 
-from dataclasses import asdict, dataclass, fields
+import re
+from dataclasses import MISSING, dataclass, fields
+from datetime import datetime, time
 from enum import StrEnum
 from typing import Any
+
+# TODO: Need to use serialization adapters
 
 
 class SeverityLevel(StrEnum):
@@ -30,6 +34,38 @@ class ConditionType(StrEnum):
     RANGE = "range"
     DQ_SCORE = "dq_score"
     VALIDATION_FLAG = "validation_flag"
+
+
+@dataclass
+class ActiveHours:
+    """Local-time window during which a rule is active."""
+
+    start: time
+    end: time
+
+    @classmethod
+    def from_dict(cls, active_hours_data: dict[str, Any]) -> "ActiveHours":
+        """Create ActiveHours from dictionary data."""
+        if not isinstance(active_hours_data, dict):
+            raise ValueError("Invalid active hours: expected mapping with start/end fields")
+
+        try:
+            start = cls._parse_time(active_hours_data["start"])
+            end = cls._parse_time(active_hours_data["end"])
+        except KeyError as exc:
+            raise ValueError("Invalid active hours: missing start or end") from exc
+
+        return cls(start=start, end=end)
+
+    @staticmethod
+    def _parse_time(value: Any) -> time:
+        if not isinstance(value, str) or re.fullmatch(r"\d{2}:\d{2}", value) is None:
+            raise ValueError("Invalid active hours: expected HH:MM format")
+
+        try:
+            return datetime.strptime(value, "%H:%M").time()
+        except ValueError as exc:
+            raise ValueError("Invalid active hours: expected HH:MM format") from exc
 
 
 @dataclass
@@ -90,6 +126,8 @@ class AlertRule:
         Sensor type or topic short name to apply rule to (use "*" for all).
     condition : AlertCondition
         Condition definition for triggering the alert.
+    active_hours : ActiveHours | None
+        Optional local-time window during which the rule is active.
     persistence_count : int
         Number of consecutive violations required before creating alert.
     cooldown_seconds : int
@@ -105,6 +143,7 @@ class AlertRule:
     condition: AlertCondition
     persistence_count: int
     cooldown_seconds: int
+    active_hours: ActiveHours | None = None
 
     @classmethod
     def from_dict(cls, rule_data: dict[str, Any]) -> "AlertRule":
@@ -112,12 +151,19 @@ class AlertRule:
         # TODO: Use generic adapter with a special hook
 
         # Check for missing fields
-        required_fields = {f.name for f in fields(cls)}
+        required_fields = {
+            f.name for f in fields(cls) if f.default is MISSING and f.default_factory is MISSING
+        }
         missing_fields = required_fields - rule_data.keys()
         if missing_fields:
             raise ValueError(f"Missing required fields for AlertRule: {missing_fields}")
 
         condition = AlertCondition.from_dict(rule_data["condition"])
+        active_hours = (
+            ActiveHours.from_dict(rule_data["active_hours"])
+            if "active_hours" in rule_data
+            else None
+        )
 
         try:
             severity = SeverityLevel(rule_data["severity"])
@@ -145,6 +191,7 @@ class AlertRule:
             condition=condition,
             persistence_count=rule_data["persistence_count"],
             cooldown_seconds=rule_data["cooldown_seconds"],
+            active_hours=active_hours,
         )
 
     def override(self, override_data: dict[str, Any]) -> "AlertRule":
@@ -171,5 +218,10 @@ class AlertRule:
             ),
             "persistence_count": override_data.get("persistence_count", self.persistence_count),
             "cooldown_seconds": override_data.get("cooldown_seconds", self.cooldown_seconds),
+            "active_hours": (
+                ActiveHours.from_dict(override_data["active_hours"])
+                if "active_hours" in override_data
+                else self.active_hours
+            ),
         }
         return AlertRule(**data)
