@@ -9,10 +9,11 @@ CONTROLLER ?= dt.controller.app
 DB ?= dt.data.database.app
 PREPROCESS ?= dt.data.preprocess.main
 ALERTS ?= dt.alerts.app
+IMAGE_ANALYSIS ?= dt.ai.image_analysis_service
 
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
-				run-dashboard run-collector run-controller run-database run-preprocessing run-alert-engine \
+				run-dashboard run-collector run-controller run-database run-preprocessing run-alert-engine run-image-analysis \
 				build-webapp test venv \
 				clean-env clean-venv clean-pyc \
 				update-deps check-deps
@@ -36,6 +37,7 @@ help:
 	@echo "  make run-database				-> database (TS and RDB) app (SQLite/InfluxDB)"
 	@echo "  make run-preprocessing			-> Spark preprocessing pipeline"
 	@echo "  make run-alert-engine				-> alert engine service (Kafka + Flask API)"
+	@echo "  make run-image-analysis			-> camera image analysis service (camera_image.raw -> green_ratio.raw)"
 	@echo "  make run-alert-api-only			-> alert engine Flask API only (no Kafka consumer)"
 	@echo "  make build-webapp				-> build Svelte UI into dt/webapp/static/ui"
 	@echo ""
@@ -98,6 +100,9 @@ run-preprocessing:
 
 run-alert-engine:
 	$(PY) $(ALERTS)
+
+run-image-analysis:
+	$(PY) $(IMAGE_ANALYSIS)
 
 run-alert-api-only:
 	$(PY) -c "from dt.alerts.app import create_app; app=create_app(start_consumer=False); app.run(host='0.0.0.0', port=5003)"

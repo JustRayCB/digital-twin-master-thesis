@@ -27,6 +27,7 @@ surfaces.
 | --- | --- | --- |
 | Collector | `dt/collector/` | Reads hardware sensors and publishes raw sensor events to Kafka. |
 | Preprocessing | `dt/data/preprocess/` | Spark streaming job that transforms raw readings into processed readings. |
+| Image analysis | `dt/ai/image_analysis_service.py` | Consumes raw camera snapshots and publishes derived green-ratio readings. |
 | Database service | `dt/data/database/` | Runs SQL migrations on startup, persists Kafka events, and exposes historical data APIs. |
 | Alert engine (future analytics) | `dt/alerts/` | Evaluates alert rules, manages alert state, and publishes alert lifecycle events. |
 | Web application | `dt/webapp/` | Dashboard UI, REST facade for the frontend, and Socket.IO real-time bridge. |
@@ -34,7 +35,7 @@ surfaces.
 
 ## Data flow
 
-The normal runtime path for a reading is:
+The normal runtime path for a numeric reading is:
 
 1. The collector polls a physical sensor and publishes a raw event to a Kafka topic such as `dt.sensors.raw.temperature`.
 2. The preprocessing job consumes raw sensor topics, applies the configured pipeline, and republishes the result to `dt.sensors.processed.*`.
@@ -43,7 +44,17 @@ The normal runtime path for a reading is:
 5. The controller consumes processed readings as well and evaluates routines rules for actuator control, publishing actions to `dt.actions`.
 6. The web application consumes processed readings and alert events for live updates and queries the database service for historical data.
 
+
 ![Sensor reading flow](docs/img/seq_readings_flow.drawio.svg)
+
+The camera-derived path is now explicit:
+
+1. The collector publishes `CameraSnapshot` payloads on `dt.sensors.raw.camera_image`.
+2. The image analysis service consumes `dt.sensors.raw.camera_image`.
+3. The image analysis service publishes derived `RawSensorData` readings on `dt.sensors.raw.green_ratio` using the same physical camera `sensor_id`.
+4. The preprocessing service consumes `dt.sensors.raw.green_ratio` like any other numeric raw topic and publishes `dt.sensors.processed.green_ratio`.
+5. The database service, alert engine, and web application consume `dt.sensors.processed.green_ratio` as a normal numeric stream.
+6. The database snapshot path and webapp snapshot UI continue to consume `dt.sensors.raw.camera_image`.
 
 ## Physical setup
 
@@ -184,16 +195,18 @@ Recommended service start order:
 2. Start PostgreSQL + TimescaleDB.
 3. Start the database service so migrations run and Kafka persistence is active.
 4. Start the preprocessing service if you want processed sensor data.
-5. Start the alert engine.
-8. Start the controller only if you want actuator control.
-7. Start the collector (but do not press ENTER yet) on the Raspberry Pi when hardware is available.
-6. Start the web application and press ENTER in the collector terminal to begin sensor polling.
+5. Start the image analysis service if you want camera-derived green-ratio readings.
+6. Start the alert engine.
+7. Start the controller only if you want actuator control.
+8. Start the collector (but do not press ENTER yet) on the Raspberry Pi when hardware is available.
+9. Start the web application and press ENTER in the collector terminal to begin sensor polling.
 
 Make targets:
 
 ```bash
 make run-database
 make run-preprocessing
+make run-image-analysis
 make run-alert-engine
 make run-controller
 make run-collector
@@ -229,8 +242,15 @@ The canonical topic definitions live in `dt/communication/topics.py`.
 Examples:
 
 - `dt.sensors.raw.temperature`
+- `dt.sensors.raw.camera_image`
+- `dt.sensors.raw.green_ratio`
 - `dt.sensors.processed.soil_moisture`
+- `dt.sensors.processed.green_ratio`
 - `dt.alerts`
+
+Not every raw topic is preprocessable. `dt.sensors.raw.camera_image` carries
+`CameraSnapshot`, while numeric raw topics such as `dt.sensors.raw.green_ratio`
+carry `RawSensorData`.
 
 ## Data and API conventions
 
@@ -259,8 +279,8 @@ This is an active thesis project, not a polished product distribution. The core 
 
 - The controller service exists but the full closed-loop automation story (with analytics) is still in progress.
 - Routines for actuator control based on sensor readings are working.
-- The database module is complete with migrations, but needs to split the big TimescaleStorage class into more focused classes.
-- Need to add an image processing module and move the camera storing out of the DB by using the filesystem.
+- The database module now uses focused stores.
+- The image analysis service and filesystem-backed camera snapshots are in place
 - Need to modify retention and downsampling policies in TimescaleDB to balance storage and historical query needs.
 
 
