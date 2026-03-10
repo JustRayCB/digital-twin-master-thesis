@@ -56,7 +56,7 @@ class SmoothingProcessor(BaseProcessor):
         # Get smoothing strategy
         if sensor_config is None or sensor_key is None:
             raise ValueError("SmoothingProcessor requires sensor_config and sensor_key to be set")
-        strategy = self._config_manager.get_smoothing_strategy(sensor_key)
+        strategy = self._config_manager.get_smoothing_strategy(sensor_key, reading.topic)
 
         # Apply smoothing
         smoothed_value = strategy.apply(

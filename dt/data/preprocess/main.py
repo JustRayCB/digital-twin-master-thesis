@@ -10,9 +10,10 @@ from dt.utils import Config, get_logger
 
 logger = get_logger(__name__)
 
-RAW_TOPIC_PATTERN = (
-    ".".join(Topics.TEMPERATURE.raw.split(".")[:-1]) + ".*"
-)  # Subscribe to all raw sensor topics
+
+def _build_preprocessable_raw_topics() -> list[str]:
+    """Return raw topics that carry numeric sensor payloads for preprocessing."""
+    return [topic.raw for topic in Topics.list_sensor_topics() if topic != Topics.CAMERA_IMAGE]
 
 
 def _build_topic_map() -> dict[str, str]:
@@ -41,7 +42,7 @@ def _build_spark_session() -> SparkSession:
 def _read_raw_events(
     spark: SparkSession,
     kafka_bootstrap: str,
-    topic_pattern: str,
+    topics: list[str],
     starting_offsets: str,
 ) -> DataFrame:
     """Stream raw sensor events from Kafka and project them onto the dataclass schema."""
@@ -49,7 +50,7 @@ def _read_raw_events(
     kafka_stream = (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", kafka_bootstrap)
-        .option("subscribePattern", topic_pattern)
+        .option("subscribe", ",".join(topics))
         .option("startingOffsets", starting_offsets)
         .option("failOnDataLoss", "false")
         .option("maxOffsetsPerTrigger", Config.SPARK_MAX_OFFSETS_PER_TRIGGER.value)
@@ -106,7 +107,7 @@ def main() -> None:
         raw_events = _read_raw_events(
             spark,
             kafka_bootstrap=kafka_bootstrap,
-            topic_pattern=RAW_TOPIC_PATTERN,
+            topics=_build_preprocessable_raw_topics(),
             starting_offsets=Config.SPARK_STARTING_OFFSETS,
         )
 

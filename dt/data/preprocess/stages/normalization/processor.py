@@ -48,10 +48,10 @@ class NormalizationProcessor(BaseProcessor):
             raise ValueError("NormalizationProcessor requires sensor_key to be set")
         if context.sensor_config is None:
             raise ValueError("NormalizationProcessor requires sensor_config to be set")
-        sensor_id = context.sensor_key
+        sensor_name = context.sensor_key
 
         # Get normalization strategy
-        strategy = self._config_manager.get_normalization_strategy(sensor_id)
+        strategy = self._config_manager.get_normalization_strategy(sensor_name, reading.topic)
 
         # Apply normalization to smoothed value
         value = context.get_final_value()
@@ -60,6 +60,6 @@ class NormalizationProcessor(BaseProcessor):
         context.normalized_value = normalized
         context.normalization_profile_id = context.sensor_config.normalization_profile_id or ""
 
-        logger.debug(f"Normalized {sensor_id}: {value} -> {normalized}")
+        logger.debug(f"Normalized {sensor_name}: {value} -> {normalized}")
 
         return context

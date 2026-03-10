@@ -301,7 +301,6 @@ class SparkStateProvider(StateProvider):
     def __init__(
         self,
         group_state: GroupState,
-        sensor_id: int,
         max_history_length: int = int(Config.MAX_STATE_HISTORY_LENGTH),
     ) -> None:
         """Initialise the provider with an existing Spark GroupState object.
@@ -309,9 +308,7 @@ class SparkStateProvider(StateProvider):
         Parameters
         ----------
         group_state : pyspark.sql.streaming.state.GroupState
-            Stateful context provided by Spark while processing a sensor group.
-        sensor_id : int
-            Sensor identifier used for logging and debugging (unused in logic).
+            Stateful context provided by Spark while processing a sensor stream.
         max_history_length : int
             Maximum number of historical readings to retain for each sensor,
             by default int(Config.MAX_STATE_HISTORY_LENGTH)
