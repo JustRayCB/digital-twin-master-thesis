@@ -15,9 +15,11 @@ from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
     SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                  AlertHistoryQuery, CameraSnapshotQuery,
+                                                  AlertHistoryQuery,
+                                                  CameraSnapshotQuery,
                                                   ReadingsQuery)
 from dt.communication.topics import Topics
 
@@ -850,3 +852,45 @@ def test_get_latest_camera_snapshot_raises_clear_error_when_file_missing(
 
     with pytest.raises(RuntimeError, match="Snapshot file not found"):
         snapshot_store.get_latest_camera_snapshot(plant_id=plant_id)
+
+
+def test_log_action_execution_appends_status_events(metadata_store, controller_store) -> None:
+    """Persist one row per action status event for the same execution."""
+    plant_id = metadata_store.upsert_plant(name="Action Event Plant")
+    actuator_id = metadata_store.register_actuator(plant_id, "Water Pump", 17, 1)
+
+    running = ActionCommand(
+        plant_id=plant_id,
+        execution_id="exec-append-1",
+        action_id="manual:1:1:ON",
+        actuator_id=actuator_id,
+        event_at=time.time(),
+        duration=0.0,
+        command="ON",
+        reason="append test",
+        correlation_id="corr-append-1",
+        source="manual",
+        status="running",
+    )
+    completed = ActionCommand(
+        plant_id=plant_id,
+        execution_id=running.execution_id,
+        action_id=running.action_id,
+        actuator_id=actuator_id,
+        event_at=running.event_at + 1,
+        duration=0.0,
+        command="ON",
+        reason="append test",
+        correlation_id="corr-append-1",
+        source="manual",
+        status="completed",
+    )
+
+    controller_store.log_action_execution(running)
+    controller_store.log_action_execution(completed)
+
+    history = controller_store.get_action_history(plant_id, limit=10)
+
+    assert [item.status for item in history[:2]] == ["completed", "running"]
+    assert {item.execution_id for item in history[:2]} == {"exec-append-1"}
+    assert [item.event_at for item in history[:2]] == [completed.event_at, running.event_at]

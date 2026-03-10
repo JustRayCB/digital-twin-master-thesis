@@ -38,9 +38,10 @@ def _build_action(
     """
     return ActionCommand(
         plant_id=plant_id,
+        execution_id=str(uuid.uuid4()),
         action_id=f"manual-test-{uuid.uuid4().hex}",
         actuator_id=actuator_id,
-        started_at=time.time(),
+        event_at=time.time(),
         duration=duration,
         command=command,
         reason="Actuator manager test",

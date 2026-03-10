@@ -482,9 +482,10 @@ def test_bridge_persists_action_status_events(
             Topics.ACTIONS,
             ActionCommand(
                 plant_id=sample_plant_id,
+                execution_id="manual:plant-test:pump:on:1",
                 action_id="manual:plant-test:pump:on",
                 actuator_id=actuator_id,
-                started_at=time.time(),
+                event_at=time.time(),
                 duration=0.0,
                 command="ON",
                 reason="bridge integration test",

@@ -19,9 +19,7 @@ from dt.communication.adapters.serializers.db.sensor import (
     ProcessedSensorDataDbSerializer)
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
-    SensorAlertEvent)
-from dt.communication.dataclasses.alerts.alert_type import AlertType
+    AlertHistoryEvent, AlertStatus, ExternalAlertEvent, SensorAlertEvent)
 from dt.communication.dataclasses.camera_snapshot import CameraSnapshot
 from dt.communication.dataclasses.controller import (Action, ActionCommand,
                                                      CompiledRule, ControlMode,
@@ -30,7 +28,6 @@ from dt.communication.dataclasses.controller import (Action, ActionCommand,
                                                      Trigger)
 from dt.communication.dataclasses.processed_sensor_data import (
     ProcessedSensorData, ValidationFlag)
-from dt.communication.dataclasses.sensor import SensorDescriptor
 from dt.communication.topics import Topics
 
 _ENGINE = create_engine("sqlite+pysqlite:///:memory:", future=True)
@@ -330,9 +327,10 @@ def test_action_command_serializer_dump_and_load() -> None:
     serializer = ActionCommandDbSerializer()
     command = ActionCommand(
         plant_id=1,
+        execution_id="exec-1",
         action_id="a1",
         actuator_id=2,
-        started_at=1000.5,
+        event_at=1000.5,
         duration=30.0,
         command="ON",
         reason="rule",
@@ -340,15 +338,16 @@ def test_action_command_serializer_dump_and_load() -> None:
         source="manual",
     )
     dumped = serializer.dump(command)
-    assert "timestamp" not in dumped
-    assert dumped["started_at"] == 1000.5
+    assert dumped["execution_id"] == "exec-1"
+    assert dumped["event_at"] == 1000.5
 
     row = make_row(
         {
             "plant_id": 1,
+            "execution_id": "exec-1",
             "action_id": "a1",
             "actuator_id": 2,
-            "started_at": datetime.fromtimestamp(1000.5),
+            "event_at": datetime.fromtimestamp(1000.5),
             "duration": 30.0,
             "command": "ON",
             "reason": "rule",
@@ -357,10 +356,9 @@ def test_action_command_serializer_dump_and_load() -> None:
             "routine_id": None,
             "status": "completed",
             "error_message": None,
-            "ended_at": datetime.fromtimestamp(1010.5),
         },
-        datetime_fields={"started_at", "ended_at"},
+        datetime_fields={"event_at"},
     )
     loaded = serializer.load(ActionCommand, row)
-    assert loaded.started_at == 1000.5
-    assert loaded.ended_at == 1010.5
+    assert loaded.execution_id == "exec-1"
+    assert loaded.event_at == 1000.5
