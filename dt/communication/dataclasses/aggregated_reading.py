@@ -22,8 +22,8 @@ class AggregatedReading:
         The type of data (e.g., "temperature", "humidity").
     unit : str
         The unit of measurement (e.g., "°C", "%").
-    avg_value : float
-        The average value over the window.
+    mean_value : float
+        The arithmetic mean over the window.
     min_value : float
         The minimum value over the window.
     max_value : float
@@ -34,6 +34,12 @@ class AggregatedReading:
         The average data quality score over the window.
     imputed_count : int
         The number of imputed samples in the window.
+    variance_value : float | None
+        The sample variance over the window, when defined.
+    stddev_value : float | None
+        The sample standard deviation over the window, when defined.
+    skewness_value : float | None
+        The sample skewness over the window, when defined.
     """
 
     bucket: float
@@ -41,9 +47,12 @@ class AggregatedReading:
     plant_id: int
     topic: Topics
     unit: str
-    avg_value: float
+    mean_value: float
     min_value: float
     max_value: float
     sample_count: int
     avg_dq_score: float
     imputed_count: int
+    variance_value: float | None = None
+    stddev_value: float | None = None
+    skewness_value: float | None = None

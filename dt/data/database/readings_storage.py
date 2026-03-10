@@ -116,8 +116,12 @@ class ReadingsStore(ReadingsStorage):
 
         base_query = f"""
             SELECT bucket, sensor_id, plant_id, topic, unit,
-                   avg_value, min_value, max_value, sample_count,
-                   avg_dq_score, imputed_count
+                   average(value_stats) AS mean_value,
+                   min_value, max_value, sample_count,
+                   avg_dq_score, imputed_count,
+                   variance(value_stats, 'sample') AS variance_value,
+                   stddev(value_stats, 'sample') AS stddev_value,
+                   skewness(value_stats, 'sample') AS skewness_value
             FROM sensor_readings_{window}
             WHERE 1=1
         """

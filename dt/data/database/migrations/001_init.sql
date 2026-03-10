@@ -4,6 +4,7 @@
 
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
 
 -- ============================================================================
 -- RELATIONAL TABLES
@@ -181,6 +182,25 @@ CREATE TABLE IF NOT EXISTS alert_external (
     CONSTRAINT uq_alert_external_history_plant UNIQUE (alert_history_id, plant_id)
 );
 
+-- Stores snapshot metadata in PostgreSQL and raw image bytes on the filesystem.
+CREATE TABLE IF NOT EXISTS camera_snapshots (
+    id SERIAL, -- PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    sensor_id INTEGER NOT NULL, 
+    plant_id INTEGER NOT NULL,
+    topic VARCHAR(100) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    file_ref TEXT NOT NULL,
+    correlation_id VARCHAR(255) NOT NULL,
+    width INTEGER,
+    height INTEGER,
+
+    PRIMARY KEY (id),
+    CONSTRAINT fk_camera_snapshots_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
+    CONSTRAINT fk_camera_snapshots_plant_id FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+);
+
+
 -- ============================================================================
 -- TIME-SERIES TABLES (HYPERTABLES)
 -- ============================================================================
@@ -235,7 +255,7 @@ SELECT
     plant_id,
     topic,
     unit,
-    AVG(value) AS avg_value,
+    stats_agg(value) AS value_stats,
     MIN(value) AS min_value,
     MAX(value) AS max_value,
     COUNT(*) AS sample_count,
