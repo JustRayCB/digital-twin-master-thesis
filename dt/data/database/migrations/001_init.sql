@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
 ) WITH (
     timescaledb.hypertable,
     timescaledb.enable_columnstore,
-    timescaledb.chunk_interval = '7 days', -- similar as add_compression_policy(..., compressed_after => INTERVAL '7 days')
+    timescaledb.chunk_interval = '60 days', -- similar as add_compression_policy(..., compressed_after => INTERVAL '7 days')
     timescaledb.segmentby = 'sensor_id, plant_id, topic', -- segmentation columns for columnar storage
     timescaledb.orderby = 'timestamp DESC'
 );
@@ -258,11 +258,11 @@ SELECT add_continuous_aggregate_policy('sensor_readings_1h',
     if_not_exists => TRUE
 );
 
--- Retention policy (keep raw data for 30 days by default)
--- NOTE: For now we keep only 30 days of raw data and rely on aggregates for longer-term analysis.
+-- Retention policy (keep raw data for 90 days by default)
+-- NOTE: For now we keep only 90 days of raw data and rely on aggregates for longer-term analysis.
 -- Later we could also implement downsampling policies if needed. See https://docs.tigerdata.com/api/latest/hyperfunctions/downsampling/
 -- And set a longer retention for aggregates. (currently aggregates are kept indefinitely)
 SELECT add_retention_policy('sensor_readings',
-    INTERVAL '30 days',
+    INTERVAL '95 days',
     if_not_exists => TRUE
 );
