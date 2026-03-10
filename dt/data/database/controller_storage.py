@@ -111,7 +111,7 @@ class ControllerStorage(DatabaseStorage, ABC):
 
     @abstractmethod
     def log_action_execution(self, action: ActionCommand) -> None:
-        """Log an action execution (upsert).
+        """Log an action execution event.
 
         Parameters
         ----------
@@ -121,7 +121,7 @@ class ControllerStorage(DatabaseStorage, ABC):
         ...
 
 class ControllerStore(ControllerStorage):
-    """Persistence for controller state, routines, and action history."""
+    """Persistence for controller state, routines, and action history events."""
 
     def get_mode(self, plant_id: int) -> ControlMode:
         query = "SELECT * FROM controller_modes WHERE plant_id = :plant_id"
@@ -193,7 +193,7 @@ class ControllerStore(ControllerStorage):
         query = """
             SELECT * FROM action_executions
             WHERE plant_id = :plant_id
-            ORDER BY started_at DESC
+            ORDER BY event_at DESC, id DESC
             LIMIT :limit
         """
         with self._get_connection() as conn:
@@ -203,19 +203,13 @@ class ControllerStore(ControllerStorage):
     def log_action_execution(self, action: ActionCommand) -> None:
         query = """
             INSERT INTO action_executions (
-                action_id, plant_id, actuator_id, routine_id, source, command, duration,
-                reason, status, error_message, correlation_id, started_at
+                execution_id, action_id, plant_id, actuator_id, routine_id, source, command,
+                duration, reason, status, error_message, correlation_id, event_at
             ) VALUES (
-                :action_id, :plant_id, :actuator_id, :routine_id, :source, :command, :duration,
-                :reason, :status, :error_message, :correlation_id, to_timestamp(:started_at)
+                :execution_id, :action_id, :plant_id, :actuator_id, :routine_id, :source,
+                :command, :duration, :reason, :status, :error_message, :correlation_id,
+                to_timestamp(:event_at)
             )
-            ON CONFLICT (action_id, started_at) DO UPDATE
-            SET status = EXCLUDED.status,
-                error_message = EXCLUDED.error_message,
-                ended_at = CASE
-                    WHEN EXCLUDED.status IN ('completed', 'failed', 'rejected') THEN NOW()
-                    ELSE action_executions.ended_at
-                END
         """
         if action.status is None:
             raise ValueError("ActionCommand.status is required to log execution")

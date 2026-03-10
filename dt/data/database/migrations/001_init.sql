@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS routines (
 -- Audit log of all attempted and executed actuator commands.
 CREATE TABLE IF NOT EXISTS action_executions (
     id SERIAL PRIMARY KEY,
+    execution_id VARCHAR(255) NOT NULL,
     action_id VARCHAR(255) NOT NULL,
     plant_id INTEGER NOT NULL,
     actuator_id INTEGER NOT NULL,
@@ -87,14 +88,12 @@ CREATE TABLE IF NOT EXISTS action_executions (
     reason TEXT,
     status TEXT CHECK (status IN ('rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
     error_message TEXT,
-    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMPTZ,
     correlation_id VARCHAR(255) NOT NULL,
+    event_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_action_executions_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
     CONSTRAINT fk_action_executions_actuator FOREIGN KEY (actuator_id) REFERENCES actuators(id) ON DELETE CASCADE,
-    CONSTRAINT fk_action_executions_routine FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL,
-    CONSTRAINT uq_action_id_started_at_key UNIQUE (action_id, started_at)
+    CONSTRAINT fk_action_executions_routine FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
 
 -- Alert definitions table (invariant properties)

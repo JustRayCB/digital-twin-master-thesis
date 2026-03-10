@@ -28,6 +28,7 @@ from dt.controller.policies import PolicyManager
 from dt.controller.routine_compiler import RoutineCompiler
 from dt.controller.routine_evaluator import RoutineEvaluator
 from dt.utils import Config, get_logger
+from dt.utils.ids import new_correlation_id
 
 logger = get_logger(__name__)
 
@@ -302,6 +303,7 @@ class ControllerService:
             if self._ai_autopilot_enabled(routine.plant_id):
                 cmd.status = "skipped"
                 cmd.error_message = "Routine suspended while AI auto-pilot mode is enabled"
+                cmd.event_at = time.time()
                 self.messaging_service.publish(Topics.ACTIONS, cmd)
                 continue
             self._execute_action(cmd)
@@ -327,9 +329,10 @@ class ControllerService:
         )
         return ActionCommand(
             plant_id=plant_id,
+            execution_id=new_correlation_id(),
             action_id=action_key,
             actuator_id=actuator_id,
-            started_at=time.time(),
+            event_at=time.time(),
             duration=duration,
             command=command,
             reason=reason,

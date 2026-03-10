@@ -92,6 +92,5 @@ class ActionCommandDbSerializer(DbSerializer[ActionCommand]):
 
     def load(self, cls: type[ActionCommand], data: Any) -> ActionCommand:
         row_dict = data._asdict()
-        row_dict["started_at"] = self._to_unix(row_dict.get("started_at"))
-        row_dict["ended_at"] = self._to_unix(row_dict.get("ended_at"))
+        row_dict["event_at"] = self._to_unix(row_dict.get("event_at"))
         return self._generic.load(cls, row_dict)

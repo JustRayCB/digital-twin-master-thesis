@@ -161,7 +161,7 @@ def create_database_blueprint(
 
     @bp.route("/actions/log", methods=["POST"])
     def log_action_execution():
-        """Upsert an action execution status record."""
+        """Append an action execution status record."""
         try:
             payload = request.get_json(force=True)
         except Exception:
