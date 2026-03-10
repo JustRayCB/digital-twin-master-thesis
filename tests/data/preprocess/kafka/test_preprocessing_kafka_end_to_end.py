@@ -27,6 +27,14 @@ def preprocess_kafka_topics(kafka_bootstrap_servers: str) -> list[str]:
     return [raw_topic, processed_topic]
 
 
+def test_preprocessable_raw_topics_exclude_camera_snapshot_topic() -> None:
+    """Preprocessing subscribes only to numeric raw topics."""
+    preprocessable_topics = preprocess_main._build_preprocessable_raw_topics()
+
+    assert Topics.CAMERA_IMAGE.raw not in preprocessable_topics
+    assert Topics.TEMPERATURE.raw in preprocessable_topics
+
+
 def test_preprocessing_kafka_end_to_end(
     spark_session,
     tmp_path,
@@ -45,7 +53,7 @@ def test_preprocessing_kafka_end_to_end(
         raw_events = preprocess_main._read_raw_events(
             spark_session,
             kafka_bootstrap=kafka_bootstrap_servers,
-            topic_pattern=raw_topic,
+            topics=[raw_topic],
             starting_offsets="earliest",
         )
     except Exception as exc:

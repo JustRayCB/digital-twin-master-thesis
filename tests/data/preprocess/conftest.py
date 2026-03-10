@@ -74,19 +74,24 @@ templates:
       output_max: 1.0
       clip: true
 
-sensors:
-  # Map generic types to templates
-  dht22.temperature: { template: dht22.temperature }
-  bh1750.lux: { template: bh1750.lux }
+streams:
+  - sensor: dht22.temperature
+    topic: temperature
+    template: dht22.temperature
 
-  # Overrides
-  sensors.greenhouse.dht22.001.temperature:
+  - sensor: bh1750.lux
+    topic: light_intensity
+    template: bh1750.lux
+
+  - sensor: sensors.greenhouse.dht22.001.temperature
+    topic: temperature
     template: dht22.temperature
     calibration:
       strategy: affine
       offset: -0.2
 
-  sensors.greenhouse.bh1750.001:
+  - sensor: sensors.greenhouse.bh1750.001
+    topic: light_intensity
     template: bh1750.lux
     normalization:
       strategy: min_max
@@ -124,9 +129,13 @@ def base_config() -> dict[str, object]:
                 "smoothing": {"strategy": "pass_through"},
             }
         },
-        "sensors": {
-            "greenhouse.temperature": {"template": "greenhouse.temperature.defaults"}
-        },
+        "streams": [
+            {
+                "sensor": "greenhouse.temperature",
+                "topic": "temperature",
+                "template": "greenhouse.temperature.defaults",
+            }
+        ],
     }
 
 
@@ -139,7 +148,7 @@ def config_manager_defaults() -> dict[str, object]:
             "weights": {"range_ok": 0.4, "roc_ok": 0.4, "stuck_ok": 0.2},
         },
         "templates": {},
-        "sensors": {},
+        "streams": [],
     }
 
 

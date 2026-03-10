@@ -4,10 +4,28 @@ import pytest
 from cattrs.errors import ClassValidationError
 
 from dt.communication.adapters.registry import load
+from dt.communication.topics import Topics
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.config.serialization import ensure_config_serialization
-from dt.data.preprocess.config.types import (EWMASmoothingConfig, RocConfig,
-                                             RocProfile, SystemConfig)
+from dt.data.preprocess.config.types import EWMASmoothingConfig, RocConfig, RocProfile, SystemConfig
+
+
+def _build_system_config(stream_overrides: dict | None = None) -> dict:
+    stream = {
+        "sensor": "sensor.temp",
+        "topic": "temperature",
+        "units": "C",
+    }
+    if stream_overrides:
+        stream.update(stream_overrides)
+
+    return {
+        "system": {
+            "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
+            "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
+        },
+        "streams": [stream],
+    }
 
 
 def test_load_sensor_validation_config_defaults(configure_preprocess_db_client) -> None:
@@ -19,7 +37,7 @@ def test_load_sensor_validation_config_defaults(configure_preprocess_db_client) 
     assert manager.config.system.windows.small_sec == 60
     assert manager.config.system.weights.range_ok == 0.4
 
-    temp_config = manager.get_sensor_config("dht22.temperature")
+    temp_config = manager.get_stream_config("sensors.basil.dht22.001.temperature", Topics.TEMPERATURE)
     assert temp_config.validation.range.min == 0
     assert temp_config.validation.range.max == 50
     assert temp_config.validation.roc.active_max_per_minute == 5.0
@@ -66,21 +84,10 @@ def test_smoothing_config_parses_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "dht22.temperature": {
-                    "units": "C",
-                    "smoothing": {"strategy": "ewma", "alpha": 0.2},
-                }
-            },
-        },
+        _build_system_config({"smoothing": {"strategy": "ewma", "alpha": 0.2}}),
     )
 
-    smoothing = config.sensors["dht22.temperature"].smoothing
+    smoothing = config.streams[0].smoothing
     assert isinstance(smoothing, EWMASmoothingConfig)
     assert smoothing.alpha == 0.2
 
@@ -92,13 +99,7 @@ def test_smoothing_config_rejects_unknown_strategy() -> None:
         load(
             "generic",
             SystemConfig,
-            {
-                "system": {
-                    "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                    "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-                },
-                "sensors": {"sensor.foo": {"units": "C", "smoothing": {"strategy": "unknown"}}},
-            },
+            _build_system_config({"smoothing": {"strategy": "unknown"}}),
         )
 
 
@@ -108,26 +109,19 @@ def test_imputation_config_parses_forward_fill_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "imputation": {
-                        "strategy": "forward_fill_with_decay",
-                        "max_gap_seconds": 180,
-                        "decay_seconds": 60,
-                        "baseline": 12.5,
-                    },
+        _build_system_config(
+            {
+                "imputation": {
+                    "strategy": "forward_fill_with_decay",
+                    "max_gap_seconds": 180,
+                    "decay_seconds": 60,
+                    "baseline": 12.5,
                 }
-            },
-        },
+            }
+        ),
     )
 
-    imputation = config.sensors["sensor.temp"].imputation
+    imputation = config.streams[0].imputation
     assert imputation.strategy == "forward_fill_with_decay"
     assert imputation.max_gap_seconds == 180
     assert imputation.decay_seconds == 60
@@ -140,26 +134,19 @@ def test_imputation_config_parses_window_average_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "imputation": {
-                        "strategy": "window_average",
-                        "window_seconds": 90,
-                        "min_samples": 3,
-                        "max_gap_seconds": 600,
-                    },
+        _build_system_config(
+            {
+                "imputation": {
+                    "strategy": "window_average",
+                    "window_seconds": 90,
+                    "min_samples": 3,
+                    "max_gap_seconds": 600,
                 }
-            },
-        },
+            }
+        ),
     )
 
-    imputation = config.sensors["sensor.temp"].imputation
+    imputation = config.streams[0].imputation
     assert imputation.strategy == "window_average"
     assert imputation.window_seconds == 90
     assert imputation.min_samples == 3
@@ -172,25 +159,18 @@ def test_imputation_config_parses_linear_extrapolation_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "imputation": {
-                        "strategy": "linear_extrapolation",
-                        "window_seconds": 120,
-                        "max_gap_seconds": 300,
-                    },
+        _build_system_config(
+            {
+                "imputation": {
+                    "strategy": "linear_extrapolation",
+                    "window_seconds": 120,
+                    "max_gap_seconds": 300,
                 }
-            },
-        },
+            }
+        ),
     )
 
-    imputation = config.sensors["sensor.temp"].imputation
+    imputation = config.streams[0].imputation
     assert imputation.strategy == "linear_extrapolation"
     assert imputation.window_seconds == 120
     assert imputation.max_gap_seconds == 300
@@ -203,13 +183,7 @@ def test_imputation_config_rejects_unknown_strategy() -> None:
         load(
             "generic",
             SystemConfig,
-            {
-                "system": {
-                    "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                    "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-                },
-                "sensors": {"sensor.foo": {"units": "C", "imputation": {"strategy": "unknown"}}},
-            },
+            _build_system_config({"imputation": {"strategy": "unknown"}}),
         )
 
 
@@ -219,21 +193,12 @@ def test_calibration_config_parses_affine_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "calibration": {"strategy": "affine", "scale": 1.2, "offset": -0.5},
-                }
-            },
-        },
+        _build_system_config(
+            {"calibration": {"strategy": "affine", "scale": 1.2, "offset": -0.5}}
+        ),
     )
 
-    calibration = config.sensors["sensor.temp"].calibration
+    calibration = config.streams[0].calibration
     assert calibration.strategy == "affine"
     assert calibration.scale == 1.2
     assert calibration.offset == -0.5
@@ -245,16 +210,10 @@ def test_calibration_config_parses_identity_strategy() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {"sensor.temp": {"units": "C", "calibration": {"strategy": "identity"}}},
-        },
+        _build_system_config({"calibration": {"strategy": "identity"}}),
     )
 
-    calibration = config.sensors["sensor.temp"].calibration
+    calibration = config.streams[0].calibration
     assert calibration.strategy == "identity"
 
 
@@ -264,27 +223,20 @@ def test_calibration_config_parses_piecewise_lookup_segments() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "calibration": {
-                        "strategy": "piecewise_lookup",
-                        "segments": [
-                            {"input_min": 0.0, "input_max": 1.0, "output": 10.0},
-                            {"input_min": 1.0, "input_max": 2.0, "output": 20.0},
-                        ],
-                    },
+        _build_system_config(
+            {
+                "calibration": {
+                    "strategy": "piecewise_lookup",
+                    "segments": [
+                        {"input_min": 0.0, "input_max": 1.0, "output": 10.0},
+                        {"input_min": 1.0, "input_max": 2.0, "output": 20.0},
+                    ],
                 }
-            },
-        },
+            }
+        ),
     )
 
-    calibration = config.sensors["sensor.temp"].calibration
+    calibration = config.streams[0].calibration
     assert calibration.strategy == "piecewise_lookup"
     assert len(calibration.segments) == 2
     assert calibration.segments[0].input_min == 0.0
@@ -298,13 +250,7 @@ def test_calibration_config_rejects_unknown_strategy() -> None:
         load(
             "generic",
             SystemConfig,
-            {
-                "system": {
-                    "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                    "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-                },
-                "sensors": {"sensor.foo": {"units": "C", "calibration": {"strategy": "unknown"}}},
-            },
+            _build_system_config({"calibration": {"strategy": "unknown"}}),
         )
 
 
@@ -314,28 +260,21 @@ def test_normalization_config_parses_min_max_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {
-                "sensor.temp": {
-                    "units": "C",
-                    "normalization": {
-                        "strategy": "min_max",
-                        "input_min": 0.0,
-                        "input_max": 100.0,
-                        "output_min": -1.0,
-                        "output_max": 1.0,
-                        "clip": False,
-                    },
+        _build_system_config(
+            {
+                "normalization": {
+                    "strategy": "min_max",
+                    "input_min": 0.0,
+                    "input_max": 100.0,
+                    "output_min": -1.0,
+                    "output_max": 1.0,
+                    "clip": False,
                 }
-            },
-        },
+            }
+        ),
     )
 
-    normalization = config.sensors["sensor.temp"].normalization
+    normalization = config.streams[0].normalization
     assert normalization.strategy == "min_max"
     assert normalization.input_min == 0.0
     assert normalization.input_max == 100.0
@@ -350,16 +289,10 @@ def test_normalization_config_parses_identity_strategy() -> None:
     config = load(
         "generic",
         SystemConfig,
-        {
-            "system": {
-                "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-            },
-            "sensors": {"sensor.temp": {"units": "C", "normalization": {"strategy": "identity"}}},
-        },
+        _build_system_config({"normalization": {"strategy": "identity"}}),
     )
 
-    normalization = config.sensors["sensor.temp"].normalization
+    normalization = config.streams[0].normalization
     assert normalization.strategy == "identity"
 
 
@@ -370,11 +303,5 @@ def test_normalization_config_rejects_unknown_strategy() -> None:
         load(
             "generic",
             SystemConfig,
-            {
-                "system": {
-                    "windows": {"small_sec": 1, "medium_sec": 2, "big_sec": 3},
-                    "weights": {"range_ok": 0.5, "roc_ok": 0.3, "stuck_ok": 0.2},
-                },
-                "sensors": {"sensor.foo": {"units": "C", "normalization": {"strategy": "unknown"}}},
-            },
+            _build_system_config({"normalization": {"strategy": "unknown"}}),
         )

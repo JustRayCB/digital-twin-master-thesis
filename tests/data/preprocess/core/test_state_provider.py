@@ -7,7 +7,7 @@ import pytest
 from pyspark.sql import Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
-from pyspark.sql.types import DoubleType, IntegerType, StructField, StructType
+from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
 
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
@@ -17,6 +17,7 @@ OUTPUT_SCHEMA = StructType(
     [
         StructField("plant_id", IntegerType(), nullable=False),
         StructField("sensor_id", IntegerType(), nullable=False),
+        StructField("topic", StringType(), nullable=False),
         StructField("last_value", DoubleType(), nullable=True),
         StructField("history_len", IntegerType(), nullable=False),
         StructField("flatline_value", DoubleType(), nullable=True),
@@ -83,7 +84,7 @@ def _run_stateful_stream_batches(
     ).withWatermark("event_time", "1 hour")
 
     def apply_state(
-        key: tuple[int, int],
+        key: tuple[int, int, str],
         pdf_iter: "iter[pd.DataFrame]",
         state: GroupState,
     ) -> "iter[pd.DataFrame]":
@@ -92,6 +93,7 @@ def _run_stateful_stream_batches(
             payload = {
                 "plant_id": key[0],
                 "sensor_id": key[1],
+                "topic": key[2],
                 "last_value": None,
                 "history_len": 0,
                 "flatline_value": None,
@@ -101,7 +103,6 @@ def _run_stateful_stream_batches(
 
         provider = SparkStateProvider(
             group_state=state,
-            sensor_id=key[1],
             max_history_length=max_history_length,
         )
         readings: list[RawSensorData] = []
@@ -130,6 +131,7 @@ def _run_stateful_stream_batches(
         payload = {
             "plant_id": key[0],
             "sensor_id": key[1],
+            "topic": key[2],
             "last_value": last.value if last is not None else None,
             "history_len": len(history),
             "flatline_value": flatline.value if flatline is not None else None,
@@ -137,7 +139,7 @@ def _run_stateful_stream_batches(
         }
         return iter([pd.DataFrame([payload])])
 
-    processed = watermarked.groupBy("plant_id", "sensor_id").applyInPandasWithState(
+    processed = watermarked.groupBy("plant_id", "sensor_id", "topic").applyInPandasWithState(
         apply_state,
         outputStructType=OUTPUT_SCHEMA,
         stateStructType=SensorState.get_spark_schema(),
@@ -201,6 +203,7 @@ def test_state_provider_persists_last_valid_and_history(spark_session, tmp_path)
     row = results[0]
     assert row["last_value"] == 40.0
     assert row["history_len"] == 2
+    assert row["topic"] == Topics.TEMPERATURE.value
 
 
 def test_state_provider_trims_history_window(spark_session, tmp_path) -> None:
@@ -231,6 +234,7 @@ def test_state_provider_trims_history_window(spark_session, tmp_path) -> None:
     row = results[0]
     assert row["last_value"] == 130.0
     assert row["history_len"] == 1
+    assert row["topic"] == Topics.TEMPERATURE.value
 
 
 def test_state_provider_records_flatline_metadata(spark_session, tmp_path) -> None:
@@ -261,6 +265,7 @@ def test_state_provider_records_flatline_metadata(spark_session, tmp_path) -> No
     row = results[0]
     assert row["flatline_value"] == 18.5
     assert row["flatline_timestamp"] == pytest.approx(base_time.timestamp())
+    assert row["topic"] == Topics.TEMPERATURE.value
 
 
 @pytest.mark.parametrize(
@@ -296,6 +301,7 @@ def test_state_provider_history_cap_edges(
     row = results[0]
     assert row["last_value"] == 20.0
     assert row["history_len"] == expected_length
+    assert row["topic"] == Topics.TEMPERATURE.value
 
 
 def test_state_provider_includes_window_boundary(spark_session, tmp_path) -> None:
@@ -333,6 +339,7 @@ def test_state_provider_includes_window_boundary(spark_session, tmp_path) -> Non
     row = results[0]
     assert row["history_len"] == 2
     assert row["last_value"] == 6.0
+    assert row["topic"] == Topics.TEMPERATURE.value
 
 
 
@@ -373,3 +380,44 @@ def test_state_provider_first_reading_history_contains_current(spark_session, tm
     row = results[0]
     assert row["last_value"] == 9.0
     assert row["history_len"] == 1
+    assert row["topic"] == Topics.TEMPERATURE.value
+
+
+def test_state_provider_isolates_state_by_topic_for_one_sensor(spark_session, tmp_path) -> None:
+    """State should remain isolated for distinct topics on the same sensor ID."""
+    base_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_event(
+            plant_id=1,
+            sensor_id=404,
+            timestamp=base_time.timestamp(),
+            value=12.0,
+            unit="C",
+            topic=Topics.TEMPERATURE,
+            correlation_id="reading-temp",
+        ),
+        _make_event(
+            plant_id=1,
+            sensor_id=404,
+            timestamp=base_time.timestamp() + 5,
+            value=0.25,
+            unit="ratio",
+            topic=Topics.GREEN_RATIO,
+            correlation_id="reading-ratio",
+        ),
+    ]
+
+    results = _run_stateful_stream(
+        spark_session,
+        tmp_path,
+        events,
+        max_history_length=5,
+        window_seconds=3600,
+    )
+
+    assert len(results) == 2
+    rows_by_topic = {row["topic"]: row for row in results}
+    assert rows_by_topic[Topics.TEMPERATURE.value]["last_value"] == 12.0
+    assert rows_by_topic[Topics.TEMPERATURE.value]["history_len"] == 1
+    assert rows_by_topic[Topics.GREEN_RATIO.value]["last_value"] == 0.25
+    assert rows_by_topic[Topics.GREEN_RATIO.value]["history_len"] == 1

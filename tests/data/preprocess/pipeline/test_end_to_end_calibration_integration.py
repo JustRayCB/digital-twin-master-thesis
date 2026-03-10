@@ -51,18 +51,22 @@ def test_end_to_end_calibration_and_normalization(
         "clip": True,
     }
     config["templates"][DEFAULT_TEMPLATE_KEY] = template
-    config["sensors"]["sensors.greenhouse.temperature.alpha"] = {
-        "template": DEFAULT_TEMPLATE_KEY,
-        "calibration": {"strategy": "affine", "scale": 0.95, "offset": 0.5},
-        "normalization": {
-            "strategy": "min_max",
-            "input_min": 10.0,
-            "input_max": 30.0,
-            "output_min": -1.0,
-            "output_max": 1.0,
-            "clip": True,
-        },
-    }
+    config["streams"].append(
+        {
+            "sensor": "sensors.greenhouse.temperature.alpha",
+            "topic": "temperature",
+            "template": DEFAULT_TEMPLATE_KEY,
+            "calibration": {"strategy": "affine", "scale": 0.95, "offset": 0.5},
+            "normalization": {
+                "strategy": "min_max",
+                "input_min": 10.0,
+                "input_max": 30.0,
+                "output_min": -1.0,
+                "output_max": 1.0,
+                "clip": True,
+            },
+        }
+    )
 
     config_path = config_writer(config)
     sensors = register_sensors(
@@ -321,8 +325,10 @@ def test_standalone_sensor_config_profile_ids(
     """Standalone sensor configs should emit standalone/default profile identifiers."""
     config = copy.deepcopy(base_config)
     config["templates"] = {}
-    config["sensors"] = {
-        "standalone.temperature": {
+    config["streams"] = [
+        {
+            "sensor": "standalone.temperature",
+            "topic": "temperature",
             "units": "C",
             "validation": {
                 "range": {"min": 0.0, "max": 50.0},
@@ -338,7 +344,7 @@ def test_standalone_sensor_config_profile_ids(
             "smoothing": {"strategy": "pass_through"},
             "calibration": {"strategy": "identity"},
         }
-    }
+    ]
 
     config_path = config_writer(config)
     sensors = register_sensors(sensor_registry, ["standalone.temperature"])
