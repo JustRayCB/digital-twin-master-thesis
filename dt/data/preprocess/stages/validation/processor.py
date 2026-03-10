@@ -3,11 +3,9 @@ from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.data.preprocess.core.context import ProcessingContext
 from dt.data.preprocess.core.state import StateProvider
 from dt.data.preprocess.stages.base import BaseProcessor
-from dt.data.preprocess.stages.validation.checks import (
-    check_range,
-    check_rate_of_change,
-    check_stuck,
-)
+from dt.data.preprocess.stages.validation.checks import (check_range,
+                                                         check_rate_of_change,
+                                                         check_stuck)
 from dt.data.preprocess.stages.validation.scoring import compute_dq_score
 from dt.utils import get_logger
 
@@ -124,24 +122,25 @@ class ValidationProcessor(BaseProcessor):
             return self._finalize_context(context)
 
         # Stuck check - need history window
-        history = list(
-            state_provider.get_recent_history(
-                sensor_id=sensor_id,
-                window_seconds=validation.stuck.max_flat_seconds,
-                reference_timestamp=float(reading.timestamp),
+        if validation.stuck.enabled:
+            history = list(
+                state_provider.get_recent_history(
+                    sensor_id=sensor_id,
+                    window_seconds=validation.stuck.max_flat_seconds,
+                    reference_timestamp=float(reading.timestamp),
+                )
             )
-        )
 
-        history.append(reading)
-        stuck_passed, stuck_flag = check_stuck(history, validation.stuck)
-        if not stuck_passed:
-            logger.info(f"Stuck validation failed: sensor_id={sensor_id} value={reading.value}")
-            context.mark_invalid_flag(stuck_flag)
-            state_provider.record_flatline(
-                sensor_id=sensor_id,
-                value=float(reading.value),
-                timestamp=float(reading.timestamp),
-            )
+            history.append(reading)
+            stuck_passed, stuck_flag = check_stuck(history, validation.stuck)
+            if not stuck_passed:
+                logger.info(f"Stuck validation failed: sensor_id={sensor_id} value={reading.value}")
+                context.mark_invalid_flag(stuck_flag)
+                state_provider.record_flatline(
+                    sensor_id=sensor_id,
+                    value=float(reading.value),
+                    timestamp=float(reading.timestamp),
+                )
 
         # Calculate data quality score using existing function
         context = self._finalize_context(context)
