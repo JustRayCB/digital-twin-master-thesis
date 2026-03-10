@@ -111,6 +111,30 @@ templates:
       output_max: 1.0
       clip: true
 
+  camera.green_ratio:
+    units: "%"
+    validation:
+      range: { min: 0.0, max: 100.0 }
+      roc: { max_per_minute: 100.0 }
+      stuck:
+        enabled: false
+    imputation:
+      strategy: forward_fill_with_decay
+      max_gap_seconds: 600
+      decay_seconds: 300
+      baseline: null
+    calibration:
+      strategy: identity
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 100.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+    smoothing:
+      strategy: pass_through
+
 streams:
   # Example stream-level override:
   # - sensor: sensors.basil.dht22.001.temperature
@@ -136,3 +160,7 @@ streams:
   - sensor: sensors.basil.stemma.001.soil_moisture
     topic: soil_moisture
     template: stemma.soil_moisture
+
+  - sensor: sensors.basil.picamera2.001.camera_image
+    topic: green_ratio
+    template: camera.green_ratio

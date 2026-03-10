@@ -172,12 +172,15 @@ class StuckConfig:
 
     Attributes
     ----------
+    enabled : bool
+        Whether stuck detection is active for this stream.
     max_flat_seconds : int
         The maximum duration in seconds that a sensor value can remain
         unchanged.
     """
 
-    max_flat_seconds: int
+    enabled: bool = True
+    max_flat_seconds: int = 300
 
 
 @dataclass
