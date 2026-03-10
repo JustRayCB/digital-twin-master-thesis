@@ -118,3 +118,92 @@ def test_preprocessing_kafka_end_to_end(
         query.stop()
         producer.close()
         consumer.close()
+
+
+def test_preprocessing_kafka_end_to_end_for_camera_green_ratio(
+    spark_session,
+    tmp_path,
+    test_config_path,
+    configure_preprocess_db_client,
+    sensor_registry,
+    kafka_bootstrap_servers,
+) -> None:
+    """Derived green-ratio raw readings should flow through standard preprocessing."""
+    sensor = sensor_registry["register"]("sensors.basil.picamera2.001.camera_image")
+    raw_topic = Topics.GREEN_RATIO.raw
+    processed_topic = Topics.GREEN_RATIO.processed
+    ensure_kafka_topics(
+        kafka_bootstrap_servers,
+        {raw_topic, processed_topic},
+        warm_topics=False,
+    )
+
+    adapter = SparkStreamingAdapter(ConfigurationManager(test_config_path))
+    try:
+        raw_events = preprocess_main._read_raw_events(
+            spark_session,
+            kafka_bootstrap=kafka_bootstrap_servers,
+            topics=[raw_topic],
+            starting_offsets="earliest",
+        )
+    except Exception as exc:
+        if "Failed to find data source: kafka" in str(exc):
+            pytest.skip("Spark Kafka integration is unavailable in this environment.")
+        raise
+    processed_stream = adapter.build_preprocessing_stream(spark_session, raw_events)
+    kafka_ready = preprocess_main._prepare_kafka_sink(processed_stream, preprocess_main._build_topic_map())
+
+    checkpoint_dir = tmp_path / "kafka_checkpoint_green_ratio"
+    query = (
+        kafka_ready.writeStream.format("kafka")
+        .option("kafka.bootstrap.servers", kafka_bootstrap_servers)
+        .option("checkpointLocation", str(checkpoint_dir))
+        .outputMode("update")
+        .start()
+    )
+
+    producer = KafkaProducer(
+        bootstrap_servers=kafka_bootstrap_servers,
+        value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+    )
+    consumer = create_topic_consumer(
+        processed_topic,
+        kafka_bootstrap_servers,
+        group_prefix="preprocess-kafka-green-ratio",
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
+    )
+
+    try:
+        raw_payload = RawSensorData(
+            plant_id=sensor.plant_id,
+            sensor_id=sensor.id,
+            timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp(),
+            value=42.0,
+            unit="%",
+            topic=Topics.GREEN_RATIO,
+            correlation_id="kafka-green-ratio-1",
+        )
+        producer.send(raw_topic, dump("generic", raw_payload))
+        producer.flush()
+
+        deadline = time.time() + 30
+        received = None
+        while time.time() < deadline and received is None:
+            records = consumer.poll(timeout_ms=1000)
+            for messages in records.values():
+                if messages:
+                    received = messages[0].value
+                    break
+
+        assert received is not None
+        assert received["sensor_id"] == sensor.id
+        assert received["plant_id"] == sensor.plant_id
+        assert received["raw_value"] == 42.0
+        assert received["unit"] == "%"
+        assert received["flags"]["valid_data_point"] is True
+        assert received["topic"] == Topics.GREEN_RATIO.value
+    finally:
+        query.stop()
+        producer.close()
+        consumer.close()

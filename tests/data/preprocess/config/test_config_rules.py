@@ -187,6 +187,28 @@ def test_imputation_config_rejects_unknown_strategy() -> None:
         )
 
 
+def test_stuck_config_parses_enabled_false() -> None:
+    """Parse disabled stuck detection into the typed validation config."""
+    ensure_config_serialization()
+    config = load(
+        "generic",
+        SystemConfig,
+        _build_system_config(
+            {
+                "validation": {
+                    "range": {"min": 0.0, "max": 100.0},
+                    "roc": {"max_per_minute": 10.0},
+                    "stuck": {"enabled": False},
+                }
+            }
+        ),
+    )
+
+    stuck = config.streams[0].validation.stuck
+    assert stuck is not None
+    assert stuck.enabled is False
+
+
 def test_calibration_config_parses_affine_parameters() -> None:
     """Parse affine calibration parameters into typed config objects."""
     ensure_config_serialization()

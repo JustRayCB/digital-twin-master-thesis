@@ -74,6 +74,30 @@ templates:
       output_max: 1.0
       clip: true
 
+  camera.green_ratio:
+    units: "%"
+    validation:
+      range: { min: 0.0, max: 100.0 }
+      roc: { max_per_minute: 100.0 }
+      stuck:
+        enabled: false
+    imputation:
+      strategy: forward_fill_with_decay
+      max_gap_seconds: 600
+      decay_seconds: 300
+      baseline: null
+    calibration:
+      strategy: identity
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 100.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+    smoothing:
+      strategy: pass_through
+
 streams:
   - sensor: dht22.temperature
     topic: temperature
@@ -96,6 +120,10 @@ streams:
     normalization:
       strategy: min_max
       input_max: 20000.0
+
+  - sensor: sensors.basil.picamera2.001.camera_image
+    topic: green_ratio
+    template: camera.green_ratio
 """
     config_file = tmp_path / "preprocessing_config.yml"
     config_file.write_text(config_content)
