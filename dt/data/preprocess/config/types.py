@@ -473,6 +473,22 @@ class SensorConfig:
     normalization_profile_id: str | None = None
 
 
+@dataclass
+class StreamConfig(SensorConfig):
+    """Configuration binding for one measurement stream.
+
+    Attributes
+    ----------
+    sensor : str
+        Database sensor name for the physical sensor producing the stream.
+    topic : str
+        Topic short name for the measurement stream (for example ``temperature``).
+    """
+
+    sensor: str = ""
+    topic: str = ""
+
+
 # --- 5. Root Configuration ---
 
 
@@ -485,10 +501,10 @@ class SystemConfig:
         Global default settings for the system.
     templates : Dict[str, SensorConfig]
         Predefined sensor configuration templates.
-    sensors : Dict[str, SensorConfig]
-        Individual sensor configurations.
+    streams : list[StreamConfig]
+        Explicit preprocessing bindings for `(sensor, topic)` streams.
     """
 
     system: SystemDefaults
     templates: dict[str, SensorConfig] = field(default_factory=dict)
-    sensors: dict[str, SensorConfig] = field(default_factory=dict)
+    streams: list[StreamConfig] = field(default_factory=list)

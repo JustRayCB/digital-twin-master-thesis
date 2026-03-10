@@ -66,7 +66,7 @@ class ImputationProcessor(BaseProcessor):
         # Get imputation strategy
         if sensor_key is None or sensor_config is None:
             raise ValueError("ImputationProcessor requires sensor_key and sensor_config to be set")
-        strategy = self._config_manager.get_imputation_strategy(sensor_key)
+        strategy = self._config_manager.get_imputation_strategy(sensor_key, reading.topic)
 
         # Attempt imputation
         try:

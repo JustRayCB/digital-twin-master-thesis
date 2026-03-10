@@ -128,7 +128,7 @@ class SparkStreamingAdapter:
             )
 
         logger.info("Applying stateful group processing...")
-        processed_df = watermarked.groupBy("plant_id", "sensor_id").applyInPandasWithState(
+        processed_df = watermarked.groupBy("plant_id", "sensor_id", "topic").applyInPandasWithState(
             process_sensor_group,  # type: ignore[arg-type]
             outputStructType=ProcessedSensorData.get_spark_schema(),
             stateStructType=SensorState.get_spark_schema(),
@@ -168,8 +168,7 @@ class SparkStreamingAdapter:
             group_state.remove()
             return iter(())
 
-        sensor_id = self._extract_sensor_id(key)
-        state_provider = SparkStateProvider(group_state=group_state, sensor_id=sensor_id)
+        state_provider = SparkStateProvider(group_state=group_state)
 
         # Collect readings from Pandas batches
         readings: list[RawSensorData] = self._collect_readings(pdf_iter)
@@ -305,10 +304,6 @@ class SparkStreamingAdapter:
         if context.calibrated_reading is None:
             context.calibrated_reading = context.reading
         return context.to_dict()
-
-    def _extract_sensor_id(self, key: tuple) -> int:
-        """Extract sensor ID from Spark group key."""
-        return int(key[1]) if len(key) > 1 else int(key[0])
 
     def _collect_readings(self, pdf_iter: Iterator[pd.DataFrame]) -> list[RawSensorData]:
         """

@@ -111,8 +111,28 @@ templates:
       output_max: 1.0
       clip: true
 
-sensors:
-  dht22.temperature: { template: dht22.temperature }
-  dht22.humidity: { template: dht22.humidity }
-  bh1750.lux: { template: bh1750.lux }
-  stemma.soil_moisture: { template: stemma.soil_moisture }
+streams:
+  # Example stream-level override:
+  # - sensor: sensors.basil.dht22.001.temperature
+  #   topic: temperature
+  #   template: dht22.temperature
+  #   calibration:
+  #     offset: 1.5
+  #   validation:
+  #     range: { min: 5, max: 45 }
+
+  - sensor: sensors.basil.dht22.001.temperature
+    topic: temperature
+    template: dht22.temperature
+
+  - sensor: sensors.basil.dht22.001.humidity
+    topic: humidity
+    template: dht22.humidity
+
+  - sensor: sensors.basil.bh1750.001.lux
+    topic: light_intensity
+    template: bh1750.lux
+
+  - sensor: sensors.basil.stemma.001.soil_moisture
+    topic: soil_moisture
+    template: stemma.soil_moisture

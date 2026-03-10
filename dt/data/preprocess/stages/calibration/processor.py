@@ -39,10 +39,10 @@ class CalibrationProcessor(BaseProcessor):
             raise ValueError("CalibrationProcessor requires sensor_config to be set")
 
         reading = context.reading
-        sensor_id = context.sensor_key
+        sensor_name = context.sensor_key
 
         # Get calibration strategy
-        strategy = self._config_manager.get_calibration_strategy(sensor_id)
+        strategy = self._config_manager.get_calibration_strategy(sensor_name, reading.topic)
 
         # Apply calibration
         calibrated_value = strategy.apply(float(reading.value))
@@ -60,6 +60,6 @@ class CalibrationProcessor(BaseProcessor):
 
         context.calibration_profile_id = context.sensor_config.calibration_profile_id or ""
 
-        logger.debug(f"Calibrated {sensor_id}: {reading.value} -> {calibrated_value}")
+        logger.debug(f"Calibrated {sensor_name}: {reading.value} -> {calibrated_value}")
 
         return context
