@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS action_executions (
     command TEXT NOT NULL,
     duration FLOAT NOT NULL,      -- Requested duration in seconds
     reason TEXT,
-    status TEXT CHECK (status IN ('accepted', 'rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
+    status TEXT CHECK (status IN ('rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
     error_message TEXT,
     started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMPTZ,
