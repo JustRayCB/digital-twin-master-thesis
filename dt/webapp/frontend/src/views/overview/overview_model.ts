@@ -15,6 +15,10 @@ import { PlantHealthState, type Routine } from "../../types";
 import { cameraSnapshotTopic, processedTopics } from "../analytics/realtime_topics";
 import { realtimeClient } from "../analytics/realtime_client";
 import { realtimeReadings } from "../analytics/realtime_readings_store";
+import {
+  createEmptyTelemetrySnapshot,
+  updateTelemetryFromTopicSnapshot,
+} from "./overview_telemetry";
 import { buildVitalitySnapshot, type VitalitySnapshot } from "./vitality";
 
 type ActuatorControl = {
@@ -23,21 +27,7 @@ type ActuatorControl = {
   isOn: boolean;
 };
 
-type TelemetrySnapshot = {
-  temperature: { value: string; label1: string; label2: string };
-  humidity: { value: string; label1: string; label2: string };
-  moisture: { value: string; label1: string; label2: string; needsWater: boolean };
-  light: { value: string; label1: string; label2: string };
-};
-
 const actuatorStateById = writable<Record<number, boolean>>({});
-
-function formatTelemetryValue(value: number | null, unit: string, digits = 0) {
-  if (!Number.isFinite(value)) {
-    return "—";
-  }
-  return `${Number(value).toFixed(digits)}${unit}`;
-}
 
 function extractLatestValue(snapshot: any, key: string): number | null {
   const series = snapshot?.[key];
@@ -49,57 +39,6 @@ function extractLatestValue(snapshot: any, key: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function temperatureLabel(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
-  if (value < 18) {
-    return "Cold";
-  }
-  if (value <= 26) {
-    return "Normal";
-  }
-  return "Warm";
-}
-
-function humidityLabel(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
-  if (value < 35) {
-    return "Dry Air";
-  }
-  if (value <= 55) {
-    return "Comfort";
-  }
-  return "Humid";
-}
-
-function moistureLabel(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
-  if (value < 30) {
-    return "Needs Water";
-  }
-  if (value <= 60) {
-    return "Stable";
-  }
-  return "Wet Soil";
-}
-
-function lightLabel(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
-  if (value < 400) {
-    return "Low Light";
-  }
-  if (value <= 1000) {
-    return "Good";
-  }
-  return "Bright";
-}
 
 function formatCurrentTime(value: Date) {
   return value.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -189,12 +128,7 @@ export function createOverviewModel() {
   const lastUpdate = writable("—");
   const currentTime = writable(formatCurrentTime(new Date()));
   const vitality = writable<VitalitySnapshot>(buildVitalitySnapshot(null));
-  const telemetry = writable<TelemetrySnapshot>({
-    temperature: { value: "—", label1: "Room Ambient", label2: "Normal Range" },
-    humidity: { value: "—", label1: "Air Sensor", label2: "Stable" },
-    moisture: { value: "—", label1: "Soil Sensor A", label2: "Getting Dry", needsWater: false },
-    light: { value: "—", label1: "Window Sensor", label2: "Optimal" },
-  });
+  const telemetry = writable(createEmptyTelemetrySnapshot());
 
   let unsubscribeStatus: (() => void) | null = null;
   let unsubscribeReadings: (() => void) | null = null;
@@ -300,6 +234,19 @@ export function createOverviewModel() {
   async function start() {
     realtimeReadings.start();
 
+    telemetry.set(
+      [
+        processedTopics.temperature,
+        processedTopics.humidity,
+        processedTopics.soilMoisture,
+        processedTopics.lightIntensity,
+      ].reduce(
+        (current, topic) =>
+          updateTelemetryFromTopicSnapshot(current, topic, realtimeReadings.getSnapshot(topic)),
+        createEmptyTelemetrySnapshot(),
+      ),
+    );
+
     if (!unsubscribeCamera) {
       unsubscribeCamera = realtimeClient.subscribe(cameraSnapshotTopic, (payload) => {
         const src = extractPhotoSource(payload);
@@ -326,55 +273,7 @@ export function createOverviewModel() {
         vitality.set(buildVitalitySnapshot(value));
         return;
       }
-      telemetry.update((current) => {
-        if (topic === processedTopics.temperature) {
-          const value = extractLatestValue(snapshot, "value");
-          return {
-            ...current,
-            temperature: {
-              ...current.temperature,
-              value: formatTelemetryValue(value, "°C", 1),
-              label2: temperatureLabel(value),
-            },
-          };
-        }
-        if (topic === processedTopics.humidity) {
-          const value = extractLatestValue(snapshot, "value");
-          return {
-            ...current,
-            humidity: {
-              ...current.humidity,
-              value: formatTelemetryValue(value, "%", 0),
-              label2: humidityLabel(value),
-            },
-          };
-        }
-        if (topic === processedTopics.soilMoisture) {
-          const value = extractLatestValue(snapshot, "value");
-          const label2 = moistureLabel(value);
-          return {
-            ...current,
-            moisture: {
-              ...current.moisture,
-              value: formatTelemetryValue(value, "%", 0),
-              label2,
-              needsWater: label2 === "Needs Water",
-            },
-          };
-        }
-        if (topic === processedTopics.lightIntensity) {
-          const value = extractLatestValue(snapshot, "value");
-          return {
-            ...current,
-            light: {
-              ...current.light,
-              value: formatTelemetryValue(value, "lx", 0),
-              label2: lightLabel(value),
-            },
-          };
-        }
-        return current;
-      });
+      telemetry.update((current) => updateTelemetryFromTopicSnapshot(current, topic, snapshot));
     });
 
     const loadLatestSnapshot = async () => {
