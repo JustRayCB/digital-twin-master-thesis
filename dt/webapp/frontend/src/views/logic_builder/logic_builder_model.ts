@@ -3,6 +3,11 @@ import { get, writable } from "svelte/store";
 import { autoPilotEnabled } from "../../stores/auto_pilot";
 import type { RoutineRecord } from "../../types";
 
+import {
+  actionConfigFromGraphAction,
+  buildActionPayload,
+  defaultActionConfig,
+} from "./action_nodes";
 import type { Edge, NodeConfig, NodeData, NodeType, Viewport } from "./types";
 
 const INITIAL_NODES: NodeData[] = [
@@ -129,6 +134,15 @@ export const logicActionPalette: DragPaletteItem[] = [
     name: "Grow Light",
     desc: "Toggle State",
     icon: "lightbulb",
+    bg: "bg-cozy-yellow",
+    type: "ACTION",
+    inputs: true,
+    outputs: false,
+  },
+  {
+    name: "Timed Light",
+    desc: "Action",
+    icon: "timer",
     bg: "bg-cozy-yellow",
     type: "ACTION",
     inputs: true,
@@ -367,11 +381,7 @@ export function createLogicBuilderModel() {
         };
       }
     } else if (type === "ACTION") {
-      if (label.includes("Light")) {
-        defaultConfig = { actionState: true };
-      } else {
-        defaultConfig = { duration: 10, unit: "s" };
-      }
+      defaultConfig = defaultActionConfig(label);
     }
 
     const newNode: NodeData = {
@@ -615,9 +625,7 @@ export function createLogicBuilderModel() {
         x,
         y,
         label,
-        config: label.toLowerCase().includes("light")
-          ? { actionState: action.command !== "OFF" }
-          : { duration: Number(action.duration ?? 0), unit: "s" },
+        config: actionConfigFromGraphAction(label, action),
         icon: display.icon,
         bgClass: display.bgClass,
         inputs: true,
@@ -713,16 +721,10 @@ export function createLogicBuilderModel() {
 
       const labelKey = actionKeyForLabel(node.label);
       const actuatorId = get(actuators)[labelKey];
-      const command =
-        node.label.toLowerCase().includes("light") && node.config.actionState === false ? "OFF" : "ON";
       return {
         id: node.id,
         kind: "action",
-        action: {
-          actuator_id: actuatorId,
-          command,
-          duration: Number(node.config.duration ?? 0),
-        },
+        action: buildActionPayload(node.label, node.config, actuatorId),
       };
     });
 
@@ -742,7 +744,7 @@ export function createLogicBuilderModel() {
     }
     const graph = buildGraphPayload();
     for (const node of graph.nodes) {
-      if (node.kind === "action" && !node.action.actuator_id) {
+      if (node.kind === "action" && (!node.action || !node.action.actuator_id)) {
         throw new Error("Action node actuator_id is missing");
       }
     }

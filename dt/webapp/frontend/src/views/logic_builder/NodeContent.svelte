@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isGrowLightLabel } from "./action_nodes";
   import type { NodeData } from "./types";
 
   export let node: NodeData;
@@ -71,18 +72,21 @@
     {/if}
   </div>
 {:else if node.type === "ACTION"}
-  {#if node.label.includes("Light")}
-    <div class="flex items-center justify-between bg-desk border border-ink rounded p-2" on:mousedown={stopProp}>
-      <span class="font-retro text-sm">STATE:</span>
-      <button
-        class={[
-          "px-3 py-0.5 border border-ink rounded font-bold text-xs",
-          node.config.actionState ? "bg-green-400 text-ink" : "bg-gray-200 text-gray-500",
-        ].join(" ")}
-        on:click={() => updateNodeConfig(node.id, { actionState: !node.config.actionState })}
-      >
-        {node.config.actionState ? "ON" : "OFF"}
-      </button>
+  {#if isGrowLightLabel(node.label)}
+    <div class="flex flex-col gap-2" on:mousedown={stopProp}>
+      <div class="flex items-center justify-between bg-desk border border-ink rounded p-2">
+        <span class="font-retro text-sm">STATE:</span>
+        <button
+          class={[
+            "px-3 py-0.5 border border-ink rounded font-bold text-xs",
+            node.config.actionState ? "bg-green-400 text-ink" : "bg-gray-200 text-gray-500",
+          ].join(" ")}
+          on:click={() => updateNodeConfig(node.id, { actionState: !node.config.actionState })}
+        >
+          {node.config.actionState ? "ON" : "OFF"}
+        </button>
+      </div>
+
     </div>
   {:else}
     <div class="flex items-center gap-2" on:mousedown={stopProp}>
