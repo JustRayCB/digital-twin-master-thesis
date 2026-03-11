@@ -1,3 +1,5 @@
+import time
+
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
@@ -50,5 +52,13 @@ class TemperatureSensor(Sensor):
 
         except RuntimeError as error:
             # Errors happen fairly often, DHT's are hard to read, just keep going
-            self.logger.error(f"Failed to read temperature: {error.args[0]}")
-            return -1
+            try:
+                for _ in range(2):  # Retry up to 5 times
+                    time.sleep(2)  # Wait a bit before retrying
+                    temperature_c = self._sensor.temperature
+                    if temperature_c is not None:
+                        self.logger.info(f"Temperature (after retry): {temperature_c}°C")
+                        return temperature_c  # pyright: ignore[]
+            except RuntimeError as retry_error:
+                self.logger.error(f"Failed to read temperature after retry: {retry_error.args[0]}")
+            # self.logger.error(f"Failed to read temperature: {error.args[0]}")

@@ -1,3 +1,5 @@
+import time
+
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
@@ -49,5 +51,12 @@ class HumiditySensor(Sensor):
 
         except RuntimeError as error:
             # Errors happen fairly often, DHT's are hard to read, just keep going
-            self.logger.error(f"Failed to read humidity: {error.args[0]}")
-            return -1
+            try:
+                for _ in range(2):  # Retry up to 5 times
+                    time.sleep(2)  # Wait a bit before retrying
+                    humidity = self._sensor.humidity
+                    if humidity is not None:
+                        self.logger.info(f"Humidity (after retry): {humidity}%")
+                        return humidity  # pyright: ignore[]
+            except RuntimeError as retry_error:
+                self.logger.error(f"Failed to read humidity after retry: {retry_error.args[0]}")
