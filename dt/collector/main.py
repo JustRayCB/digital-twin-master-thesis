@@ -44,11 +44,13 @@ def main():
         "sensors.basil.dht22.001.temperature",
         TEMPERATURE_INTERVAL_SECONDS,
         board.D17,
+        board.D10,
     )
     humidity_sensor = HumiditySensor(
         "sensors.basil.dht22.001.humidity",
         HUMIDITY_INTERVAL_SECONDS,
         board.D17,
+        board.D10,
     )
     light_sensor = LightSensor(
         "sensors.basil.bh1750.001.lux",

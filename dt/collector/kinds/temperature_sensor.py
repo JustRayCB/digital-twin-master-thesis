@@ -1,9 +1,9 @@
-import time
+from typing import Any
 
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
-from dt.collector.kinds.dht22_sensor import DHT22Singleton
+from dt.collector.kinds.dht22_sensor import DHT22Device
 from dt.communication.topics import Topics
 
 
@@ -11,9 +11,8 @@ class TemperatureSensor(Sensor):
     """Represents a temperature sensor, specifically using a DHT22 sensor.
 
     This class interfaces with a DHT22 sensor to read temperature data. It
-    utilizes the `DHT22Singleton` to ensure that there is only one instance
-    of the sensor object, even if both temperature and humidity are read
-    from the same physical device.
+    shares a `DHT22Device` with the humidity stream so both logical sensors
+    read from the same physical device and use the same recovery policy.
 
     Parameters
     ----------
@@ -25,10 +24,29 @@ class TemperatureSensor(Sensor):
         The GPIO pin to which the DHT22 sensor is connected.
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(
+        self,
+        name: str,
+        read_interval: int,
+        pin: Pin,
+        power_pin: Any,
+        reboot_after_failures: int = 3,
+        power_off_seconds: float = 3.0,
+        reboot_wait_seconds: float = 2.0,
+        read_retry_count: int = 2,
+        read_retry_delay_seconds: float = 2.0,
+    ) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "°C"
-        self._sensor = DHT22Singleton.get_instance(self.pin)
+        self._sensor = DHT22Device.get_instance(
+            data_pin=self.pin,
+            power_pin=power_pin,
+            reboot_after_failures=reboot_after_failures,
+            power_off_seconds=power_off_seconds,
+            reboot_wait_seconds=reboot_wait_seconds,
+            read_retry_count=read_retry_count,
+            read_retry_delay_seconds=read_retry_delay_seconds,
+        )
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 
@@ -43,22 +61,9 @@ class TemperatureSensor(Sensor):
         return Topics.TEMPERATURE
 
     @override
-    def read_sensor(self) -> float:
-        try:
-            temperature_c = self._sensor.temperature
-            # humidity = self._sensor.humidity # Uncomment if you want to read ambiant humidity
+    def read_sensor(self) -> float | None:
+        temperature_c = self._sensor.read_temperature()
+        if temperature_c is not None:
             self.logger.info(f"Temperature: {temperature_c}°C")
-            return temperature_c  # pyright: ignore[]
-
-        except RuntimeError as error:
-            # Errors happen fairly often, DHT's are hard to read, just keep going
-            try:
-                for _ in range(2):  # Retry up to 5 times
-                    time.sleep(2)  # Wait a bit before retrying
-                    temperature_c = self._sensor.temperature
-                    if temperature_c is not None:
-                        self.logger.info(f"Temperature (after retry): {temperature_c}°C")
-                        return temperature_c  # pyright: ignore[]
-            except RuntimeError as retry_error:
-                self.logger.error(f"Failed to read temperature after retry: {retry_error.args[0]}")
-            # self.logger.error(f"Failed to read temperature: {error.args[0]}")
+            return temperature_c
+        return None
