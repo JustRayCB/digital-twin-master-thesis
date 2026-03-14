@@ -39,6 +39,7 @@ def main():
         "sensors.basil.stemma.001.soil_moisture",
         SOIL_MOISTURE_INTERVAL_SECONDS,
         board.D1,
+        0x36,
     )
     temperature_sensor = TemperatureSensor(
         "sensors.basil.dht22.001.temperature",
@@ -52,6 +53,26 @@ def main():
         board.D17,
         board.D10,
     )
+
+    moisture_sensor = SoilMoistureSensor(
+        "sensors.basil.stemma.002.soil_moisture",
+        SOIL_MOISTURE_INTERVAL_SECONDS,
+        board.D1,
+        0x39,
+    )
+    temperature_sensor = TemperatureSensor(
+        "sensors.basil.dht22.002.temperature",
+        TEMPERATURE_INTERVAL_SECONDS,
+        board.D9,
+        board.D25,
+    )
+    humidity_sensor = HumiditySensor(
+        "sensors.basil.dht22.002.humidity",
+        HUMIDITY_INTERVAL_SECONDS,
+        board.D9,
+        board.D25,
+    )
+
     light_sensor = LightSensor(
         "sensors.basil.bh1750.001.lux",
         LIGHT_INTERVAL_SECONDS,

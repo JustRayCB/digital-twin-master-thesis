@@ -26,11 +26,12 @@ class SoilMoistureSensor(Sensor):
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin, address: int):
         super().__init__(name, read_interval, pin)
         self._unit = "%"
         self._i2c_bus = board.I2C()
-        self._sensor = Seesaw(self._i2c_bus, addr=0x36)
+        self._address = address
+        self._sensor = Seesaw(self._i2c_bus, addr=address)
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 

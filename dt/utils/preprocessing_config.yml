@@ -171,3 +171,15 @@ streams:
   - sensor: sensors.basil.picamera2.001.camera_image
     topic: green_ratio
     template: camera.green_ratio
+
+  - sensor: sensors.basil.dht22.002.temperature
+    topic: temperature
+    template: dht22.temperature
+
+  - sensor: sensors.basil.dht22.002.humidity
+    topic: humidity
+    template: dht22.humidity
+
+  - sensor: sensors.basil.stemma.002.soil_moisture
+    topic: soil_moisture
+    template: stemma.soil_moisture
