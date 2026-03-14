@@ -103,8 +103,8 @@ templates:
       baseline: null
     calibration:
       strategy: affine
-      scale: 0.13986013986013987 # min 300, max 1015
-      offset: -41.95804195804196
+      scale: 0.16129032258064516 # dry 395, wet 1015
+      offset: -63.70967741935484
     normalization:
       strategy: min_max
       input_min: 0.0
