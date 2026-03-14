@@ -80,7 +80,7 @@ More detailed wiring and operational context live in [docs/runbook.pdf](docs/run
 | --- | --- |
 | `dt/` | Main application package and service modules |
 | `dt/communication/` | Shared dataclasses, Kafka helpers, adapters, topic definitions, REST clients |
-| `dt/utils/` | Configuration, logging, exceptions, YAML config files |
+| `dt/utils/` | Configuration, logging, exceptions, YAML config files, and the tmux stack launcher |
 | `scripts/` | Provisioning scripts, Kafka utilities, SQL migration runner, hands-on scripts |
 | `tests/` | Pytest suites organized by domain |
 | `Makefile` | Convenience targets for installing poetry profiles, running services, tests, and maintenance. |
@@ -198,8 +198,8 @@ Recommended service start order:
 5. Start the image analysis service if you want camera-derived green-ratio readings.
 6. Start the alert engine.
 7. Start the controller only if you want actuator control.
-8. Start the collector (but do not press ENTER yet) on the Raspberry Pi when hardware is available.
-9. Start the web application and press ENTER in the collector terminal to begin sensor polling.
+8. Start the collector on the Raspberry Pi when hardware is available.
+9. Start the web application.
 
 Make targets:
 
@@ -212,6 +212,55 @@ make run-controller
 make run-collector
 make run-dashboard
 ```
+
+### Persistent Raspberry Pi sessions with tmux
+
+For an SSH-driven Raspberry Pi deployment, the supported lightweight path is a
+named `tmux` session. That gives you:
+
+- services that survive SSH logout
+- a fixed startup order with explicit waits between services
+- reconnectable terminals for each service
+- per-service log files under `logs/tmux/`
+- an exit-code file per service so you can see which window died
+
+Prerequisites that remain outside tmux:
+
+- Kafka already running
+- PostgreSQL + TimescaleDB already running
+
+Start the stack in the documented order:
+
+```bash
+make tmux-stack-start
+```
+
+That launches these windows in one detached `tmux` session named `dt-stack`:
+
+1. `database`
+2. `preprocessing`
+3. `image-analysis`
+4. `alerts`
+5. `controller`
+6. `collector`
+7. `dashboard`
+
+Operational commands:
+
+```bash
+make tmux-stack-attach
+make tmux-stack-status
+make tmux-stack-stop
+tmux ls
+tmux attach -t dt-stack
+```
+
+Logs and failure state:
+
+- Each window appends logs to `logs/tmux/<service>.log`.
+- When a command exits, the launcher writes the exit status to `logs/tmux/<service>.exit`.
+- `make tmux-stack-status` shows whether each window is still running and where its log file lives.
+- `tmux` is configured with `remain-on-exit`, so failed windows stay visible when you reattach.
 
 ### Demo mode
 

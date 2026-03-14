@@ -14,6 +14,7 @@ IMAGE_ANALYSIS ?= dt.ai.image_analysis_service
 .PHONY: help \
 				install-dev install-rpi install-spark install-db install-naked \
 				run-dashboard run-collector run-controller run-database run-preprocessing run-alert-engine run-image-analysis \
+				tmux-stack-start tmux-stack-attach tmux-stack-status tmux-stack-stop \
 				build-webapp test venv \
 				clean-env clean-venv clean-pyc \
 				update-deps check-deps
@@ -39,6 +40,10 @@ help:
 	@echo "  make run-alert-engine				-> alert engine service (Kafka + Flask API)"
 	@echo "  make run-image-analysis			-> camera image analysis service (camera_image.raw -> green_ratio.raw)"
 	@echo "  make run-alert-api-only			-> alert engine Flask API only (no Kafka consumer)"
+	@echo "  make tmux-stack-start				-> launch the SSH-friendly tmux stack"
+	@echo "  make tmux-stack-attach				-> attach to the tmux stack session"
+	@echo "  make tmux-stack-status				-> inspect tmux stack state and logs"
+	@echo "  make tmux-stack-stop				-> stop the tmux stack session"
 	@echo "  make build-webapp				-> build Svelte UI into dt/webapp/static/ui"
 	@echo ""
 	@echo "Quality:"
@@ -106,6 +111,18 @@ run-image-analysis:
 
 run-alert-api-only:
 	$(PY) -c "from dt.alerts.app import create_app; app=create_app(start_consumer=False); app.run(host='0.0.0.0', port=5003)"
+
+tmux-stack-start:
+	poetry run python -m dt.utils.tmux_stack start
+
+tmux-stack-attach:
+	poetry run python -m dt.utils.tmux_stack attach
+
+tmux-stack-status:
+	poetry run python -m dt.utils.tmux_stack status
+
+tmux-stack-stop:
+	poetry run python -m dt.utils.tmux_stack stop
 
 build-webapp:
 	npm --prefix dt/webapp/frontend install
