@@ -1,4 +1,4 @@
-import type { ProcessedReadingPayload } from "./realtime_types";
+import type { AggregatedReadingPayload, ProcessedReadingPayload } from "./realtime_types";
 import { processedTopics, type ProcessedTopicName } from "./realtime_topics";
 import { realtimeClient } from "./realtime_client";
 
@@ -17,7 +17,17 @@ export type SeriesPoint = {
   customdata: [number | null, string];
 };
 
+export type BandPoint = { x: string; min: number | null; max: number | null };
+
 export type TopicSnapshot = Record<SeriesKey, SeriesPoint[]>;
+
+/** Maps aggregated payload fields to the standard series keys. */
+const AGGREGATED_SERIES_MAP: Record<SeriesKey, keyof AggregatedReadingPayload> = {
+  value: "mean_value",
+  raw_value: "avg_raw_value",
+  calibrated_value: "avg_calibrated_value",
+  normalized_value: "avg_normalized_value",
+};
 
 function formatFlags(flags: unknown) {
   if (!flags || typeof flags !== "object") {
@@ -108,6 +118,7 @@ function mergeSnapshots(
 
 export function createRealtimeReadingsStore(maxPoints = 600) {
   const snapshots = new Map<ProcessedTopicName, TopicSnapshot>();
+  const bands = new Map<ProcessedTopicName, BandPoint[]>();
   const subscribers = new Set<Subscriber>();
 
   let started = false;
@@ -120,6 +131,15 @@ export function createRealtimeReadingsStore(maxPoints = 600) {
     const fresh = emptySnapshot();
     snapshots.set(topic, fresh);
     return fresh;
+  }
+
+  function getBand(topic: ProcessedTopicName): BandPoint[] {
+    return bands.get(topic) ?? [];
+  }
+
+  function clearTopic(topic: ProcessedTopicName) {
+    snapshots.set(topic, emptySnapshot());
+    bands.delete(topic);
   }
 
   function notify(topic: ProcessedTopicName, payload: ProcessedReadingPayload) {
@@ -166,11 +186,40 @@ export function createRealtimeReadingsStore(maxPoints = 600) {
     snapshots.set(topic, mergeSnapshots(existing, readings, maxPoints));
   }
 
+  function hydrateAggregated(topic: ProcessedTopicName, readings: AggregatedReadingPayload[]) {
+    const snapshot = emptySnapshot();
+    const bandPoints: BandPoint[] = [];
+
+    for (const r of readings) {
+      const x = new Date(Number(r.time)).toISOString();
+      const customdata: [number | null, string] = [r.avg_dq_score ?? null, ""];
+
+      for (const series of SERIES) {
+        const aggKey = AGGREGATED_SERIES_MAP[series.key];
+        const raw = Number(r[aggKey]);
+        const y = Number.isFinite(raw) ? raw : null;
+        snapshot[series.key].push({ x, y, customdata });
+      }
+
+      bandPoints.push({
+        x,
+        min: Number.isFinite(r.min_value) ? r.min_value : null,
+        max: Number.isFinite(r.max_value) ? r.max_value : null,
+      });
+    }
+
+    snapshots.set(topic, snapshot);
+    bands.set(topic, bandPoints);
+  }
+
   return {
     start,
     subscribe,
     getSnapshot,
+    getBand,
+    clearTopic,
     hydrate,
+    hydrateAggregated,
   };
 }
 

@@ -34,6 +34,12 @@ class AggregatedReading:
         The average data quality score over the window.
     imputed_count : int
         The number of imputed samples in the window.
+    avg_raw_value : float | None
+        The average raw sensor reading over the window, when available.
+    avg_calibrated_value : float | None
+        The average calibrated sensor reading over the window, when available.
+    avg_normalized_value : float | None
+        The average normalized sensor reading over the window, when available.
     variance_value : float | None
         The sample variance over the window, when defined.
     stddev_value : float | None
@@ -53,6 +59,9 @@ class AggregatedReading:
     sample_count: int
     avg_dq_score: float
     imputed_count: int
+    avg_raw_value: float | None = None
+    avg_calibrated_value: float | None = None
+    avg_normalized_value: float | None = None
     variance_value: float | None = None
     stddev_value: float | None = None
     skewness_value: float | None = None

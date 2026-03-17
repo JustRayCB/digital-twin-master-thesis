@@ -87,7 +87,9 @@ class ReadingsStore(ReadingsStorage):
         """
         with self._get_connection() as conn:
             conn.execute(text(query), dump("db_row", data))
-            self.logger.info(f"Ingested reading for sensor {data.sensor_id} at {data.timestamp}")
+            self.logger.info(
+                f"Ingested reading for sensor {data.sensor_id} at {data.timestamp}"
+            )
 
     def ingest_readings(self, datas: list[ProcessedSensorData]) -> None:
         for data in datas:
@@ -102,7 +104,9 @@ class ReadingsStore(ReadingsStorage):
             FROM sensor_readings
             WHERE 1=1
         """
-        statement, params = self._build_filter_query(base_query, query, time_col="timestamp")
+        statement, params = self._build_filter_query(
+            base_query, query, time_col="timestamp"
+        )
         with self._get_connection() as conn:
             result = conn.execute(text(statement), params)
             readings = [load("db_row", ProcessedSensorData, row) for row in result]
@@ -112,20 +116,25 @@ class ReadingsStore(ReadingsStorage):
     def query_aggregates(self, query: ReadingsQuery) -> list[AggregatedReading]:
         window = query.window
         if window != "1h":
-            raise ValueError(f"Unsupported window: {window}. Currently only '1h' is supported.")
+            raise ValueError(
+                f"Unsupported window: {window}. Currently only '1h' is supported."
+            )
 
         base_query = f"""
             SELECT bucket, sensor_id, plant_id, topic, unit,
                    average(value_stats) AS mean_value,
                    min_value, max_value, sample_count,
                    avg_dq_score, imputed_count,
+                   avg_raw_value, avg_calibrated_value, avg_normalized_value,
                    variance(value_stats, 'sample') AS variance_value,
                    stddev(value_stats, 'sample') AS stddev_value,
                    skewness(value_stats, 'sample') AS skewness_value
             FROM sensor_readings_{window}
             WHERE 1=1
         """
-        statement, params = self._build_filter_query(base_query, query, time_col="bucket")
+        statement, params = self._build_filter_query(
+            base_query, query, time_col="bucket"
+        )
         with self._get_connection() as conn:
             result = conn.execute(text(statement), params)
             readings = [load("db_row", AggregatedReading, row) for row in result]

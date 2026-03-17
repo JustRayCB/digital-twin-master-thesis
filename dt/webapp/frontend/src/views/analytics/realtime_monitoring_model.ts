@@ -1,11 +1,10 @@
 import { get, writable } from "svelte/store";
 
 import { fetchReadings } from "../../api";
-import type { DqHoverState, ProcessedReadingPayload } from "./realtime_types";
+import type { AggregatedReadingPayload, DqHoverState, ProcessedReadingPayload } from "./realtime_types";
 import { analyticsTopics, processedTopics, type ProcessedTopicName } from "./realtime_topics";
-import { realtimeReadings } from "./realtime_readings_store";
+import { realtimeReadings, type BandPoint } from "./realtime_readings_store";
 
-const SEED_POINT_LIMIT = 300;
 const HISTORICAL_WINDOW_MS = {
   day: 24 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
@@ -23,6 +22,12 @@ type SeriesKey = (typeof SERIES)[number]["key"];
 
 type PlotlyElement = HTMLElement & { on?: (event: string, handler: (data: any) => void) => void };
 type TimeView = keyof typeof HISTORICAL_WINDOW_MS;
+
+const BAND_COLOR = "rgba(100,100,100,0.12)";
+
+function windowForView(view: TimeView): "raw" | "1h" {
+  return view === "day" ? "raw" : "1h";
+}
 
 function dqToColor(dqScore: unknown) {
   const dq = Number(dqScore);
@@ -102,6 +107,7 @@ function initPlot(
   yAxisTitle: string,
   yAxisRange?: [number, number],
   initialData?: InitialSeriesData[],
+  bandData?: BandPoint[],
 ) {
   const data = SERIES.map((s, idx) => {
     const seed = initialData?.[idx];
@@ -123,6 +129,31 @@ function initPlot(
 
     return trace;
   });
+
+  // Min/max band around the processed (mean) series for aggregated views
+  if (bandData && bandData.length > 0) {
+    const xs = bandData.map((p) => p.x);
+    data.push({
+      x: xs,
+      y: bandData.map((p) => p.min),
+      mode: "lines",
+      name: "min",
+      line: { width: 0 },
+      showlegend: false,
+      hoverinfo: "skip",
+    } as any);
+    data.push({
+      x: xs,
+      y: bandData.map((p) => p.max),
+      mode: "lines",
+      name: "max",
+      fill: "tonexty",
+      fillcolor: BAND_COLOR,
+      line: { width: 0 },
+      showlegend: false,
+      hoverinfo: "skip",
+    } as any);
+  }
 
   const layout = {
     title: { text: title },
@@ -146,7 +177,12 @@ function initPlot(
 }
 
 function applySeriesVisibility(plotly: any, element: PlotlyElement, visibility: Record<SeriesKey, boolean>) {
-  const visible = SERIES.map((s) => (visibility[s.key] ? true : "legendonly"));
+  const traceCount = Array.isArray((element as any).data) ? (element as any).data.length : SERIES.length;
+  const visible: Array<boolean | "legendonly"> = SERIES.map((s) => (visibility[s.key] ? true : "legendonly"));
+  // Band traces (if present) stay always visible
+  for (let i = SERIES.length; i < traceCount; i++) {
+    visible.push(true);
+  }
   plotly.restyle(element, { visible });
 }
 
@@ -199,10 +235,17 @@ export function createRealtimeMonitoringModel() {
     const windowMs = HISTORICAL_WINDOW_MS[view];
     const until = Date.now();
     const since = until - windowMs;
+    const aggregationWindow = windowForView(view);
 
     const topics = analyticsTopics;
+
+    // Clear stale data from previous view
+    for (const topic of topics) {
+      realtimeReadings.clearTopic(topic);
+    }
+
     const responses = await Promise.allSettled(
-      topics.map((topic) => fetchReadings({ topic, since, until, window: "raw" })),
+      topics.map((topic) => fetchReadings({ topic, since, until, window: aggregationWindow })),
     );
 
     responses.forEach((result, idx) => {
@@ -211,7 +254,11 @@ export function createRealtimeMonitoringModel() {
         return;
       }
       const topic = topics[idx];
-      realtimeReadings.hydrate(topic, result.value as ProcessedReadingPayload[]);
+      if (aggregationWindow === "raw") {
+        realtimeReadings.hydrate(topic, result.value as ProcessedReadingPayload[]);
+      } else {
+        realtimeReadings.hydrateAggregated(topic, result.value as unknown as AggregatedReadingPayload[]);
+      }
     });
   }
 
@@ -240,12 +287,13 @@ export function createRealtimeMonitoringModel() {
       }
       const snapshot = realtimeReadings.getSnapshot(topic);
       const initialData = SERIES.map((s) => ({
-        x: snapshot[s.key].map((p) => p.x).slice(-SEED_POINT_LIMIT),
-        y: snapshot[s.key].map((p) => p.y).slice(-SEED_POINT_LIMIT),
-        customdata: snapshot[s.key].map((p) => p.customdata).slice(-SEED_POINT_LIMIT),
+        x: snapshot[s.key].map((p) => p.x),
+        y: snapshot[s.key].map((p) => p.y),
+        customdata: snapshot[s.key].map((p) => p.customdata),
       }));
 
-      await initPlot(plotly, element, cfg.title, cfg.yAxisTitle, cfg.yAxisRange, initialData);
+      const band = realtimeReadings.getBand(topic);
+      await initPlot(plotly, element, cfg.title, cfg.yAxisTitle, cfg.yAxisRange, initialData, band.length > 0 ? band : undefined);
       bindHover(element);
       const observer = observeElementResize(plotly, element);
       if (observer) {
@@ -262,10 +310,15 @@ export function createRealtimeMonitoringModel() {
     }
   }
 
+  let currentView: TimeView = "day";
+
   function bindReadings() {
     const plotly = ensurePlotlyAvailable();
 
     const unsubscribe = realtimeReadings.subscribe((topic: ProcessedTopicName, payload: ProcessedReadingPayload) => {
+      // Live points only make sense in raw (day) mode
+      if (currentView !== "day") return;
+
       const element = get(chartElements)[topic];
       if (!element) return;
       if (!Array.isArray((element as any).data)) return;
@@ -299,6 +352,7 @@ export function createRealtimeMonitoringModel() {
   }
 
   async function start(view: TimeView = "day") {
+    currentView = view;
     realtimeReadings.start();
     await fetchHistorical(view);
     cleanupObservers();
@@ -325,6 +379,7 @@ export function createRealtimeMonitoringModel() {
   }
 
   async function setTimeView(view: TimeView) {
+    currentView = view;
     await fetchHistorical(view);
     cleanupObservers();
     await initCharts();

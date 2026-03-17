@@ -15,6 +15,26 @@ export interface ProcessedReadingPayload {
   normalization_profile_id?: string | null;
 }
 
+export interface AggregatedReadingPayload {
+  time: number;
+  sensor_id: number;
+  plant_id: number;
+  topic: string;
+  unit: string;
+  mean_value: number;
+  min_value: number;
+  max_value: number;
+  sample_count: number;
+  avg_dq_score: number;
+  imputed_count: number;
+  avg_raw_value: number | null;
+  avg_calibrated_value: number | null;
+  avg_normalized_value: number | null;
+  variance_value?: number | null;
+  stddev_value?: number | null;
+  skewness_value?: number | null;
+}
+
 export interface DqHoverState {
   dqScore: number | null;
   flagsText: string;
