@@ -35,38 +35,38 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisture_sensor = SoilMoistureSensor(
+    moisture_sensor_001 = SoilMoistureSensor(
         "sensors.basil.stemma.001.soil_moisture",
         SOIL_MOISTURE_INTERVAL_SECONDS,
         board.D1,
         0x36,
     )
-    temperature_sensor = TemperatureSensor(
+    temperature_sensor_001 = TemperatureSensor(
         "sensors.basil.dht22.001.temperature",
         TEMPERATURE_INTERVAL_SECONDS,
         board.D17,
         board.D10,
     )
-    humidity_sensor = HumiditySensor(
+    humidity_sensor_001 = HumiditySensor(
         "sensors.basil.dht22.001.humidity",
         HUMIDITY_INTERVAL_SECONDS,
         board.D17,
         board.D10,
     )
 
-    moisture_sensor = SoilMoistureSensor(
+    moisture_sensor_002 = SoilMoistureSensor(
         "sensors.basil.stemma.002.soil_moisture",
         SOIL_MOISTURE_INTERVAL_SECONDS,
         board.D1,
         0x39,
     )
-    temperature_sensor = TemperatureSensor(
+    temperature_sensor_002 = TemperatureSensor(
         "sensors.basil.dht22.002.temperature",
         TEMPERATURE_INTERVAL_SECONDS,
         board.D9,
         board.D25,
     )
-    humidity_sensor = HumiditySensor(
+    humidity_sensor_002 = HumiditySensor(
         "sensors.basil.dht22.002.humidity",
         HUMIDITY_INTERVAL_SECONDS,
         board.D9,
@@ -83,9 +83,12 @@ def main():
         CAMERA_INTERVAL_SECONDS,
     )
 
-    sensor_manager.add_sensor(moisture_sensor)
-    sensor_manager.add_sensor(temperature_sensor)
-    sensor_manager.add_sensor(humidity_sensor)
+    sensor_manager.add_sensor(moisture_sensor_001)
+    sensor_manager.add_sensor(temperature_sensor_001)
+    sensor_manager.add_sensor(humidity_sensor_001)
+    sensor_manager.add_sensor(moisture_sensor_002)
+    sensor_manager.add_sensor(temperature_sensor_002)
+    sensor_manager.add_sensor(humidity_sensor_002)
     sensor_manager.add_sensor(light_sensor)
     sensor_manager.add_sensor(camera_sensor)
 
