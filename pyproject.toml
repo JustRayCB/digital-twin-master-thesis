@@ -22,6 +22,8 @@ dependencies = [
     "cattrs (>=25.3.0,<26.0.0)",
     "networkx (>=3.6.1,<4.0.0)",
     "opencv-python (>=4.13.0.92,<5.0.0.0)",
+    "scikit-image (>=0.26.0,<0.27.0)",
+    "pupil-apriltags (>=1.0.4.post11,<2.0.0)",
 ]
 
 # Dev tools
@@ -40,6 +42,8 @@ testcontainers = {extras = ["postgres", "kafka"], version = "^4.9.0"}
 
 
 # Spark kept out of default installs
+esptool = "^5.2.0"
+mpremote = "^1.27.0"
 [tool.poetry.group.spark]
 optional = true
 
