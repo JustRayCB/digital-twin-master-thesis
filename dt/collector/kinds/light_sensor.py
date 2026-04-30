@@ -43,12 +43,12 @@ class LightSensor(Sensor):
         return Topics.LIGHT_INTENSITY
 
     @override
-    def read_sensor(self) -> float:
+    def read_sensor(self) -> float | None:
         self.logger.info("Reading light intensity...")
         light_intensity = self._sensor.lux
         if light_intensity is None:
             self.logger.error("Failed to read light intensity.")
-            return -1
+            return None
         else:
             self.logger.info(f"Light intensity: {light_intensity} lx")
         return light_intensity

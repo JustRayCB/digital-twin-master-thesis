@@ -15,8 +15,9 @@ It performs two primary functions:
 from flask import Flask
 from flask_cors import CORS
 
-from dt.data.database import (AlertStorage, ControllerStorage, MetadataStorage,
-                              ReadingsStorage, SnapshotStorage)
+from dt.data.database import (AlertStorage, AnalyticsStorage, AnalyticsStore,
+                              ControllerStorage, MetadataStorage, ReadingsStorage,
+                              SnapshotStorage)
 from dt.data.database.alerts_storage import AlertsStore
 from dt.data.database.api import create_database_blueprint
 from dt.data.database.base_storage import create_database_engine
@@ -56,6 +57,7 @@ def create_app(
     metadata_storage: MetadataStorage,
     readings_storage: ReadingsStorage,
     alert_storage: AlertStorage,
+    analytics_storage: AnalyticsStorage,
     controller_storage: ControllerStorage,
     snapshot_storage: SnapshotStorage,
 ) -> Flask:
@@ -68,7 +70,7 @@ def create_app(
     ----------
     config : Config
         Configuration object containing application settings.
-    metadata_storage, readings_storage, alert_storage, controller_storage, snapshot_storage
+    metadata_storage, readings_storage, alert_storage, analytics_storage, controller_storage, snapshot_storage
         Storage backends required by the HTTP API routes.
 
     Returns
@@ -82,6 +84,7 @@ def create_app(
             metadata_storage,
             readings_storage,
             alert_storage,
+            analytics_storage,
             controller_storage,
             snapshot_storage,
         )
@@ -100,6 +103,7 @@ def create_app(
         metadata_storage=metadata_storage,
         readings_storage=readings_storage,
         alert_storage=alert_storage,
+        analytics_storage=analytics_storage,
         controller_storage=controller_storage,
         snapshot_storage=snapshot_storage,
     )
@@ -115,7 +119,7 @@ if __name__ == "__main__":
 
     # Ensure the setup runs only once, not in the reloader process
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    debug_mode = True
+    debug_mode = Config.DEBUG_MODE.value == "True"
 
     # Ensure schema is initialized before starting the service
     if debug_mode and in_reloader:
@@ -131,6 +135,7 @@ if __name__ == "__main__":
     metadata_storage = MetadataStore(engine=engine)
     readings_storage = ReadingsStore(engine=engine)
     alert_storage = AlertsStore(engine=engine)
+    analytics_storage = AnalyticsStore(engine=engine)
     controller_storage = ControllerStore(engine=engine)
     snapshot_storage = SnapshotStore(engine=engine, storage_root=Config.SNAPSHOT_STORAGE_ROOT)
 
@@ -140,6 +145,7 @@ if __name__ == "__main__":
         metadata_storage=metadata_storage,
         readings_storage=readings_storage,
         alert_storage=alert_storage,
+        analytics_storage=analytics_storage,
         controller_storage=controller_storage,
         snapshot_storage=snapshot_storage,
     )
@@ -151,6 +157,7 @@ if __name__ == "__main__":
             config=Config,
             readings_storage=readings_storage,
             alert_storage=alert_storage,
+            analytics_storage=analytics_storage,
             controller_storage=controller_storage,
             snapshot_storage=snapshot_storage,
         )
@@ -159,6 +166,7 @@ if __name__ == "__main__":
             config=Config,
             readings_storage=readings_storage,
             alert_storage=alert_storage,
+            analytics_storage=analytics_storage,
             controller_storage=controller_storage,
             snapshot_storage=snapshot_storage,
         )

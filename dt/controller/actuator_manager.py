@@ -13,6 +13,7 @@ from dt.controller.action_keys import build_action_key
 from dt.controller.kinds.base_actuator import BaseActuator
 from dt.controller.policies import PolicyManager
 from dt.utils import get_logger
+from dt.utils.ids import new_correlation_id
 
 
 class ActuatorManager:
@@ -101,6 +102,7 @@ class ActuatorManager:
         self.logger.info(f"Auto-off timer for action {original_action.action_id}")
         off_action = ActionCommand(
             plant_id=original_action.plant_id,
+            execution_id=new_correlation_id(),
             action_id=build_action_key(
                 source=original_action.source,
                 plant_id=original_action.plant_id,
@@ -109,7 +111,7 @@ class ActuatorManager:
                 routine_id=original_action.routine_id,
             ),
             actuator_id=original_action.actuator_id,
-            started_at=time.time(),
+            event_at=time.time(),
             duration=0,
             command="OFF",
             reason="Auto-off timer",
@@ -175,5 +177,6 @@ class ActuatorManager:
             self.active_executions.pop(action.actuator_id, None)
 
     def _log_action(self, action: ActionCommand) -> None:
+        action.event_at = time.time()
         if not self.messaging_service.publish(Topics.ACTIONS, action):
             self.logger.warning(f"Failed to publish action status for {action.action_id}")

@@ -6,7 +6,10 @@ Exposes endpoints for managing controller mode, routines, and actions.
 from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses.controller import ActionDispatch, ControlMode, RoutineUpdate
+from dt.communication.dataclasses.controller import (ActionDispatch,
+                                                     ActuatorConfigSet,
+                                                     ControlMode,
+                                                     RoutineUpdate)
 from dt.controller.service import ControllerService
 from dt.utils import get_logger
 
@@ -156,6 +159,38 @@ def create_controller_blueprint(service: ControllerService) -> Blueprint:
             return jsonify([dump("generic", item) for item in history])
         except Exception as e:
             logger.error(f"Error fetching history: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    # ---------------------------------------------------------------------- #
+    # Policies
+    # ---------------------------------------------------------------------- #
+    @bp.route("/policies", methods=["GET"])
+    def get_policies():
+        """Get actuator policies."""
+        try:
+            policies = service.get_policies()
+            return jsonify(dump("generic", policies))
+        except Exception as e:
+            logger.error(f"Error getting policies: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @bp.route("/policies", methods=["PUT"])
+    def set_policies():
+        """Set actuator policies."""
+        data = request.json
+        if not data:
+            return jsonify({"error": "JSON body required"}), 400
+
+        try:
+            policies = load("generic", ActuatorConfigSet, data)
+        except Exception as exc:
+            return jsonify({"error": f"Invalid payload: {exc}"}), 400
+
+        try:
+            service.set_policies(policies)
+            return jsonify({"status": "updated"})
+        except Exception as e:
+            logger.error(f"Error setting policies: {e}")
             return jsonify({"error": str(e)}), 500
 
     return bp

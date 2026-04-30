@@ -11,6 +11,7 @@ from dt.communication.adapters import dump, load
 from dt.communication.dataclasses.controller import (
     ActionDispatch,
     ActionCommand,
+    ActuatorConfigSet,
     ControlMode,
     Routine,
     RoutineUpdate,
@@ -148,3 +149,29 @@ class ControllerClient:
         except requests.RequestException as exc:
             self.logger.error(f"Error fetching action history: {exc}")
             raise RuntimeError(f"Failed to fetch action history: {exc}") from exc
+
+    def get_policies(self) -> ActuatorConfigSet:
+        """Fetch actuator policies."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/controller/policies",
+                timeout=5,
+            )
+            response.raise_for_status()
+            return load("generic", ActuatorConfigSet, response.json())
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching actuator policies: {exc}")
+            raise RuntimeError(f"Failed to fetch actuator policies: {exc}") from exc
+
+    def set_policies(self, policies: ActuatorConfigSet) -> None:
+        """Set actuator policies."""
+        try:
+            response = requests.put(
+                f"{self.base_url}/controller/policies",
+                json=dump("generic", policies),
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error setting actuator policies: {exc}")
+            raise RuntimeError(f"Failed to set actuator policies: {exc}") from exc

@@ -18,10 +18,17 @@ class Topics(StrEnum):
     HUMIDITY = PREFIX_SENSOR + "humidity"
     SOIL_MOISTURE = PREFIX_SENSOR + "soil_moisture"
     LIGHT_INTENSITY = PREFIX_SENSOR + "light_intensity"
-    CAMERA_IMAGE = PREFIX_SENSOR + "camera_image"
+    CAMERA_IMAGE_TOP = PREFIX_SENSOR + "camera_image_top"
+    CAMERA_IMAGE_SIDE = PREFIX_SENSOR + "camera_image_side"
     GREEN_RATIO = PREFIX_SENSOR + "green_ratio"
+    PLANT_HEIGHT = PREFIX_SENSOR + "plant_height"
+    LEAF_COUNT = PREFIX_SENSOR + "leaf_count"
     ALERTS = "dt.alerts"
     ACTIONS = "dt.actions"
+    ANALYTICS_HEALTH = "dt.analytics.health"
+    ANALYTICS_FORECAST = "dt.analytics.forecast"
+    RECOMMENDATIONS_SUBMITTED = "dt.recommendations.submitted"
+    RECOMMENDATIONS_COMPLETED = "dt.recommendations.completed"
 
     @classmethod
     def list_topics(cls) -> list["Topics"]:

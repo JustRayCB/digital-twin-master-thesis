@@ -21,7 +21,6 @@
 #   cooldown_seconds: Minimum seconds between alert firings for same rule/source
 
 alert_rules:
-  # Temperature threshold example
   - rule_id: temp_high_warning
     name: High Temperature Warning
     description: "Temperature exceeds {threshold}°C"
@@ -31,23 +30,35 @@ alert_rules:
     condition:
       type: threshold
       operator: ">"
-      threshold: 35.0
-    persistence_count: 2
-    cooldown_seconds: 300
+      threshold: 30.0
+    persistence_count: 3
+    cooldown_seconds: 1800
 
-  # Critical temperature threshold
   - rule_id: temp_critical
     name: Critical Temperature
-    description: "Temperature critically high at {threshold}°C"
+    description: "Temperature critically exceeds {threshold}°C"
     severity: critical
     evaluation_stage: processed
     source: temperature
     condition:
       type: threshold
       operator: ">"
-      threshold: 40.0
+      threshold: 35.0
     persistence_count: 1
-    cooldown_seconds: 600
+    cooldown_seconds: 3600
+
+  - rule_id: temp_low_warning
+    name: Low Temperature Warning
+    description: "Temperature falls below {threshold}°C"
+    severity: warning
+    evaluation_stage: processed
+    source: temperature
+    condition:
+      type: threshold
+      operator: "<"
+      threshold: 18.0
+    persistence_count: 3
+    cooldown_seconds: 1800
 
   - rule_id: humidity_warning
     name: High Humidity Warning
@@ -58,12 +69,10 @@ alert_rules:
     condition:
       type: threshold
       operator: ">"
-      threshold: 70.0
+      threshold: 80.0
     persistence_count: 3
-    cooldown_seconds: 300
+    cooldown_seconds: 1800
 
-
-  # Soil moisture range example
   - rule_id: moisture_low
     name: Low Soil Moisture
     description: "Soil moisture below {threshold}%"
@@ -72,12 +81,24 @@ alert_rules:
     source: soil_moisture
     condition:
       type: threshold
-      operator: < 
-      threshold: 40
+      operator: "<"
+      threshold: 35.0
     persistence_count: 3
-    cooldown_seconds: 600
+    cooldown_seconds: 1800
 
-  # Data quality score example (applies to all sensors)
+  - rule_id: moisture_critical
+    name: Critical Soil Moisture
+    description: "Soil moisture critically below {threshold}%"
+    severity: critical
+    evaluation_stage: processed
+    source: soil_moisture
+    condition:
+      type: threshold
+      operator: "<"
+      threshold: 25.0
+    persistence_count: 1
+    cooldown_seconds: 3600
+
   - rule_id: dq_score_low
     name: Low Data Quality
     description: "Data quality score below {threshold}"
@@ -86,11 +107,10 @@ alert_rules:
     source: "*"
     condition:
       type: dq_score
-      threshold: 0.7
-    persistence_count: 1
-    cooldown_seconds: 120
+      threshold: 0.6
+    persistence_count: 3
+    cooldown_seconds: 600
 
-  # Light level examples
   - rule_id: light_too_low
     name: Insufficient Light
     description: "Light level below {threshold} lux"
@@ -101,18 +121,24 @@ alert_rules:
       type: threshold
       operator: "<"
       threshold: 1000.0
-    persistence_count: 5
-    cooldown_seconds: 1800
+    active_hours:
+      start: "08:00"
+      end: "20:00"
+    persistence_count: 10
+    cooldown_seconds: 3600
 
-  - rule_id: light_excessive
-    name: Excessive Light
-    description: "Light level exceeds {threshold} lux"
-    severity: info
+  - rule_id: green_ratio_low_warning
+    name: Low Green Ratio Warning
+    description: "Green ratio falls below {threshold}%"
+    severity: warning
     evaluation_stage: processed
-    source: light_intensity
+    source: green_ratio
     condition:
       type: threshold
-      operator: ">"
-      threshold: 50000.0
-    persistence_count: 3
-    cooldown_seconds: 1800
+      operator: "<"
+      threshold: 15.0
+    active_hours:
+      start: "08:00"
+      end: "20:00"
+    persistence_count: 6
+    cooldown_seconds: 21600

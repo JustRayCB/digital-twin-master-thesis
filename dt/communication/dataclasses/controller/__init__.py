@@ -3,8 +3,8 @@ from .action_dispatch import ActionDispatch
 from .actuators import ActuatorConfig
 from .policies import ActuatorConfigSet, PlantActuatorConfig
 from .routines import (Action, CompiledRule, ControlMode, Routine, RoutineEdge,
-                       RoutineGraph, RoutineNode, RoutineUpdate, Trigger,
-                       UiNode)
+                        RoutineGraph, RoutineNode, RoutineUpdate, Trigger,
+                        UiNode)
 
 __all__ = [
     "ActionCommand",

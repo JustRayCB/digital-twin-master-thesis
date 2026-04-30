@@ -139,7 +139,7 @@ class DbRowAdapter(SerializationAdapter):
                     pass
 
         elif isinstance(obj, ActionCommand):
-            data["started_at"] = data.pop("timestamp")
+            pass
 
         return data
 
@@ -229,8 +229,7 @@ class DbRowAdapter(SerializationAdapter):
                 row_dict["updated_at"] = updated_at.isoformat()
 
         elif cls == ActionCommand:
-            row_dict["timestamp"] = self._to_unix_timestamp(row_dict.get("started_at"))
-            row_dict["ended_at"] = self._to_unix_timestamp(row_dict.get("ended_at"))
+            row_dict["event_at"] = self._to_unix_timestamp(row_dict.get("event_at"))
 
         elif cls == ControlMode:
             updated_at = row_dict.get("updated_at")

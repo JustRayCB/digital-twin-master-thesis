@@ -1,7 +1,9 @@
+from typing import Any
+
 from typing_extensions import override
 
 from dt.collector.kinds.base_sensor import Pin, Sensor
-from dt.collector.kinds.dht22_sensor import DHT22Singleton
+from dt.collector.kinds.dht22_sensor import DHT22Device
 from dt.communication.topics import Topics
 
 
@@ -9,9 +11,8 @@ class HumiditySensor(Sensor):
     """Represents a humidity sensor, specifically using a DHT22 sensor.
 
     This class interfaces with a DHT22 sensor to read humidity data. It
-    utilizes the `DHT22Singleton` to ensure that there is only one instance
-    of the sensor object, even if both temperature and humidity are read
-    from the same physical device.
+    shares a `DHT22Device` with the temperature stream so both logical sensors
+    read from the same physical device and use the same recovery policy.
 
     Parameters
     ----------
@@ -23,10 +24,29 @@ class HumiditySensor(Sensor):
         The GPIO pin to which the DHT22 sensor is connected.
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(
+        self,
+        name: str,
+        read_interval: int,
+        pin: Pin,
+        power_pin: Any,
+        reboot_after_failures: int = 3,
+        power_off_seconds: float = 3.0,
+        reboot_wait_seconds: float = 2.0,
+        read_retry_count: int = 2,
+        read_retry_delay_seconds: float = 2.0,
+    ) -> None:
         super().__init__(name, read_interval, pin)
         self._unit = "%"
-        self._sensor = DHT22Singleton.get_instance(self.pin)
+        self._sensor = DHT22Device.get_instance(
+            data_pin=self.pin,
+            power_pin=power_pin,
+            reboot_after_failures=reboot_after_failures,
+            power_off_seconds=power_off_seconds,
+            reboot_wait_seconds=reboot_wait_seconds,
+            read_retry_count=read_retry_count,
+            read_retry_delay_seconds=read_retry_delay_seconds,
+        )
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 
@@ -41,13 +61,9 @@ class HumiditySensor(Sensor):
         return Topics.HUMIDITY
 
     @override
-    def read_sensor(self) -> float:
-        try:
-            humidity = self._sensor.humidity
+    def read_sensor(self) -> float | None:
+        humidity = self._sensor.read_humidity()
+        if humidity is not None:
             self.logger.info(f"Humidity : {humidity}%")
-            return humidity  # pyright: ignore[]
-
-        except RuntimeError as error:
-            # Errors happen fairly often, DHT's are hard to read, just keep going
-            self.logger.error(f"Failed to read humidity: {error.args[0]}")
-            return -1
+            return humidity
+        return None

@@ -13,14 +13,18 @@ logger = get_logger(__name__)
 
 def _build_preprocessable_raw_topics() -> list[str]:
     """Return raw topics that carry numeric sensor payloads for preprocessing."""
-    return [topic.raw for topic in Topics.list_sensor_topics() if topic != Topics.CAMERA_IMAGE]
+    return [
+        topic.raw for topic in Topics.list_sensor_topics()
+        if topic not in (Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE)
+    ]
 
 
 def _build_topic_map() -> dict[str, str]:
     """Map sensor base topics to their processed Kafka equivalents."""
     mapping: dict[str, str] = {}
     for topic in Topics.list_sensor_topics():
-        mapping[topic] = topic.processed
+        if topic not in (Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE):
+            mapping[topic] = topic.processed
     return mapping
 
 

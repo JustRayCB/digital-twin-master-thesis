@@ -13,6 +13,7 @@ from typing import Optional
 from dt.communication.dataclasses.controller import (ActionCommand,
                                                      CompiledRule, Trigger)
 from dt.controller.action_keys import build_action_key
+from dt.utils.ids import new_correlation_id
 
 
 class RoutineEvaluator:
@@ -46,9 +47,10 @@ class RoutineEvaluator:
             commands.append(
                 ActionCommand(
                     plant_id=plant_id,
+                    execution_id=new_correlation_id(),
                     action_id=action_key,
                     actuator_id=actuator_id,
-                    started_at=time.time(),
+                    event_at=time.time(),
                     duration=float(action.duration),
                     command=command,
                     reason=f"Routine {routine_id} triggered",

@@ -115,12 +115,18 @@ class ReadingsStore(ReadingsStorage):
             raise ValueError(f"Unsupported window: {window}. Currently only '1h' is supported.")
 
         base_query = f"""
-            SELECT bucket, sensor_id, plant_id, topic, unit,
-                   avg_value, min_value, max_value, sample_count,
-                   avg_dq_score, imputed_count
-            FROM sensor_readings_{window}
-            WHERE 1=1
-        """
+             SELECT bucket, plant_id, topic, unit,
+                    average(value_stats) AS mean_value,
+                    min_value, max_value, sample_count,
+                    avg_dq_score, imputed_count,
+                    avg_raw_value, avg_calibrated_value, avg_normalized_value,
+                    NULLIF(variance(value_stats, 'sample'), 'NaN'::double precision) AS variance_value,
+                    NULLIF(stddev(value_stats, 'sample'), 'NaN'::double precision) AS stddev_value,
+                    NULLIF(skewness(value_stats, 'sample'), 'NaN'::double precision) AS skewness_value,
+                    NULLIF(kurtosis(value_stats, 'sample'), 'NaN'::double precision) AS kurtosis_value
+              FROM sensor_readings_{window}
+              WHERE 1=1
+          """
         statement, params = self._build_filter_query(base_query, query, time_col="bucket")
         with self._get_connection() as conn:
             result = conn.execute(text(statement), params)

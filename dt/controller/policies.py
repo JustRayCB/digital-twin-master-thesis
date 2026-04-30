@@ -1,6 +1,6 @@
 """Actuator policy management.
 
-Loads and resolves actuator policies from a YAML configuration file.
+Loads and resolves actuator policies from the database service.
 Policies define constraints like maximum duration, cooldown periods,
 and allowed commands for each actuator type and plant.
 """
@@ -11,34 +11,38 @@ from typing import Optional
 
 from dt.communication.adapters import load
 from dt.communication.dataclasses.controller import ActuatorConfig, ActuatorConfigSet
+from dt.communication.db_client import DatabaseApiClient
 from dt.utils import Config, get_logger
 
 logger = get_logger(__name__)
 
 
 class PolicyManager:
-    """Manages actuator policies loaded from configuration."""
+    """Manages actuator policies loaded from the database service."""
 
-    def __init__(self, config_path: str = Config.ACTUATOR_POLICIES_PATH):
-        self.config_path = Path(config_path)
+    def __init__(self, database_client: DatabaseApiClient):
+        self.database_client = database_client
         self.config: Optional[ActuatorConfigSet] = None
         self.load_policies()
 
     def load_policies(self) -> None:
-        """Load policies from the YAML configuration file."""
-        if not self.config_path.exists():
-            logger.warning(f"Policy config not found at {self.config_path}, using defaults.")
-            self.config = ActuatorConfigSet()
-            return
-
+        """Load policies from the database service."""
         try:
-            with open(self.config_path, "r") as f:
-                data = yaml.safe_load(f)
-            self.config = load("generic", ActuatorConfigSet, data)
-            logger.info(f"Loaded actuator policies from {self.config_path}")
+            self.config = self.database_client.get_policies()
+            logger.info("Loaded actuator policies from the database")
         except Exception as e:
-            logger.error(f"Failed to load policies: {e}")
+            logger.error(f"Failed to load policies from database, falling back to empty set: {e}")
             self.config = ActuatorConfigSet()
+
+    def save_policies(self, policies: ActuatorConfigSet) -> None:
+        """Save policies to the database and reload."""
+        try:
+            self.database_client.set_policies(policies)
+            self.config = policies
+            logger.info("Saved actuator policies to the database")
+        except Exception as e:
+            logger.error(f"Failed to save policies to database: {e}")
+            raise RuntimeError(f"Failed to save policies to database: {e}") from e
 
     def resolve(self, plant_id: int, actuator_name: str) -> ActuatorConfig:
         """Resolve the effective policy for a given plant and actuator.

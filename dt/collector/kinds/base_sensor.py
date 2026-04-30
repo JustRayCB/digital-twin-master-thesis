@@ -1,7 +1,7 @@
-import time
 from abc import ABC, abstractmethod
 
-from dt.communication.dataclasses import CameraSnapshot, RawSensorData, SensorDescriptor
+from dt.communication.dataclasses import (CameraSnapshot, RawSensorData,
+                                          SensorDescriptor)
 from dt.communication.topics import Topics
 from dt.utils.ids import new_correlation_id
 from dt.utils.logger import get_logger
@@ -103,12 +103,18 @@ class Sensor(ABC):
             time - self.last_read_time >= self.read_interval if self.last_read_time != -1 else True
         )
 
-    def read(self) -> RawSensorData | CameraSnapshot | None:
+    def read(self, current_time: float) -> RawSensorData | CameraSnapshot | None:
         """Read data from the sensor and return it as a RawSensorData object.
 
         This method reads the raw data from the sensor, processes it, updates
-        the last read time and data, and returns a `SensorData` object
-        containing the processed value and metadata.
+        the last read time and data, and returns a dataclass object
+        containing the processed value and metadata. Successful readings from
+        one collector pass may share one pass-level sample timestamp.
+
+        Parameters
+        ----------
+        current_time : float
+            Timestamp shared by the collector pass for this sensor read.
 
         Returns
         -------
@@ -116,10 +122,9 @@ class Sensor(ABC):
             A dataclass object containing the sensor data and metadata, or None
             when the sensor does not return a value.
         """
-        current_time = time.time()
+        self.last_read_time = current_time
         raw_value = self.read_sensor()
 
-        self.last_read_time = current_time
         if raw_value is None:
             self.logger.error(f"Failed to read {self.name}: no data returned")
             return None

@@ -14,8 +14,10 @@ from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
 from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.analytics import ActionResult, Recommendation
 from dt.communication.dataclasses.controller import (ActionCommand,
                                                      ActionDispatch,
+                                                     ActuatorConfigSet,
                                                      CompiledRule, ControlMode,
                                                      Routine, RoutineGraph,
                                                      RoutineUpdate)
@@ -28,6 +30,7 @@ from dt.controller.policies import PolicyManager
 from dt.controller.routine_compiler import RoutineCompiler
 from dt.controller.routine_evaluator import RoutineEvaluator
 from dt.utils import Config, get_logger
+from dt.utils.ids import new_correlation_id
 
 logger = get_logger(__name__)
 
@@ -131,8 +134,11 @@ class ControllerService:
         if not self.messaging_service.connect():
             logger.error("Failed to connect to Kafka messaging service")
             raise RuntimeError("Failed to connect to Kafka messaging service")
+        self.messaging_service.subscribe(
+            Topics.RECOMMENDATIONS_SUBMITTED, self.submit_recommendation
+        )
         for topic in Topics.list_sensor_topics():
-            if topic == Topics.CAMERA_IMAGE:
+            if topic in (Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE):
                 continue
             try:
                 processed_topic = (
@@ -266,6 +272,14 @@ class ControllerService:
 
         return points
 
+    def get_policies(self) -> ActuatorConfigSet:
+        if not self.policy_manager.config:
+            self.policy_manager.load_policies()
+        return self.policy_manager.config
+
+    def set_policies(self, policies: ActuatorConfigSet) -> None:
+        self.policy_manager.save_policies(policies)
+
     def dispatch_action(self, cmd_data: ActionDispatch) -> dict[str, Any]:
         try:
             cmd = self._build_action_command(
@@ -285,6 +299,85 @@ class ControllerService:
             logger.error(f"Dispatch error: {exc}")
             raise ValueError(f"Invalid command data: {exc}") from exc
 
+    def submit_recommendation(self, recommendation: Recommendation) -> Recommendation:
+        mode = self.get_mode(recommendation.plant_id)
+        action_results: list[ActionResult] = []
+
+        for action_index, action_request in enumerate(recommendation.actions):
+            if action_request.capability == "advisory":
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="advisory_only",
+                    )
+                )
+                continue
+
+            if not mode.ai_autopilot_enabled:
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="advisory_only",
+                    )
+                )
+                continue
+
+            actuator = self._resolve_actuator_for_capability(
+                recommendation.plant_id, action_request.capability
+            )
+            if actuator is None:
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="rejected",
+                    )
+                )
+                continue
+
+            action = self._build_action_command(
+                plant_id=recommendation.plant_id,
+                actuator_id=actuator.actuator_id,
+                command=action_request.command,
+                duration=float(action_request.duration_seconds or 0.0),
+                reason=recommendation.reason,
+                source="ai",
+                routine_id=None,
+                action_id=None,
+                correlation_id=recommendation.correlation_id,
+            )
+
+            try:
+                self.actuator_manager.execute(action)
+            except Exception as exc:
+                action.status = "failed"
+                action.error_message = f"Exception during execution: {exc}"
+
+            if action.status == "completed":
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="accepted",
+                    )
+                )
+            elif action.status == "failed":
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="failed",
+                    )
+                )
+            else:
+                action_results.append(
+                    ActionResult(
+                        action_index=action_index,
+                        status="rejected",
+                    )
+                )
+
+        recommendation.action_results = action_results
+        self.messaging_service.publish(Topics.RECOMMENDATIONS_COMPLETED, recommendation)
+        return recommendation
+
     def _execute_rule_actions(
         self,
         routine: Routine,
@@ -302,6 +395,7 @@ class ControllerService:
             if self._ai_autopilot_enabled(routine.plant_id):
                 cmd.status = "skipped"
                 cmd.error_message = "Routine suspended while AI auto-pilot mode is enabled"
+                cmd.event_at = time.time()
                 self.messaging_service.publish(Topics.ACTIONS, cmd)
                 continue
             self._execute_action(cmd)
@@ -327,9 +421,10 @@ class ControllerService:
         )
         return ActionCommand(
             plant_id=plant_id,
+            execution_id=new_correlation_id(),
             action_id=action_key,
             actuator_id=actuator_id,
-            started_at=time.time(),
+            event_at=time.time(),
             duration=duration,
             command=command,
             reason=reason,
@@ -344,6 +439,26 @@ class ControllerService:
     def _ai_autopilot_enabled(self, plant_id: int) -> bool:
         mode = self.get_mode(plant_id)
         return bool(mode.ai_autopilot_enabled)
+
+    def _resolve_actuator_for_capability(self, plant_id: int, capability: str):
+        capability_name = str(capability).strip().lower()
+        actuator_names_by_capability = {
+            "irrigation": {"pump"},
+            "lighting": {"light", "lights", "lamp"},
+            "fan": {"fan"},
+            "heating": {"heater", "heating", "resistor"},
+        }
+        expected_names = actuator_names_by_capability.get(capability_name)
+        if expected_names is None:
+            return None
+
+        for actuator in self.actuator_manager.actuators.values():
+            if actuator.plant_id != plant_id:
+                continue
+            if str(getattr(actuator, "name", "")).strip().lower() not in expected_names:
+                continue
+            return actuator
+        return None
 
     def refresh(self, plant_id: int) -> None:
         self._mode_cache[plant_id] = self.database_client.get_mode(plant_id)

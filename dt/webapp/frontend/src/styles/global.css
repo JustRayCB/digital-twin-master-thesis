@@ -1,7 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Global Base Styles */
 body {
     background-color: #fdfbf7;
     color: #1c1917;
+}
+
+.dashboard-page {
+    width: calc(100% - 48px);
+    margin-inline: auto;
+    padding-block: 28px 64px;
+}
+
+@media (max-width: 1000px) {
+    .dashboard-page {
+        width: calc(100% - 24px);
+        padding-block: 18px 40px;
+    }
 }
 
 /* Utilities */
@@ -25,4 +42,3 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #c7cee3;
 }
-

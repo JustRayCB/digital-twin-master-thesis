@@ -1,6 +1,9 @@
 from dt.communication.adapters.serializers.db.alert import (
     AlertHistoryEventDbSerializer, ExternalAlertEventDbSerializer,
     SensorAlertEventDbSerializer)
+from dt.communication.adapters.serializers.db.analytics import (
+    ForecastResultDbSerializer, HealthAssessmentDbSerializer,
+    RecommendationDbSerializer)
 from dt.communication.adapters.serializers.db.base import DbSerializer
 from dt.communication.adapters.serializers.db.controller import (
     ActionCommandDbSerializer, ControlModeDbSerializer, RoutineDbSerializer)
@@ -16,6 +19,9 @@ __all__ = [
     "AlertHistoryEventDbSerializer",
     "SensorAlertEventDbSerializer",
     "ExternalAlertEventDbSerializer",
+    "HealthAssessmentDbSerializer",
+    "ForecastResultDbSerializer",
+    "RecommendationDbSerializer",
     "RoutineDbSerializer",
     "ControlModeDbSerializer",
     "ActionCommandDbSerializer",

@@ -2,7 +2,7 @@ from sqlalchemy import text
 from abc import ABC, abstractmethod
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses.controller import ActionCommand, ControlMode, Routine, RoutineUpdate
+from dt.communication.dataclasses.controller import (ActionCommand, ActuatorConfig, ActuatorConfigSet, ControlMode, PlantActuatorConfig, Routine, RoutineUpdate)
 from dt.data.database.base_storage import DatabaseStorage
 
 
@@ -111,7 +111,7 @@ class ControllerStorage(DatabaseStorage, ABC):
 
     @abstractmethod
     def log_action_execution(self, action: ActionCommand) -> None:
-        """Log an action execution (upsert).
+        """Log an action execution event.
 
         Parameters
         ----------
@@ -120,8 +120,30 @@ class ControllerStorage(DatabaseStorage, ABC):
         """
         ...
 
+    @abstractmethod
+    def get_policies(self) -> ActuatorConfigSet:
+        """Get the actuator policies from the database.
+
+        Returns
+        -------
+        ActuatorConfigSet
+            The actuator policy configuration.
+        """
+        ...
+
+    @abstractmethod
+    def set_policies(self, policies: ActuatorConfigSet) -> None:
+        """Set the actuator policies in the database.
+
+        Parameters
+        ----------
+        policies : ActuatorConfigSet
+            The actuator policy configuration to persist.
+        """
+        ...
+
 class ControllerStore(ControllerStorage):
-    """Persistence for controller state, routines, and action history."""
+    """Persistence for controller state, routines, and action history events."""
 
     def get_mode(self, plant_id: int) -> ControlMode:
         query = "SELECT * FROM controller_modes WHERE plant_id = :plant_id"
@@ -193,7 +215,7 @@ class ControllerStore(ControllerStorage):
         query = """
             SELECT * FROM action_executions
             WHERE plant_id = :plant_id
-            ORDER BY started_at DESC
+            ORDER BY event_at DESC, id DESC
             LIMIT :limit
         """
         with self._get_connection() as conn:
@@ -203,21 +225,77 @@ class ControllerStore(ControllerStorage):
     def log_action_execution(self, action: ActionCommand) -> None:
         query = """
             INSERT INTO action_executions (
-                action_id, plant_id, actuator_id, routine_id, source, command, duration,
-                reason, status, error_message, correlation_id, started_at
+                execution_id, action_id, plant_id, actuator_id, routine_id, source, command,
+                duration, reason, status, error_message, correlation_id, event_at
             ) VALUES (
-                :action_id, :plant_id, :actuator_id, :routine_id, :source, :command, :duration,
-                :reason, :status, :error_message, :correlation_id, to_timestamp(:started_at)
+                :execution_id, :action_id, :plant_id, :actuator_id, :routine_id, :source,
+                :command, :duration, :reason, :status, :error_message, :correlation_id,
+                to_timestamp(:event_at)
             )
-            ON CONFLICT (action_id, started_at) DO UPDATE
-            SET status = EXCLUDED.status,
-                error_message = EXCLUDED.error_message,
-                ended_at = CASE
-                    WHEN EXCLUDED.status IN ('completed', 'failed', 'rejected') THEN NOW()
-                    ELSE action_executions.ended_at
-                END
         """
         if action.status is None:
             raise ValueError("ActionCommand.status is required to log execution")
         with self._get_connection() as conn:
             conn.execute(text(query), dump("db_row", action))
+
+    def get_policies(self) -> ActuatorConfigSet:
+        query = "SELECT * FROM actuator_policies"
+        with self._get_connection() as conn:
+            results = conn.execute(text(query)).fetchall()
+
+        return load("db_row", ActuatorConfigSet, results)
+
+    def set_policies(self, policies: ActuatorConfigSet) -> None:
+        # First clear existing policies
+        delete_query = "DELETE FROM actuator_policies"
+
+        insert_query = """
+            INSERT INTO actuator_policies (
+                plant_id, actuator_name, max_duration_seconds, min_cooldown_seconds,
+                allow_overlap, allowed_commands, updated_at
+            ) VALUES (
+                :plant_id, :actuator_name, :max_duration_seconds, :min_cooldown_seconds,
+                :allow_overlap, :allowed_commands, NOW()
+            )
+        """
+
+        with self._get_connection() as conn:
+            conn.execute(text(delete_query))
+
+            # Insert defaults
+            conn.execute(text(insert_query), {
+                "plant_id": None,
+                "actuator_name": None,
+                "max_duration_seconds": policies.defaults.max_duration_seconds,
+                "min_cooldown_seconds": policies.defaults.min_cooldown_seconds,
+                "allow_overlap": policies.defaults.allow_overlap,
+                "allowed_commands": policies.defaults.allowed_commands
+            })
+
+            # Insert global actuators
+            for name, config in policies.actuators.items():
+                conn.execute(text(insert_query), {
+                    "plant_id": None,
+                    "actuator_name": name,
+                    "max_duration_seconds": config.max_duration_seconds,
+                    "min_cooldown_seconds": config.min_cooldown_seconds,
+                    "allow_overlap": config.allow_overlap,
+                    "allowed_commands": config.allowed_commands
+                })
+
+            # Insert plant-specific overrides
+            for plant_id_str, plant_config in policies.plants.items():
+                try:
+                    plant_id = int(plant_id_str)
+                except ValueError:
+                    continue
+
+                for name, config in plant_config.actuators.items():
+                    conn.execute(text(insert_query), {
+                        "plant_id": plant_id,
+                        "actuator_name": name,
+                        "max_duration_seconds": config.max_duration_seconds,
+                        "min_cooldown_seconds": config.min_cooldown_seconds,
+                        "allow_overlap": config.allow_overlap,
+                        "allowed_commands": config.allowed_commands
+                    })

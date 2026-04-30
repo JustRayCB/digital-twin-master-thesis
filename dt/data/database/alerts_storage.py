@@ -1,4 +1,3 @@
-import json
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -244,8 +243,6 @@ class AlertsStore(AlertStorage):
         self, conn: Connection, event_id: int, data: dict[str, Any]
     ) -> None:
         data["alert_history_id"] = event_id
-        if isinstance(data.get("metadata"), dict):
-            data["metadata"] = json.dumps(data["metadata"])
 
         query = """
             INSERT INTO alert_external (

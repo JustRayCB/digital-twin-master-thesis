@@ -141,6 +141,7 @@ class SensorManager:
         This method iterates through all managed sensors, checks if a new
         reading is needed based on the current time and the sensor's read
         interval, reads the data, and publishes it when a value is returned.
+        All sensors read in the same pass share a single 'current_time' timestamp.
 
         Returns
         -------
@@ -149,10 +150,10 @@ class SensorManager:
             keyed by sensor name.
         """
         data: dict[str, RawSensorData | CameraSnapshot] = {}
+        current_time = time.time()
         for sensor_name, sensor in self.sensors.items():
-            current_time = time.time()
             if sensor.needs_data(current_time):
-                reading = sensor.read()
+                reading = sensor.read(current_time)
                 if reading is None:
                     self.logger.warning(f"Skipping publish for {sensor_name}: no data returned.")
                     continue

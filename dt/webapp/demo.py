@@ -131,7 +131,7 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
         Topics.HUMIDITY: "%",
         Topics.SOIL_MOISTURE: "%",
         Topics.LIGHT_INTENSITY: "lux",
-        Topics.GREEN_RATIO: "ratio",
+        Topics.GREEN_RATIO: "%",
     }
 
     start = time.time()
@@ -155,7 +155,7 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
             elif topic == Topics.LIGHT_INTENSITY:
                 base = 800.0 + 200.0 * math.sin(phase + 0.7)
             elif topic == Topics.GREEN_RATIO:
-                base = 0.65 + 0.2 * math.sin(phase + 0.4)
+                base = 65.0 + 20.0 * math.sin(phase + 0.4)
 
             # Raw value: what a physical sensor might read (includes a small wobble).
             raw_value = base + 0.15 * math.sin((now - start) * 3.0 + index)
@@ -167,9 +167,9 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
             processed_value = (0.9 * base) + (0.1 * calibrated_value)
 
             if topic == Topics.GREEN_RATIO:
-                raw_value = clamp(raw_value, 0.0, 1.0)
-                calibrated_value = clamp(calibrated_value, 0.0, 1.0)
-                processed_value = clamp(processed_value, 0.0, 1.0)
+                raw_value = clamp(raw_value, 0.0, 100.0)
+                calibrated_value = clamp(calibrated_value, 0.0, 100.0)
+                processed_value = clamp(processed_value, 0.0, 100.0)
 
             # Occasionally mark a point as imputed to exercise UI flags.
             imputed = False
@@ -181,8 +181,8 @@ def _run_demo_loop(socketio: SocketIO, config: DemoConfig, stop_event: Event) ->
                 # BH1750 reference range: 0–65,535 lux.
                 normalized_value = max(0.0, min(1.0, calibrated_value / 65535.0))
             elif topic == Topics.GREEN_RATIO:
-                processed_value = clamp(processed_value, 0.0, 1.0)
-                normalized_value = processed_value
+                processed_value = clamp(processed_value, 0.0, 100.0)
+                normalized_value = processed_value / 100.0
             elif topic in (Topics.TEMPERATURE, Topics.HUMIDITY, Topics.SOIL_MOISTURE):
                 normalized_value = max(0.0, min(1.0, calibrated_value / 100.0))
 

@@ -87,7 +87,7 @@ class ExternalAlertEventDbSerializer(AlertHistoryEventDbSerializer):
             "history": self._dump_history_fields(obj),
             "external": {
                 "plant_id": obj.plant_id,
-                "metadata": obj.metadata,
+                "metadata": self._dump_json_value(obj.metadata),
             },
         }
 
@@ -104,6 +104,6 @@ class ExternalAlertEventDbSerializer(AlertHistoryEventDbSerializer):
             cls,
             {
                 **history_dict,
-                "metadata": external_dict["metadata"],
+                "metadata": self._load_json_value(external_dict["metadata"]),
             },
         )

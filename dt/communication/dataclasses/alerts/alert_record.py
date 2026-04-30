@@ -11,7 +11,7 @@ This module defines the alert DTOs that align with the alternative schema:
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData
 
 from .alert_type import AlertType

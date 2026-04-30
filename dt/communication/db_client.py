@@ -11,28 +11,23 @@ from typing import Any, Type
 import requests
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses import (
-    AggregatedReading,
-    CameraSnapshot,
-    ProcessedSensorData,
-    SensorDescriptor,
-)
+from dt.communication.dataclasses import (AggregatedReading, CameraSnapshot,
+                                          ForecastResult, HealthAssessment,
+                                          ProcessedSensorData, Recommendation,
+                                          SensorDescriptor)
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition,
-    AlertHistoryEvent,
-    ExternalAlertEvent,
-    SensorAlertEvent,
-)
-from dt.communication.dataclasses.controller import (
-    ActionCommand,
-    ControlMode,
-    Routine,
-    RoutineUpdate,
-)
+    AlertDefinition, AlertHistoryEvent, ExternalAlertEvent, SensorAlertEvent)
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ActuatorConfigSet,
+                                                     ControlMode, Routine,
+                                                     RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
                                                   AlertHistoryQuery,
                                                   CameraSnapshotQuery,
-                                                  ReadingsQuery)
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  ReadingsQuery,
+                                                  RecommendationHistoryQuery)
 from dt.utils import Config, get_logger
 
 
@@ -245,6 +240,84 @@ class DatabaseApiClient:
         except requests.RequestException as exc:
             self.logger.error(f"Error fetching action history: {exc}")
             raise RuntimeError(f"Failed to fetch action history: {exc}") from exc
+
+    def get_policies(self) -> ActuatorConfigSet:
+        """Fetch actuator policies."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/controller/policies",
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            return load("generic", ActuatorConfigSet, response.json())
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching actuator policies: {exc}")
+            raise RuntimeError(f"Failed to fetch actuator policies: {exc}") from exc
+
+    def set_policies(self, policies: ActuatorConfigSet) -> None:
+        """Set actuator policies."""
+        try:
+            response = requests.put(
+                f"{self.base_url}/controller/policies",
+                json=dump("generic", policies),
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            self.logger.error(f"Error setting actuator policies: {exc}")
+            raise RuntimeError(f"Failed to set actuator policies: {exc}") from exc
+
+    def get_health_history(self, query: HealthHistoryQuery) -> list[HealthAssessment]:
+        """Fetch health assessment history."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/analytics/health",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return [load("generic", HealthAssessment, item) for item in payload]
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching health history: {exc}")
+            raise RuntimeError(f"Failed to fetch health history: {exc}") from exc
+
+    def get_forecast_history(self, query: ForecastHistoryQuery) -> list[ForecastResult]:
+        """Fetch forecast history."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/analytics/forecasts",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return [load("generic", ForecastResult, item) for item in payload]
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching forecast history: {exc}")
+            raise RuntimeError(f"Failed to fetch forecast history: {exc}") from exc
+
+    def get_recommendation_history(self, query: RecommendationHistoryQuery) -> list[Recommendation]:
+        """Fetch recommendation history."""
+        params = dump("generic", query)
+        try:
+            response = requests.get(
+                f"{self.base_url}/analytics/recommendations",
+                params=params,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            return [load("generic", Recommendation, item) for item in response.json()]
+        except requests.RequestException as exc:
+            self.logger.error(f"Error fetching recommendation history: {exc}")
+            raise RuntimeError(f"Failed to fetch recommendation history: {exc}") from exc
 
     # ---------------------------------------------------------------------- #
     # Readings

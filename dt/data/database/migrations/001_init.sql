@@ -4,6 +4,7 @@
 
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
 
 -- ============================================================================
 -- RELATIONAL TABLES
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS routines (
 -- Audit log of all attempted and executed actuator commands.
 CREATE TABLE IF NOT EXISTS action_executions (
     id SERIAL PRIMARY KEY,
+    execution_id VARCHAR(255) NOT NULL,
     action_id VARCHAR(255) NOT NULL,
     plant_id INTEGER NOT NULL,
     actuator_id INTEGER NOT NULL,
@@ -85,16 +87,14 @@ CREATE TABLE IF NOT EXISTS action_executions (
     command TEXT NOT NULL,
     duration FLOAT NOT NULL,      -- Requested duration in seconds
     reason TEXT,
-    status TEXT CHECK (status IN ('accepted', 'rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
+    status TEXT CHECK (status IN ('rejected', 'running', 'completed', 'failed', 'skipped')) NOT NULL,
     error_message TEXT,
-    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMPTZ,
     correlation_id VARCHAR(255) NOT NULL,
+    event_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_action_executions_plant FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
     CONSTRAINT fk_action_executions_actuator FOREIGN KEY (actuator_id) REFERENCES actuators(id) ON DELETE CASCADE,
-    CONSTRAINT fk_action_executions_routine FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL,
-    CONSTRAINT uq_action_id_started_at_key UNIQUE (action_id, started_at)
+    CONSTRAINT fk_action_executions_routine FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE SET NULL
 );
 
 -- Alert definitions table (invariant properties)
@@ -182,6 +182,25 @@ CREATE TABLE IF NOT EXISTS alert_external (
     CONSTRAINT uq_alert_external_history_plant UNIQUE (alert_history_id, plant_id)
 );
 
+-- Stores snapshot metadata in PostgreSQL and raw image bytes on the filesystem.
+CREATE TABLE IF NOT EXISTS camera_snapshots (
+    id SERIAL, -- PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    sensor_id INTEGER NOT NULL, 
+    plant_id INTEGER NOT NULL,
+    topic VARCHAR(100) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    file_ref TEXT NOT NULL,
+    correlation_id VARCHAR(255) NOT NULL,
+    width INTEGER,
+    height INTEGER,
+
+    PRIMARY KEY (id),
+    CONSTRAINT fk_camera_snapshots_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
+    CONSTRAINT fk_camera_snapshots_plant_id FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+);
+
+
 -- ============================================================================
 -- TIME-SERIES TABLES (HYPERTABLES)
 -- ============================================================================
@@ -211,7 +230,7 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
 ) WITH (
     timescaledb.hypertable,
     timescaledb.enable_columnstore,
-    timescaledb.chunk_interval = '7 days', -- similar as add_compression_policy(..., compressed_after => INTERVAL '7 days')
+    timescaledb.chunk_interval = '60 days', -- similar as add_compression_policy(..., compressed_after => INTERVAL '7 days')
     timescaledb.segmentby = 'sensor_id, plant_id, topic', -- segmentation columns for columnar storage
     timescaledb.orderby = 'timestamp DESC'
 );
@@ -236,7 +255,7 @@ SELECT
     plant_id,
     topic,
     unit,
-    AVG(value) AS avg_value,
+    stats_agg(value) AS value_stats,
     MIN(value) AS min_value,
     MAX(value) AS max_value,
     COUNT(*) AS sample_count,
@@ -258,11 +277,11 @@ SELECT add_continuous_aggregate_policy('sensor_readings_1h',
     if_not_exists => TRUE
 );
 
--- Retention policy (keep raw data for 30 days by default)
--- NOTE: For now we keep only 30 days of raw data and rely on aggregates for longer-term analysis.
+-- Retention policy (keep raw data for 90 days by default)
+-- NOTE: For now we keep only 90 days of raw data and rely on aggregates for longer-term analysis.
 -- Later we could also implement downsampling policies if needed. See https://docs.tigerdata.com/api/latest/hyperfunctions/downsampling/
 -- And set a longer retention for aggregates. (currently aggregates are kept indefinitely)
 SELECT add_retention_policy('sensor_readings',
-    INTERVAL '30 days',
+    INTERVAL '95 days',
     if_not_exists => TRUE
 );

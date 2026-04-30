@@ -42,8 +42,8 @@ def create_app(config=Config, service=None) -> Flask:
     app.config["DT_CONFIG"] = config
 
     if service is None:
-        policy_manager = PolicyManager()
         database_client = DatabaseApiClient(base_url=config.FLASK_DB_URL)
+        policy_manager = PolicyManager(database_client=database_client)
         messaging_service = KafkaService(
             host=config.KAFKA_URL,
             client_id="controller_service",
@@ -75,10 +75,10 @@ if __name__ == "__main__":
     import os
 
     in_reloader = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    debug_mode = True
+    debug_mode = Config.DEBUG_MODE.value == "True"
 
-    policy_manager = PolicyManager()
     database_client = DatabaseApiClient(base_url=Config.FLASK_DB_URL)
+    policy_manager = PolicyManager(database_client=database_client)
     messaging_service = KafkaService(
         host=Config.KAFKA_URL,
         client_id="controller_service",

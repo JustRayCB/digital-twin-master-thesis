@@ -26,11 +26,12 @@ class SoilMoistureSensor(Sensor):
 
     """
 
-    def __init__(self, name: str, read_interval: int, pin: Pin) -> None:
+    def __init__(self, name: str, read_interval: int, pin: Pin, address: int):
         super().__init__(name, read_interval, pin)
         self._unit = "%"
         self._i2c_bus = board.I2C()
-        self._sensor = Seesaw(self._i2c_bus, addr=0x36)
+        self._address = address
+        self._sensor = Seesaw(self._i2c_bus, addr=address)
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 
@@ -45,7 +46,7 @@ class SoilMoistureSensor(Sensor):
         return Topics.SOIL_MOISTURE
 
     @override
-    def read_sensor(self) -> float:
+    def read_sensor(self) -> float | None:
         try:
             moisture = self._sensor.moisture_read()
             # temp = self._sensor.get_temp() # Uncomment if you want to read soil temperature
@@ -53,5 +54,5 @@ class SoilMoistureSensor(Sensor):
         except RuntimeError as error:
             # Errors happen fairly often, just keep going
             self.logger.error(f"Failed to read moisture: {error}")
-            return -1
+            return None
         return moisture

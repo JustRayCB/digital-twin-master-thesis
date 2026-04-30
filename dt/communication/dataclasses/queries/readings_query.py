@@ -3,7 +3,12 @@ from dataclasses import dataclass
 
 @dataclass
 class ReadingsQuery:
-    """Query parameters for /readings endpoint."""
+    """Query parameters for /readings endpoint.
+
+    `sensor_id` remains part of the raw-readings contract.
+    For `window="1h"`, callers must omit `sensor_id` because hourly rows are
+    plant/topic aggregates.
+    """
 
     window: str = "raw"  # "raw" or "1h"
     sensor_id: int | None = None

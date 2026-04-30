@@ -1,81 +1,156 @@
-# dht22_singleton.py
-from typing import Optional
+from __future__ import annotations
+
+import time
+from typing import Any
 
 import adafruit_dht
 import board
+import digitalio
 
 from dt.utils.logger import get_logger
 
 
-class DHT22Singleton:
-    """Singleton for the DHT22 temperature and humidity sensor.
+class DHT22Device:
+    """Shared controller for one physical DHT22 sensor.
 
-    This class ensures that only one instance of the DHT22 sensor is created
-    for a given pin, preventing multiple initializations of the same hardware
-    device, which can lead to errors.
-
-    NOTE: If Later, the reading of temperature and humidity is multithreaded,
-    additional synchronization mechanisms (like threading locks) may be needed
-    to ensure thread safety.
-
-    Attributes
-    ----------
-    _instance : The singleton instance of this class.
-    _sensor : The underlying DHT22 sensor object from the adafruit library.
-    _pin : The GPIO pin to which the sensor is connected.
+    Temperature and humidity are exposed by the same hardware, so both logical
+    streams should reuse one device instance per `(data_pin, power_pin)` pair.
+    The controller tracks consecutive read failures and power-cycles the sensor
+    through an optional GPIO-controlled supply pin when the failure threshold is
+    reached.
     """
 
-    _instance: Optional["DHT22Singleton"] = None
-    _sensor: adafruit_dht.DHT22 | None = None
-    _pin: int | None = None
+    _devices: dict[tuple[str, str | None], DHT22Device] = {}
+
+    def __init__(
+        self,
+        data_pin: Any,
+        power_pin: Any | None = None,
+        reboot_after_failures: int = 3,
+        power_off_seconds: float = 3.0,
+        reboot_wait_seconds: float = 2.0,
+        read_retry_count: int = 2,
+        read_retry_delay_seconds: float = 2.0,
+    ) -> None:
+        self.logger = get_logger(__name__)
+        self.data_pin = data_pin
+        self.power_pin = power_pin
+        self.reboot_after_failures = reboot_after_failures
+        self.power_off_seconds = power_off_seconds
+        self.reboot_wait_seconds = reboot_wait_seconds
+        self.read_retry_count = read_retry_count
+        self.read_retry_delay_seconds = read_retry_delay_seconds
+        self.consecutive_failures = 0
+        self._sensor: Any | None = None
+        self._power: Any | None = None
+
+        if self.power_pin is not None:
+            power_output = self._build_power_output(self.power_pin)
+            power_output.value = True
+            self._power = power_output
+            time.sleep(self.reboot_wait_seconds)
+
+        self._create_sensor()
 
     @classmethod
-    def get_instance(cls, pin=None):
-        """Get the singleton instance of the DHT22 sensor.
-
-        On the first call, this method initializes the DHT22 sensor on the
-        specified pin. Subsequent calls will return the existing instance
-        without re-initializing it.
-
-        Parameters
-        ----------
-        pin : board.Pin, optional
-            The GPIO pin to which the sensor is connected. This is required
-            on the first call to initialize the sensor.
-
-        Returns
-        -------
-        adafruit_dht.DHT22
-            The singleton instance of the DHT22 sensor.
-
-        Raises
-        ------
-        ValueError
-            If the `pin` is not provided on the first initialization.
-        """
-        logger = get_logger("DHT22Singleton")
-
-        # First time initialization requires a pin
-        if cls._instance is None:
-            if pin is None:
-                raise ValueError("Pin must be provided for first initialization")
-
-            logger.info(f"Initializing DHT22 sensor on pin {pin}")
-            cls._pin = pin
-            # Create the sensor instance
-            cls._sensor = adafruit_dht.DHT22(pin)
-            cls._instance = cls()
-
-        return cls._sensor
+    def get_instance(
+        cls,
+        data_pin: Any,
+        power_pin: Any | None = None,
+        reboot_after_failures: int = 3,
+        power_off_seconds: float = 3.0,
+        reboot_wait_seconds: float = 2.0,
+        read_retry_count: int = 2,
+        read_retry_delay_seconds: float = 2.0,
+    ) -> DHT22Device:
+        key = (str(data_pin), str(power_pin) if power_pin is not None else None)
+        if key not in cls._devices:
+            cls._devices[key] = cls(
+                data_pin=data_pin,
+                power_pin=power_pin,
+                reboot_after_failures=reboot_after_failures,
+                power_off_seconds=power_off_seconds,
+                reboot_wait_seconds=reboot_wait_seconds,
+                read_retry_count=read_retry_count,
+                read_retry_delay_seconds=read_retry_delay_seconds,
+            )
+        return cls._devices[key]
 
     @classmethod
-    def get_pin(cls):
-        """Get the GPIO pin used by the singleton sensor instance.
+    def reset_instances(cls) -> None:
+        for device in cls._devices.values():
+            device._dispose_sensor()
+        cls._devices.clear()
 
-        Returns
-        -------
-        Optional[board.Pin]
-            The GPIO pin to which the sensor is connected, or None if the
-            singleton has not yet been initialized.
-        """
-        return cls._pin
+    def read_temperature(self) -> float | None:
+        return self._read_measurement("temperature")
+
+    def read_humidity(self) -> float | None:
+        return self._read_measurement("humidity")
+
+    def _read_measurement(self, attribute_name: str) -> float | None:
+        if self._sensor is None:
+            self._create_sensor()
+
+        last_error: RuntimeError | None = None
+        for attempt in range(self.read_retry_count + 1):
+            try:
+                value = getattr(self._sensor, attribute_name)
+                if value is None:
+                    raise RuntimeError(f"DHT22 {attribute_name} returned None")
+                self.consecutive_failures = 0
+                return value
+            except RuntimeError as error:
+                last_error = error
+                if attempt < self.read_retry_count:
+                    time.sleep(self.read_retry_delay_seconds)
+
+        assert last_error is not None
+        self._record_failure(attribute_name, last_error)
+        return None
+
+    def _record_failure(self, attribute_name: str, error: RuntimeError) -> None:
+        self.consecutive_failures += 1
+        self.logger.warning(
+            f"Failed to read DHT22 {attribute_name} on {self.data_pin} "
+            f"({self.consecutive_failures}/{self.reboot_after_failures}): {error}"
+        )
+        if self.consecutive_failures >= self.reboot_after_failures and self._power is not None:
+            self._power_cycle()
+
+    def _power_cycle(self) -> None:
+        self.logger.warning(f"Power cycling DHT22 on {self.data_pin}")
+        self._dispose_sensor()
+
+        power_output = self._power
+        assert power_output is not None
+
+        power_output.value = False
+        time.sleep(self.power_off_seconds)
+        power_output.value = True
+        time.sleep(self.reboot_wait_seconds)
+
+        self._create_sensor()
+        self.consecutive_failures = 0
+
+    def _create_sensor(self) -> None:
+        if adafruit_dht is None:
+            raise RuntimeError("adafruit_dht is required to use the DHT22 sensor")
+        self.logger.info(f"Initializing DHT22 sensor on data pin {self.data_pin}")
+        self._sensor = adafruit_dht.DHT22(self.data_pin)
+
+    def _dispose_sensor(self) -> None:
+        if self._sensor is None:
+            return
+        with_exit = getattr(self._sensor, "exit", None)
+        if callable(with_exit):
+            with_exit()
+        self._sensor = None
+
+    def _build_power_output(self, power_pin: Any) -> Any:
+        if digitalio is None:
+            raise RuntimeError("digitalio is required to control the DHT22 power pin")
+
+        power_output = digitalio.DigitalInOut(power_pin)
+        power_output.direction = digitalio.Direction.OUTPUT
+        return power_output

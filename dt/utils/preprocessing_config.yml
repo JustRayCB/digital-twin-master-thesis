@@ -14,42 +14,40 @@ templates:
     units: "°C"
     # accuracy: 0.5 # +-0.5°C
     validation:
-      range: { min: 0, max: 50 }
+      range: { min: 0, max: 40 }
       roc: { max_per_minute: 5.0 } # Maximum rate of change per minute, in this case it is 5 degree Celsius per minute
-      stuck: { max_flat_seconds: 300 } # 5 minutes
+      stuck: { max_flat_seconds: 14400 } # Stable room temperature can legitimately flatline for long periods
     imputation:
       strategy: window_average
-      # 2 min sampling → 3-sample window ≈ 6 minutes
-      window_seconds: 360
+      # Short gaps are better filled from recent history than by extrapolating transients
+      window_seconds: 600
       min_samples: 2
-      # retained for schema consistency; not used by window_average
-      max_gap_seconds: 480
-      decay_seconds: 0
+      max_gap_seconds: 900
     calibration:
       strategy: identity
     normalization:
       strategy: min_max
-      input_min: -40.0
-      input_max: 80.0
+      input_min: 0.0
+      input_max: 40.0
       output_min: 0.0
       output_max: 1.0
       clip: true
+    smoothing:
+      strategy: ewma
+      alpha: 0.35
 
   dht22.humidity:
     units: "%"
     # accuracy: 2.0 # +-2%
     validation:
       range: { min: 0, max: 100 }
-      roc: { max_per_minute: 5.0 }
-      stuck: { max_flat_seconds: 300 }
+      roc: { max_per_minute: 10.0 }
+      stuck: { max_flat_seconds: 3600 } # Indoor humidity can also hold steady for a while
     imputation:
       strategy: window_average
-      # 2 min sampling → 3-sample window = 6 minutes
-      window_seconds: 360
+      window_seconds: 600
       min_samples: 2
-      # retained for schema consistency; not used by window_average
-      max_gap_seconds: 480
-      decay_seconds: 0
+      max_gap_seconds: 900
     calibration:
       strategy: identity
     normalization:
@@ -59,50 +57,54 @@ templates:
       output_min: 0.0
       output_max: 1.0
       clip: true
+    smoothing:
+      strategy: ewma
+      alpha: 0.30
 
   bh1750.lux:
     units: "lux"
     # accuracy: 13107 # +-20% (13107 is 20% of 65535)
     validation:
       range: { min: 0, max: 65535 }
-      roc: { max_per_minute: 1000 }
-      stuck: { max_flat_seconds: 180 }
+      roc: { max_per_minute: 1800 } # Light can change abruptly when daylight or grow lights change
+      stuck:
+        enabled: false
     imputation:
-      strategy: window_average
-      # 1 min sampling → 3-sample window = 3 minutes
-      window_seconds: 180
-      min_samples: 3
-      # retained for schema consistency; not used by window_average
-      max_gap_seconds: 240
-      decay_seconds: 0
+      strategy: forward_fill_with_decay
+      # Preserve genuine step changes instead of averaging across them
+      max_gap_seconds: 300
+      decay_seconds: 120
+      baseline: null
     calibration:
       strategy: identity
     normalization:
       strategy: min_max
       input_min: 0.0
-      input_max: 65535.0
+      input_max: 3000
       output_min: 0.0
       output_max: 1.0
       clip: true
+    smoothing:
+      strategy: pass_through
 
   stemma.soil_moisture:
     units: "%"
     # accuracy: 40 # +-2% (40 is 2% of 2000)
     validation:
       range: { min: 0, max: 100 } # Calibrated to percent (0-100)
-      roc: { max_per_minute: 100 }
-      stuck: { max_flat_seconds: 600 } # 10 minutes
+      roc: { max_per_minute: 25 } # Watering can create fast steps, drying should be much slower
+      stuck:
+        enabled: false
     imputation:
       strategy: forward_fill_with_decay
-      # 2 min sampling → accept up to ~5 intervals before baseline fallback
-      max_gap_seconds: 600
-      # decay window for gentle fallback if baseline provided in future
-      decay_seconds: 300
+      # Soil moisture moves slowly enough to tolerate longer brief outages
+      max_gap_seconds: 3600
+      decay_seconds: 1800
       baseline: null
     calibration:
       strategy: affine
-      scale: 0.07692307692307693 #100/1300
-      offset: 0.0
+      scale: 0.16129032258064516 # dry 395, wet 1015
+      offset: -63.70967741935484
     normalization:
       strategy: min_max
       input_min: 0.0
@@ -110,18 +112,22 @@ templates:
       output_min: 0.0
       output_max: 1.0
       clip: true
+    smoothing:
+      strategy: ewma
+      alpha: 0.25
 
   camera.green_ratio:
     units: "%"
     validation:
       range: { min: 0.0, max: 100.0 }
-      roc: { max_per_minute: 100.0 }
+      roc: { max_per_minute: 6.0 }
       stuck:
         enabled: false
     imputation:
       strategy: forward_fill_with_decay
-      max_gap_seconds: 600
-      decay_seconds: 300
+      # Tolerate one missed snapshot while still decaying stale image-derived values
+      max_gap_seconds: 2400
+      decay_seconds: 1200
       baseline: null
     calibration:
       strategy: identity
@@ -133,7 +139,59 @@ templates:
       output_max: 1.0
       clip: true
     smoothing:
-      strategy: pass_through
+      strategy: ewma
+      alpha: 0.40
+
+  camera.leaf_count:
+    units: "leaves"
+    validation:
+      range: { min: 0, max: 100 } # Unlikely to have more than 100 leaves in view, and negative counts are impossible
+      roc: { max_per_minute: 5.0 }
+      stuck:
+        enabled: false
+    imputation:
+      strategy: forward_fill_with_decay
+      max_gap_seconds: 3600 # Leaf count can legitimately stay flat for a while, but we don't want to trust it indefinitely without new images
+      decay_seconds: 1800 
+      baseline: null
+    calibration:
+      strategy: identity
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 100.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+    smoothing:
+      strategy: ewma
+      alpha: 0.4 
+
+  camera.plant_height:
+    units: "cm"
+    validation:
+      range: { min: 0.0, max: 100.0 } # Unlikely to have plants taller than 1 meter in this setup, and negative heights are impossible
+      roc: { max_per_minute: 2.0 }
+      stuck:
+        enabled: false
+    imputation:
+      strategy: forward_fill_with_decay
+      max_gap_seconds: 3600 # Plants typically grow less than 2 cm per minute, so even a 1-hour gap is unlikely to miss a genuine >2 cm jump
+      decay_seconds: 1800
+      baseline: null
+    calibration:
+      strategy: identity
+    normalization:
+      strategy: min_max
+      input_min: 0.0
+      input_max: 100.0
+      output_min: 0.0
+      output_max: 1.0
+      clip: true
+    smoothing:
+      strategy: ewma
+      alpha: 0.4
+
 
 streams:
   # Example stream-level override:
@@ -164,3 +222,23 @@ streams:
   - sensor: sensors.basil.picamera2.001.camera_image
     topic: green_ratio
     template: camera.green_ratio
+
+  - sensor: sensors.basil.picamera2.001.camera_image
+    topic: leaf_count
+    template: camera.leaf_count
+
+  - sensor: sensors.basil.esp32.001.camera_image_side
+    topic: plant_height
+    template: camera.plant_height
+
+  - sensor: sensors.basil.dht22.002.temperature
+    topic: temperature
+    template: dht22.temperature
+
+  - sensor: sensors.basil.dht22.002.humidity
+    topic: humidity
+    template: dht22.humidity
+
+  - sensor: sensors.basil.stemma.002.soil_moisture
+    topic: soil_moisture
+    template: stemma.soil_moisture

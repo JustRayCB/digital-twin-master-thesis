@@ -2,15 +2,16 @@ from time import sleep
 
 import board
 
-from dt.collector import (
-    CameraSensor,
-    HumiditySensor,
-    LightSensor,
-    SensorManager,
-    SoilMoistureSensor,
-    TemperatureSensor,
-)
-from dt.utils import get_logger
+from dt.collector import (ESP32CameraSensor, HumiditySensor, LightSensor,
+                          RPICameraSensor, SensorManager, SoilMoistureSensor,
+                          TemperatureSensor)
+from dt.utils import Config, get_logger
+
+TEMPERATURE_INTERVAL_SECONDS = 120
+HUMIDITY_INTERVAL_SECONDS = 120
+SOIL_MOISTURE_INTERVAL_SECONDS = 120
+LIGHT_INTERVAL_SECONDS = 60
+CAMERA_INTERVAL_SECONDS = 600
 
 
 def main():
@@ -35,24 +36,77 @@ def main():
          Soil moisture uses the GPIO 0 and 1 pins for SCL and SDA respectively
          Light sensor uses the GPIO 2 and 3 pins for SCL and SDA respectively
     """
-    moisture_sensor = SoilMoistureSensor("sensors.basil.stemma.001.soil_moisture", 19, board.D1)
-    temperature_sensor = TemperatureSensor("sensors.basil.dht22.001.temperature", 7, board.D17)
-    humidity_sensor = HumiditySensor("sensors.basil.dht22.001.humidity", 17, board.D17)
-    light_sensor = LightSensor("sensors.basil.bh1750.001.lux", 15, board.D3)
-    camera_sensor = CameraSensor("sensors.basil.picamera2.001.camera_image", 30)
+    moisture_sensor_001 = SoilMoistureSensor(
+        "sensors.basil.stemma.001.soil_moisture",
+        SOIL_MOISTURE_INTERVAL_SECONDS,
+        board.D1,
+        0x36,
+    )
+    temperature_sensor_001 = TemperatureSensor(
+        "sensors.basil.dht22.001.temperature",
+        TEMPERATURE_INTERVAL_SECONDS,
+        board.D17,
+        board.D10,
+    )
+    humidity_sensor_001 = HumiditySensor(
+        "sensors.basil.dht22.001.humidity",
+        HUMIDITY_INTERVAL_SECONDS,
+        board.D17,
+        board.D10,
+    )
 
-    sensor_manager.add_sensor(moisture_sensor)
-    sensor_manager.add_sensor(temperature_sensor)
-    sensor_manager.add_sensor(humidity_sensor)
+    moisture_sensor_002 = SoilMoistureSensor(
+        "sensors.basil.stemma.002.soil_moisture",
+        SOIL_MOISTURE_INTERVAL_SECONDS,
+        board.D1,
+        0x39,
+    )
+    temperature_sensor_002 = TemperatureSensor(
+        "sensors.basil.dht22.002.temperature",
+        TEMPERATURE_INTERVAL_SECONDS,
+        board.D9,
+        board.D25,
+    )
+    humidity_sensor_002 = HumiditySensor(
+        "sensors.basil.dht22.002.humidity",
+        HUMIDITY_INTERVAL_SECONDS,
+        board.D9,
+        board.D25,
+    )
+
+    light_sensor = LightSensor(
+        "sensors.basil.bh1750.001.lux",
+        LIGHT_INTERVAL_SECONDS,
+        board.D3,
+    )
+    top_camera_sensor = RPICameraSensor(
+        "sensors.basil.picamera2.001.camera_image",
+        CAMERA_INTERVAL_SECONDS,
+    )
+
+    side_camera_sensor = ESP32CameraSensor(
+        "sensors.basil.esp32.001.camera_image_side",
+        CAMERA_INTERVAL_SECONDS,
+        Config.ESP32_CAMERA_SNAPSHOT_URL,
+        framesize="VGA",
+        quality=70,
+        timeout=(60, 60),
+    )
+
+    sensor_manager.add_sensor(moisture_sensor_001)
+    sensor_manager.add_sensor(temperature_sensor_001)
+    sensor_manager.add_sensor(humidity_sensor_001)
+    sensor_manager.add_sensor(moisture_sensor_002)
+    sensor_manager.add_sensor(temperature_sensor_002)
+    sensor_manager.add_sensor(humidity_sensor_002)
     sensor_manager.add_sensor(light_sensor)
-    sensor_manager.add_sensor(camera_sensor)
-
-    input("Press Enter to start data collector module ...")
+    sensor_manager.add_sensor(top_camera_sensor)
+    sensor_manager.add_sensor(side_camera_sensor)
 
     try:
         while True:
             sensor_manager.read_all_sensors()
-            print("Reading all sensors")
+            logger.info("Reading all sensors")
             sleep(sensor_manager.seconds_until_next_read())
     except KeyboardInterrupt:
         logger.info("Exiting main")

@@ -12,14 +12,17 @@ from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
 from dt.communication.dataclasses.controller import (ActionCommand,
-                                                     ControlMode,
-                                                     RoutineUpdate)
+                                                      ControlMode,
+                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                  AlertHistoryQuery,
-                                                  CameraSnapshotQuery,
-                                                  ReadingsQuery)
-from dt.data.database import (AlertStorage, ControllerStorage, MetadataStorage,
-                              ReadingsStorage, SnapshotStorage)
+                                                    AlertHistoryQuery,
+                                                    CameraSnapshotQuery,
+                                                    ForecastHistoryQuery,
+                                                    HealthHistoryQuery,
+                                                    RecommendationHistoryQuery,
+                                                    ReadingsQuery)
+from dt.data.database import (AlertStorage, AnalyticsStorage, ControllerStorage,
+                              MetadataStorage, ReadingsStorage, SnapshotStorage)
 from dt.utils import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +32,7 @@ def create_database_blueprint(
     metadata_storage: MetadataStorage,
     readings_storage: ReadingsStorage,
     alert_storage: AlertStorage,
+    analytics_storage: AnalyticsStorage,
     controller_storage: ControllerStorage,
     snapshot_storage: SnapshotStorage,
 ) -> Blueprint:
@@ -161,7 +165,7 @@ def create_database_blueprint(
 
     @bp.route("/actions/log", methods=["POST"])
     def log_action_execution():
-        """Upsert an action execution status record."""
+        """Append an action execution status record."""
         try:
             payload = request.get_json(force=True)
         except Exception:
@@ -185,6 +189,44 @@ def create_database_blueprint(
     # ---------------------------------------------------------------------- #
     # Controller data
     # ---------------------------------------------------------------------- #
+    @bp.route("/analytics/health", methods=["GET"])
+    def get_health_history():
+        """Return persisted health assessment history for a plant."""
+        try:
+            query_params = load("generic", HealthHistoryQuery, request.args.to_dict())
+        except Exception as exc:
+            logger.error(f"Invalid health history query parameters: {exc}")
+            return jsonify({"error": str(exc)}), 400
+
+        history = analytics_storage.get_health_history(query_params)
+        return jsonify([dump("generic", item) for item in history]), 200
+
+    @bp.route("/analytics/forecasts", methods=["GET"])
+    def get_forecast_history():
+        """Return persisted forecast history for a plant."""
+        try:
+            query_params = load("generic", ForecastHistoryQuery, request.args.to_dict())
+        except Exception as exc:
+            logger.error(f"Invalid forecast history query parameters: {exc}")
+            return jsonify({"error": str(exc)}), 400
+
+        history = analytics_storage.get_forecast_history(query_params)
+        return jsonify([dump("generic", item) for item in history]), 200
+
+    @bp.route("/analytics/recommendations", methods=["GET"])
+    def get_recommendation_history():
+        """Return persisted recommendation events for a plant."""
+        try:
+            query_params = load(
+                "generic", RecommendationHistoryQuery, request.args.to_dict()
+            )
+        except Exception as exc:
+            logger.error(f"Invalid recommendation history query parameters: {exc}")
+            return jsonify({"error": str(exc)}), 400
+
+        history = analytics_storage.get_recommendation_history(query_params)
+        return jsonify([dump("generic", item) for item in history]), 200
+
     @bp.route("/controller/mode", methods=["GET"])
     def get_controller_mode():
         """Get controller mode for a plant."""
@@ -287,6 +329,33 @@ def create_database_blueprint(
 
         history = controller_storage.get_action_history(plant_id, limit)
         return jsonify([dump("generic", item) for item in history])
+
+    @bp.route("/controller/policies", methods=["GET"])
+    def get_actuator_policies():
+        """Get all actuator policies."""
+        policies = controller_storage.get_policies()
+        return jsonify(dump("generic", policies))
+
+    @bp.route("/controller/policies", methods=["PUT"])
+    def set_actuator_policies():
+        """Set all actuator policies."""
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if payload is None:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        from dt.communication.dataclasses.controller import ActuatorConfigSet
+        try:
+            policies = load("generic", ActuatorConfigSet, payload)
+        except Exception as exc:
+            logger.error(f"Invalid policies payload: {exc}")
+            return jsonify({"error": "Invalid policies payload"}), 400
+
+        controller_storage.set_policies(policies)
+        return jsonify({"status": "ok"}), 200
 
     @bp.route("/alerts/definitions", methods=["POST"])
     def ensure_alert_definition():

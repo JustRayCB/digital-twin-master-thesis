@@ -25,6 +25,7 @@ class MigrationRunner:
     """Runs SQL migrations against a PostgreSQL database."""
 
     MIGRATIONS_TABLE = "schema_migrations"
+    NO_TRANSACTION_MARKER = "-- migrate: no-transaction"
 
     def __init__(self, migrations_dir: Path | str, db_url: str | None = None):
         """Initialize the migration runner.
@@ -110,16 +111,16 @@ class MigrationRunner:
 
         logger.info(f"Found {len(pending)} pending migration(s)")
 
-        with psycopg.connect(self.db_url) as conn:
-            for migration in pending:
-                logger.info(f"Applying migration: {migration.name}")
-                sql = migration.read_sql()
+        for migration in pending:
+            logger.info(f"Applying migration: {migration.name}")
+            sql = migration.read_sql()
+            autocommit = self._requires_autocommit(sql)
+            statements = self._split_statements(sql) if autocommit else [sql]
 
+            with psycopg.connect(self.db_url, autocommit=autocommit) as conn:
                 with conn.cursor() as cur:
-                    # Execute the migration SQL
-                    cur.execute(sql)
-
-                    # Record that this migration was applied
+                    for statement in statements:
+                        cur.execute(statement)
                     cur.execute(
                         f"""
                         INSERT INTO {self.MIGRATIONS_TABLE} (migration_name)
@@ -128,7 +129,24 @@ class MigrationRunner:
                         (migration.name,),
                     )
 
-                conn.commit()
-                logger.info(f"Successfully applied migration: {migration.name}")
+                if not autocommit:
+                    conn.commit()
+
+            logger.info(f"Successfully applied migration: {migration.name}")
 
         logger.info("All migrations applied successfully")
+
+    @classmethod
+    def _requires_autocommit(cls, sql: str) -> bool:
+        """Return whether a migration must run outside a transaction."""
+        return cls.NO_TRANSACTION_MARKER in sql
+
+    @staticmethod
+    def _split_statements(sql: str) -> list[str]:
+        """Split migration SQL into executable statements."""
+        statements: list[str] = []
+        for chunk in sql.split(";"):
+            statement = chunk.strip()
+            if statement:
+                statements.append(f"{statement};")
+        return statements

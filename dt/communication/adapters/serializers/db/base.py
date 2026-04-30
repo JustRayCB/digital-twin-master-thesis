@@ -1,3 +1,4 @@
+import json
 from typing import Any, TypeVar
 
 from dt.communication.adapters.registry import serializes
@@ -7,6 +8,7 @@ from dt.communication.adapters.serializers.generic.base import \
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 
 T = TypeVar("T")
+_JSON_LOAD_FALLBACK = object()
 
 
 @serializes(Any, "db_row")
@@ -23,6 +25,17 @@ class DbSerializer(Serializer[T]):
 
     def _to_unix(self, value: Any) -> Any:
         return value.timestamp() if value is not None else None
+
+    def _dump_json_value(self, value: Any) -> Any:
+        return json.dumps(value) if value is not None else None
+
+    def _load_json_value(self, value: Any, *, fallback: Any = _JSON_LOAD_FALLBACK) -> Any:
+        if value is None or not isinstance(value, str):
+            return value
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value if fallback is _JSON_LOAD_FALLBACK else fallback
 
     def _flags_to_string(self, flags: dict[ValidationFlag, bool]) -> str:
         return "|".join(f"{flag.value}={str(value).lower()}" for flag, value in flags.items())
@@ -44,7 +57,7 @@ class DbSerializer(Serializer[T]):
     @staticmethod
     def _row_to_dict(data: Any) -> dict[str, Any]:
         if isinstance(data, dict):
-            return data
+            return data.copy()
         if hasattr(data, "_asdict"):
             return data._asdict()
         raise TypeError(f"Cannot convert {type(data)} to dict")

@@ -1,3 +1,4 @@
+from importlib import import_module
 from typing import Any, TypeVar
 
 from dt.communication.adapters.serializers.generic.base import \
@@ -58,9 +59,10 @@ def dump(fmt: str, obj: Any) -> Any:
     >>> tup = dump("tuple", sensor_reading)     # → tuple (Spark state)
     """
     # TEMP fix to avoid circular imports, should be refactored to avoid this
-    import dt.communication.adapters.serializers.db
-    import dt.communication.adapters.serializers.spark
-    import dt.communication.adapters.serializers.tuple
+    import_module("dt.communication.adapters.serializers.db")
+    import_module("dt.communication.adapters.serializers.spark")
+    import_module("dt.communication.adapters.serializers.tuple")
+    import_module("dt.communication.adapters.serializers.web")
 
     if fmt == "generic":
         return _generic.dump(obj)
@@ -105,9 +107,10 @@ def load(fmt: str, cls: type[T], data: Any) -> T:
     >>> sensor = load("tuple", RawSensorData, tuple_data)
     """
     # TEMP fix to avoid circular imports, should be refactored to avoid this
-    import dt.communication.adapters.serializers.db
-    import dt.communication.adapters.serializers.spark
-    import dt.communication.adapters.serializers.tuple
+    import_module("dt.communication.adapters.serializers.db")
+    import_module("dt.communication.adapters.serializers.spark")
+    import_module("dt.communication.adapters.serializers.tuple")
+    import_module("dt.communication.adapters.serializers.web")
 
     if fmt == "generic":
         return _generic.load(cls, data)

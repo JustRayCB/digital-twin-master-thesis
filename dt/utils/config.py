@@ -28,6 +28,7 @@ class Config(StrEnum):
     )  # Dashboard URL
     FLASK_DB_URL = os.getenv("FLASK_DB_URL", "http://localhost:5001/")  # Database service URL
     FLASK_AI_URL = os.getenv("FLASK_AI_URL", "http://localhost:5002/")  # AI service URL
+    DEBUG_MODE = os.getenv("FLASK_DEBUG", "True")  # Flask debug toggle
 
     MODELS_DIR = os.getenv("MODELS_DIR", "models/")  # Directory to save/load models
 
@@ -49,12 +50,8 @@ class Config(StrEnum):
     SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv(
         "SPARK_SQL_SHUFFLE_PARTITIONS", "2"
     )  # Shuffle partitions
-    SPARK_DEFAULT_PARALLELISM = os.getenv(
-        "SPARK_DEFAULT_PARALLELISM", "2"
-    )  # Default parallelism
-    SPARK_AQE_ENABLED = os.getenv(
-        "SPARK_AQE_ENABLED", "false"
-    )  # Adaptive query execution
+    SPARK_DEFAULT_PARALLELISM = os.getenv("SPARK_DEFAULT_PARALLELISM", "2")  # Default parallelism
+    SPARK_AQE_ENABLED = os.getenv("SPARK_AQE_ENABLED", "false")  # Adaptive query execution
     SPARK_MAX_OFFSETS_PER_TRIGGER = os.getenv(
         "SPARK_MAX_OFFSETS_PER_TRIGGER", "500"
     )  # Kafka offsets per trigger
@@ -77,10 +74,10 @@ class Config(StrEnum):
     )  # Path to alert rules configuration file
 
     # CONTROLLER CONFIGURATION
-    ACTUATOR_POLICIES_PATH = os.getenv(
-        "ACTUATOR_POLICIES_PATH", "dt/utils/actuator_policies.yml"
-    )  # Path to actuator policies configuration file
     FLASK_CONTROLLER_URL = os.getenv(
         "FLASK_CONTROLLER_URL", "http://localhost:5004/"
     )  # Controller service URL
+    ESP32_CAMERA_SNAPSHOT_URL = os.getenv(
+        "ESP32_CAMERA_SNAPSHOT_URL", "http://192.168.50.10/snapshot"
+    )  # ESP32 camera snapshot endpoint
     TIMEZONE = os.getenv("TIMEZONE", "Europe/Brussels")  # Timezone for scheduling
