@@ -7,7 +7,7 @@ import pytest
 from kafka import KafkaConsumer
 
 from dt.communication.adapters import load
-from dt.communication.dataclasses.controller import ActionCommand
+from dt.communication.dataclasses.controller import ActionCommand, ActuatorConfig, ActuatorConfigSet
 from dt.communication.db_client import DatabaseApiClient
 from dt.controller.actuator_manager import ActuatorManager
 from tests.controller.helpers import poll_action_messages, wait_for_action_history
@@ -38,9 +38,10 @@ def _build_action(
     """
     return ActionCommand(
         plant_id=plant_id,
+        execution_id=str(uuid.uuid4()),
         action_id=f"manual-test-{uuid.uuid4().hex}",
         actuator_id=actuator_id,
-        started_at=time.time(),
+        event_at=time.time(),
         duration=duration,
         command=command,
         reason="Actuator manager test",
@@ -198,3 +199,33 @@ def test_execute_publishes_failed_status(
         action_consumer, expected_count=2, timeout_seconds=5.0, action_id=action.action_id
     )
     assert [message["status"] for message in messages] == ["running", "failed"]
+
+
+def test_policy_manager_reloads_persisted_policies(
+    policy_manager,
+    controller_database_client: DatabaseApiClient,
+) -> None:
+    """Reload policies from the database service instead of a local stub."""
+    persisted_config = ActuatorConfigSet()
+    persisted_config.defaults = ActuatorConfig(
+        max_duration_seconds=45,
+        min_cooldown_seconds=1,
+        allow_overlap=True,
+        allowed_commands=["ON", "OFF"],
+    )
+    persisted_config.actuators["pump"] = ActuatorConfig(
+        max_duration_seconds=9,
+        min_cooldown_seconds=4,
+        allow_overlap=False,
+        allowed_commands=["ON"],
+    )
+
+    controller_database_client.set_policies(persisted_config)
+
+    policy_manager.load_policies()
+    policy = policy_manager.resolve(plant_id=1, actuator_name="pump")
+
+    assert policy.max_duration_seconds == 9
+    assert policy.min_cooldown_seconds == 4
+    assert policy.allow_overlap is False
+    assert policy.allowed_commands == ["ON"]

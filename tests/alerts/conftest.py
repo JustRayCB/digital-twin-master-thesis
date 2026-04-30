@@ -6,10 +6,10 @@ import uuid
 
 import pytest
 
-from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.publisher import AlertPublisher
-from dt.alerts.registry import AlertRegistry
-from dt.alerts.rules import (AlertCondition, AlertRule, ConditionType,
+from dt.analytics.alerts.evaluator import RuleEvaluator
+from dt.analytics.alerts.publisher import AlertPublisher
+from dt.analytics.alerts.registry import AlertRegistry
+from dt.analytics.alerts.rules import (AlertCondition, AlertRule, ConditionType,
                              EvaluationStage, SeverityLevel)
 from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import (

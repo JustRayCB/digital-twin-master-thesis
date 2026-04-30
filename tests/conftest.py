@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -17,9 +17,12 @@ from werkzeug.serving import make_server
 
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
+from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.db_client import DatabaseApiClient
 from dt.data.database.app import create_app
 from dt.data.database.alerts_storage import AlertsStore
+from dt.data.database.analytics_storage import AnalyticsStore
 from dt.data.database.controller_storage import ControllerStore
 from dt.data.database.migrations.runner import MigrationRunner
 from dt.data.database.metadata_storage import MetadataStore
@@ -68,7 +71,9 @@ def postgres_container() -> Generator[PostgresContainer, None, None]:
         Running container for database integration tests.
     """
     require_docker()
-    with PostgresContainer(image="timescale/timescaledb:latest-pg18", driver="psycopg") as postgres:
+    with PostgresContainer(
+        image="timescale/timescaledb-ha:pg18.3-ts2.26.1", driver="psycopg"
+    ) as postgres:
         time.sleep(2)
         yield postgres
 
@@ -91,7 +96,9 @@ def db_engine(postgres_container: PostgresContainer) -> Generator[Engine, None, 
     engine = create_engine(db_url, pool_pre_ping=True)
 
     psycopg_url = db_url.replace("postgresql+psycopg://", "postgresql://")
-    runner = MigrationRunner(migrations_dir=Config.DB_MIGRATIONS_DIR, db_url=psycopg_url)
+    runner = MigrationRunner(
+        migrations_dir=Config.DB_MIGRATIONS_DIR, db_url=psycopg_url
+    )
     runner.run_migrations()
 
     yield engine
@@ -126,7 +133,14 @@ def kafka_topics(kafka_bootstrap_servers: str) -> list[str]:
     list[str]
         Topics created or confirmed for integration tests.
     """
-    topics: set[str] = {Topics.ALERTS, Topics.ACTIONS}
+    topics: set[str] = {
+        Topics.ALERTS,
+        Topics.ACTIONS,
+        Topics.ANALYTICS_HEALTH,
+        Topics.ANALYTICS_FORECAST,
+        Topics.RECOMMENDATIONS_SUBMITTED,
+        Topics.RECOMMENDATIONS_COMPLETED,
+    }
     topics.update(topic.processed for topic in Topics.list_sensor_topics())
     return ensure_kafka_topics(kafka_bootstrap_servers, topics)
 
@@ -150,7 +164,9 @@ def kafka_service(
         Connected Kafka service.
     """
     client_id = f"integration-tests-{uuid.uuid4().hex[:8]}"
-    service = KafkaService(host=kafka_bootstrap_servers, client_id=client_id, group_id=client_id)
+    service = KafkaService(
+        host=kafka_bootstrap_servers, client_id=client_id, group_id=client_id
+    )
     service.connect()
     yield service
     service.disconnect()
@@ -189,6 +205,16 @@ def alert_store(db_engine: Engine) -> AlertsStore:
 
 
 @pytest.fixture(scope="module")
+def shared_analytics_store(db_engine: Engine) -> AnalyticsStore:
+    return AnalyticsStore(engine=db_engine)
+
+
+@pytest.fixture
+def analytics_store(db_engine: Engine) -> AnalyticsStore:
+    return AnalyticsStore(engine=db_engine)
+
+
+@pytest.fixture(scope="module")
 def shared_controller_store(db_engine: Engine) -> ControllerStore:
     return ControllerStore(engine=db_engine)
 
@@ -205,12 +231,16 @@ def shared_snapshot_storage_root(tmp_path_factory: pytest.TempPathFactory) -> Pa
 
 
 @pytest.fixture(scope="module")
-def shared_snapshot_store(db_engine: Engine, shared_snapshot_storage_root: Path) -> SnapshotStore:
+def shared_snapshot_store(
+    db_engine: Engine, shared_snapshot_storage_root: Path
+) -> SnapshotStore:
     return SnapshotStore(engine=db_engine, storage_root=shared_snapshot_storage_root)
 
 
 @pytest.fixture
-def snapshot_store(db_engine: Engine, shared_snapshot_storage_root: Path) -> SnapshotStore:
+def snapshot_store(
+    db_engine: Engine, shared_snapshot_storage_root: Path
+) -> SnapshotStore:
     return SnapshotStore(engine=db_engine, storage_root=shared_snapshot_storage_root)
 
 
@@ -219,6 +249,7 @@ def database_service_base_url(
     shared_metadata_store: MetadataStore,
     shared_readings_store: ReadingsStore,
     shared_alert_store: AlertsStore,
+    shared_analytics_store: AnalyticsStore,
     shared_controller_store: ControllerStore,
     shared_snapshot_store: SnapshotStore,
 ) -> Generator[str, None, None]:
@@ -228,6 +259,7 @@ def database_service_base_url(
         metadata_storage=shared_metadata_store,
         readings_storage=shared_readings_store,
         alert_storage=shared_alert_store,
+        analytics_storage=shared_analytics_store,
         controller_storage=shared_controller_store,
         snapshot_storage=shared_snapshot_store,
     )
@@ -247,3 +279,36 @@ def database_service_base_url(
 def database_api_client(database_service_base_url: str) -> DatabaseApiClient:
     """Create a database API client pointed at the test database service."""
     return DatabaseApiClient(base_url=database_service_base_url)
+
+
+@pytest.fixture
+def processed_reading_factory() -> Callable[..., ProcessedSensorData]:
+    """Build ProcessedSensorData payloads with sensible defaults."""
+
+    def factory(
+        *,
+        plant_id: int = 1,
+        sensor_id: int = 42,
+        timestamp: float = 1_000.0,
+        value: float = 21.0,
+        topic: Topics = Topics.TEMPERATURE,
+        unit: str = "u",
+        correlation_id: str | None = None,
+        flags: dict[ValidationFlag, bool] | None = None,
+        dq_score: float = 1.0,
+        imputed: bool = False,
+    ) -> ProcessedSensorData:
+        return ProcessedSensorData(
+            plant_id=plant_id,
+            sensor_id=sensor_id,
+            timestamp=timestamp,
+            value=value,
+            unit=unit,
+            topic=topic,
+            correlation_id=correlation_id or f"corr-{plant_id}-{timestamp}",
+            flags=flags or {ValidationFlag.VALID: True},
+            dq_score=dq_score,
+            imputed=imputed,
+        )
+
+    return factory

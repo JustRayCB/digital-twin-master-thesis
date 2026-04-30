@@ -8,20 +8,31 @@ import pytest
 from sqlalchemy import JSON, DateTime, create_engine, literal, select
 from sqlalchemy.engine import Row
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.adapters.db_row import DbRowAdapter
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
-    SensorAlertEvent)
+    AlertDefinition,
+    AlertHistoryEvent,
+    AlertStatus,
+    ExternalAlertEvent,
+    SensorAlertEvent,
+)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.camera_snapshot import CameraSnapshot
-from dt.communication.dataclasses.controller import (Action, CompiledRule,
-                                                     RoutineEdge, RoutineGraph,
-                                                     RoutineNode,
-                                                     RoutineUpdate, Trigger)
+from dt.communication.dataclasses.controller import (
+    Action,
+    CompiledRule,
+    RoutineEdge,
+    RoutineGraph,
+    RoutineNode,
+    RoutineUpdate,
+    Trigger,
+)
 from dt.communication.dataclasses.processed_sensor_data import (
-    ProcessedSensorData, ValidationFlag)
+    ProcessedSensorData,
+    ValidationFlag,
+)
 from dt.communication.topics import Topics
 
 _ENGINE = create_engine("sqlite+pysqlite:///:memory:", future=True)
@@ -102,11 +113,15 @@ def test_dump_converts_topic_to_short_name(adapter, processed_sensor_data_full):
     """
     result = adapter.dump(processed_sensor_data_full)
 
-    assert result["topic"] == Topics.TEMPERATURE.short_name  # short_name, not full topic
+    assert (
+        result["topic"] == Topics.TEMPERATURE.short_name
+    )  # short_name, not full topic
     assert isinstance(result["topic"], str)
 
 
-def test_dump_converts_flags_to_pipe_separated_string(adapter, processed_sensor_data_full):
+def test_dump_converts_flags_to_pipe_separated_string(
+    adapter, processed_sensor_data_full
+):
     """Verify flags dump as pipe-separated strings.
 
     Parameters
@@ -161,7 +176,9 @@ def test_dump_routine_update_serializes_compiled_rules(adapter):
             RoutineNode(
                 id="trigger-1",
                 kind="trigger",
-                trigger=Trigger(type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0),
+                trigger=Trigger(
+                    type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0
+                ),
             ),
             RoutineNode(
                 id="action-1",
@@ -174,7 +191,9 @@ def test_dump_routine_update_serializes_compiled_rules(adapter):
     compiled_rules = [
         CompiledRule(
             id="trigger-1",
-            trigger=Trigger(type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0),
+            trigger=Trigger(
+                type="sensor", topic=Topics.TEMPERATURE, op=">", value=25.0
+            ),
             actions=[Action(actuator_id=1, command="ON", duration=5.0)],
         )
     ]
@@ -305,9 +324,9 @@ def test_load_parses_flags_from_pipe_separated_string(adapter):
 
     assert isinstance(result.flags, dict)
     assert ValidationFlag.RANGE in result.flags
-    assert result.flags[ValidationFlag.RANGE] == True
-    assert result.flags[ValidationFlag.RATE_OF_CHANGE] == False
-    assert result.flags[ValidationFlag.STUCK] == True
+    assert result.flags[ValidationFlag.RANGE]
+    assert not result.flags[ValidationFlag.RATE_OF_CHANGE]
+    assert result.flags[ValidationFlag.STUCK]
 
 
 def test_load_converts_datetime_to_timestamp(adapter):
@@ -357,16 +376,18 @@ def test_load_aggregated_reading_from_row(adapter):
     row = make_row(
         {
             "plant_id": 1,
-            "sensor_id": 42,
             "bucket": datetime.fromtimestamp(1234567800.0),
             "topic": "temperature",
             "unit": "Celsius",
-            "avg_value": 25.0,
+            "mean_value": 25.0,
             "min_value": 24.0,
             "max_value": 26.0,
             "sample_count": 10,
             "avg_dq_score": 0.9,
             "imputed_count": 0,
+            "variance_value": 2.5,
+            "stddev_value": 1.5811388300841898,
+            "skewness_value": 0.25,
         },
         datetime_fields={"bucket"},
     )
@@ -375,9 +396,13 @@ def test_load_aggregated_reading_from_row(adapter):
 
     assert isinstance(result, AggregatedReading)
     assert result.bucket == 1234567800.0
-    assert result.avg_value == 25.0
+    assert result.mean_value == 25.0
+    assert result.variance_value == 2.5
+    assert result.stddev_value == 1.5811388300841898
+    assert result.skewness_value == 0.25
     # AggregatedReading stores the topic as a Topics enum.
     assert result.topic == Topics.TEMPERATURE
+    assert not hasattr(result, "sensor_id")
 
 
 def test_roundtrip_processed_sensor_data(adapter, processed_sensor_data_full):
@@ -588,7 +613,9 @@ def test_roundtrip_alert_history_event(adapter):
     if "cleared_ts" in dumped and dumped["cleared_ts"]:
         dumped["cleared_ts"] = datetime.fromtimestamp(dumped["cleared_ts"])
 
-    row = make_row(dumped, datetime_fields={"timestamp", "acknowledged_ts", "cleared_ts"})
+    row = make_row(
+        dumped, datetime_fields={"timestamp", "acknowledged_ts", "cleared_ts"}
+    )
     restored = adapter.load(AlertHistoryEvent, row)
 
     assert restored == event
@@ -956,7 +983,7 @@ def test_dump_camera_snapshot_for_db_row(adapter):
         plant_id=1,
         sensor_id=9,
         timestamp=1735689600.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="cam-corr-1",
         mime_type="image/jpeg",
         image="AQI=",
@@ -966,7 +993,7 @@ def test_dump_camera_snapshot_for_db_row(adapter):
 
     dumped = adapter.dump(snapshot)
 
-    assert dumped["topic"] == Topics.CAMERA_IMAGE.short_name
+    assert dumped["topic"] == Topics.CAMERA_IMAGE_TOP.short_name
     assert dumped["image"] == "AQI="
     assert dumped["timestamp"] == 1735689600.0
 
@@ -978,7 +1005,7 @@ def test_load_camera_snapshot_from_db_row(adapter):
             "plant_id": 1,
             "sensor_id": 9,
             "timestamp": datetime.fromtimestamp(1735689600.0),
-            "topic": Topics.CAMERA_IMAGE.short_name,
+            "topic": Topics.CAMERA_IMAGE_TOP.short_name,
             "correlation_id": "cam-corr-2",
             "mime_type": "image/jpeg",
             "image": b"\x01\x02",
@@ -994,7 +1021,7 @@ def test_load_camera_snapshot_from_db_row(adapter):
         plant_id=1,
         sensor_id=9,
         timestamp=1735689600.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="cam-corr-2",
         mime_type="image/jpeg",
         image="AQI=",

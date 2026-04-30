@@ -7,13 +7,9 @@ import pytest
 
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
-from dt.communication.dataclasses.controller import (
-    Action,
-    CompiledRule,
-    RoutineGraph,
-    RoutineUpdate,
-    Trigger,
-)
+from dt.communication.dataclasses.controller import (Action, CompiledRule,
+                                                     RoutineGraph,
+                                                     RoutineUpdate, Trigger)
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
 
@@ -109,29 +105,33 @@ def test_db_row_uses_default_serializer_when_type_is_not_registered(raw_sensor_d
 def test_spark_row_uses_default_serializer_when_type_is_not_registered():
     expected = AggregatedReading(
         bucket=1234567800.0,
-        sensor_id=42,
         plant_id=1,
         topic=Topics.TEMPERATURE,
         unit="Celsius",
-        avg_value=25.0,
+        mean_value=25.0,
         min_value=20.0,
         max_value=30.0,
         sample_count=10,
         avg_dq_score=0.9,
         imputed_count=2,
+        variance_value=4.0,
+        stddev_value=2.0,
+        skewness_value=0.0,
     )
     dumped = {
         "bucket": expected.bucket,
-        "sensor_id": expected.sensor_id,
         "plant_id": expected.plant_id,
         "topic": expected.topic.value,
         "unit": expected.unit,
-        "avg_value": expected.avg_value,
+        "mean_value": expected.mean_value,
         "min_value": expected.min_value,
         "max_value": expected.max_value,
         "sample_count": expected.sample_count,
         "avg_dq_score": expected.avg_dq_score,
         "imputed_count": expected.imputed_count,
+        "variance_value": expected.variance_value,
+        "stddev_value": expected.stddev_value,
+        "skewness_value": expected.skewness_value,
     }
     row = namedtuple("Row", dumped.keys())(*dumped.values())
 

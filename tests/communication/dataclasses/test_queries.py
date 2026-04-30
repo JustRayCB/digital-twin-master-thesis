@@ -1,5 +1,11 @@
-from dt.communication.adapters import load
-from dt.communication.dataclasses.queries import ActiveAlertsQuery, AlertHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (
+    ActiveAlertsQuery,
+    AlertHistoryQuery,
+    ForecastHistoryQuery,
+    HealthHistoryQuery,
+    ReadingsQuery,
+    RecommendationHistoryQuery,
+)
 
 
 def test_readings_query_validates_window() -> None:
@@ -57,3 +63,40 @@ def test_alert_history_query_validates_limit() -> None:
         assert str(exc) == "limit must be positive"
     else:
         raise AssertionError("Expected ValueError for non-positive limit")
+
+
+def test_history_queries_reject_since_after_until() -> None:
+    """Reject history ranges where since is after until.
+
+    Returns
+    -------
+    None
+        Assertions fail if range validation changes.
+    """
+    for query_type in (
+        HealthHistoryQuery,
+        ForecastHistoryQuery,
+        RecommendationHistoryQuery,
+    ):
+        try:
+            query_type(plant_id=1, since=20.0, until=10.0)
+        except ValueError as exc:
+            assert str(exc) == "since must be less than or equal to until"
+        else:
+            raise AssertionError("Expected ValueError for inverted history range")
+
+
+def test_forecast_history_query_rejects_non_positive_horizon() -> None:
+    """Reject non-positive forecast horizon values.
+
+    Returns
+    -------
+    None
+        Assertions fail if horizon validation changes.
+    """
+    try:
+        ForecastHistoryQuery(plant_id=1, horizon_seconds=0)
+    except ValueError as exc:
+        assert str(exc) == "horizon_seconds must be positive"
+    else:
+        raise AssertionError("Expected ValueError for non-positive horizon")

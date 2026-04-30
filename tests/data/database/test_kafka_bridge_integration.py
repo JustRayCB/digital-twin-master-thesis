@@ -4,19 +4,32 @@ import time
 
 import pytest
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
+from dt.communication.dataclasses.analytics import (
+    ActionResult,
+    ForecastResult,
+    HealthAssessment,
+    HealthState,
+    Recommendation,
+    RecommendedAction,
+    ModelMetadata,
+)
 from dt.communication.dataclasses import CameraSnapshot, ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition, AlertStatus, ExternalAlertEvent, SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.queries import (AlertHistoryQuery,
-                                                  ReadingsQuery)
+                                                   ForecastHistoryQuery,
+                                                   HealthHistoryQuery,
+                                                   RecommendationHistoryQuery,
+                                                   ReadingsQuery)
 from dt.communication.messaging_service import KafkaService
 from dt.communication.topics import Topics
+from dt.data.database import AnalyticsStore
 from dt.data.database.consumer import setup_bridge
 from tests.data.database.helpers import (wait_for_kafka_service_ready,
-                                         wait_until)
+                                          wait_until)
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 
@@ -24,6 +37,7 @@ pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
 def test_bridge_persists_processed_reading(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -48,6 +62,7 @@ def test_bridge_persists_processed_reading(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -87,6 +102,7 @@ def test_bridge_persists_processed_reading(
 def test_bridge_persists_multiple_processed_readings(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -111,6 +127,7 @@ def test_bridge_persists_multiple_processed_readings(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -155,6 +172,7 @@ def test_bridge_persists_multiple_processed_readings(
 def test_bridge_persists_processed_green_ratio_reading(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -167,6 +185,7 @@ def test_bridge_persists_processed_green_ratio_reading(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -230,6 +249,7 @@ def test_bridge_persists_processed_green_ratio_reading(
 def test_bridge_persists_camera_snapshot(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -254,6 +274,7 @@ def test_bridge_persists_camera_snapshot(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -261,21 +282,21 @@ def test_bridge_persists_camera_snapshot(
 
     try:
         wait_for_kafka_service_ready(
-            bridge, expected_topics={Topics.CAMERA_IMAGE.raw, Topics.ALERTS}
+            bridge, expected_topics={Topics.CAMERA_IMAGE_TOP.raw, Topics.ALERTS}
         )
 
         snapshot = CameraSnapshot(
             plant_id=sample_sensor.plant_id,
             sensor_id=sample_sensor.id,
             timestamp=time.time(),
-            topic=Topics.CAMERA_IMAGE,
+            topic=Topics.CAMERA_IMAGE_TOP,
             correlation_id="camera-kafka-integration-test",
             mime_type="image/jpeg",
             image="aGVsbG8=",
             width=640,
             height=480,
         )
-        kafka_service.publish(Topics.CAMERA_IMAGE.raw, snapshot)
+        kafka_service.publish(Topics.CAMERA_IMAGE_TOP.raw, snapshot)
 
         def snapshot_persisted() -> bool:
             latest = snapshot_store.get_latest_camera_snapshot(plant_id=sample_sensor.plant_id)
@@ -290,6 +311,7 @@ def test_bridge_persists_camera_snapshot(
 def test_bridge_persists_sensor_alert_event(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -329,6 +351,7 @@ def test_bridge_persists_sensor_alert_event(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -380,6 +403,7 @@ def test_bridge_persists_sensor_alert_event(
 def test_bridge_persists_external_alert_event(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -419,6 +443,7 @@ def test_bridge_persists_external_alert_event(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -457,6 +482,7 @@ def test_bridge_persists_action_status_events(
     kafka_bootstrap_servers: str,
     kafka_service: KafkaService,
     metadata_store,
+    analytics_store: AnalyticsStore,
     readings_store,
     alert_store,
     controller_store,
@@ -470,6 +496,7 @@ def test_bridge_persists_action_status_events(
         config=test_config,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )
@@ -482,9 +509,10 @@ def test_bridge_persists_action_status_events(
             Topics.ACTIONS,
             ActionCommand(
                 plant_id=sample_plant_id,
+                execution_id="manual:plant-test:pump:on:1",
                 action_id="manual:plant-test:pump:on",
                 actuator_id=actuator_id,
-                started_at=time.time(),
+                event_at=time.time(),
                 duration=0.0,
                 command="ON",
                 reason="bridge integration test",
@@ -499,6 +527,135 @@ def test_bridge_persists_action_status_events(
             return any(item.correlation_id == "action-integration-test" for item in history)
 
         wait_until(action_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+
+    finally:
+        bridge.disconnect()
+
+
+def test_bridge_persists_analytics_outputs(
+    kafka_bootstrap_servers: str,
+    kafka_service: KafkaService,
+    analytics_store: AnalyticsStore,
+    readings_store,
+    alert_store,
+    controller_store,
+    snapshot_store,
+    sample_sensor,
+) -> None:
+    """Persist analytics outputs received from Kafka."""
+    test_config = type("TestConfig", (), {"KAFKA_URL": kafka_bootstrap_servers})
+    bridge = setup_bridge(
+        config=test_config,
+        readings_storage=readings_store,
+        alert_storage=alert_store,
+        analytics_storage=analytics_store,
+        controller_storage=controller_store,
+        snapshot_storage=snapshot_store,
+    )
+    assert isinstance(bridge, KafkaService)
+
+    try:
+        wait_for_kafka_service_ready(
+            bridge,
+            {
+                Topics.ANALYTICS_HEALTH,
+                Topics.ANALYTICS_FORECAST,
+                Topics.RECOMMENDATIONS_COMPLETED,
+            },
+        )
+
+        health = HealthAssessment(
+            plant_id=sample_sensor.plant_id,
+            timestamp=time.time(),
+            correlation_id="analytics-health-corr",
+            state=HealthState.CRITICAL,
+            score=0.14,
+            summary="Plant is dry and stressed",
+            confidence=0.92,
+            model_metadata=ModelMetadata(model_name="health-baseline", model_version="1.0"),
+        )
+        forecast = ForecastResult(
+            plant_id=sample_sensor.plant_id,
+            timestamp=time.time(),
+            correlation_id="analytics-forecast-corr",
+            metric="soil_moisture",
+            horizon_seconds=3600,
+            predicted_value=24.0,
+            unit="%",
+            model_metadata=ModelMetadata(
+                model_name="moisture-forecaster", model_version="2.0"
+            ),
+            features_used=["soil_moisture.last"],
+            inference_metadata={"confidence": 0.81},
+        )
+        recommendation = Recommendation(
+            plant_id=sample_sensor.plant_id,
+            timestamp=time.time(),
+            correlation_id="analytics-recommendation-corr",
+            confidence=0.61,
+            reason="Health is stressed but irrigation guard is not met",
+            actions=[RecommendedAction(capability="advisory", command="inspect_plant")],
+            model_metadata=ModelMetadata(model_name="policy-engine", model_version="1.0"),
+            action_results=[ActionResult(action_index=0, status="advisory_only")],
+        )
+
+        kafka_service.publish(Topics.ANALYTICS_HEALTH, health)
+        kafka_service.publish(Topics.ANALYTICS_FORECAST, forecast)
+        kafka_service.publish(Topics.RECOMMENDATIONS_COMPLETED, recommendation)
+
+        def health_persisted() -> bool:
+            history = analytics_store.get_health_history(
+                HealthHistoryQuery(
+                    plant_id=sample_sensor.plant_id,
+                    correlation_id="analytics-health-corr",
+                )
+            )
+            return (
+                len(history) == 1
+                and history[0].correlation_id == health.correlation_id
+                and history[0].state == health.state
+                and history[0].summary == health.summary
+            )
+
+        def forecast_persisted() -> bool:
+            history = analytics_store.get_forecast_history(
+                ForecastHistoryQuery(
+                    plant_id=sample_sensor.plant_id,
+                    correlation_id="analytics-forecast-corr",
+                    metric="soil_moisture",
+                    horizon_seconds=3600,
+                )
+            )
+            return (
+                len(history) == 1
+                and history[0].correlation_id == forecast.correlation_id
+                and history[0].metric == forecast.metric
+                and history[0].predicted_value == forecast.predicted_value
+            )
+
+        def recommendation_persisted() -> bool:
+                history = analytics_store.get_recommendation_history(
+                    RecommendationHistoryQuery(
+                        plant_id=sample_sensor.plant_id,
+                        correlation_id="analytics-recommendation-corr",
+                    )
+                )
+                if len(history) != 1:
+                    return False
+                loaded = history[0]
+                return (
+                    loaded.plant_id == recommendation.plant_id
+                    and loaded.correlation_id == recommendation.correlation_id
+                    and loaded.timestamp == pytest.approx(recommendation.timestamp, abs=1e-6)
+                    and loaded.reason == recommendation.reason
+                    and loaded.confidence == recommendation.confidence
+                    and loaded.actions == recommendation.actions
+                    and loaded.action_results == recommendation.action_results
+                )
+
+        wait_until(health_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+        wait_until(forecast_persisted, timeout_seconds=10.0, interval_seconds=0.25)
+        wait_until(recommendation_persisted, timeout_seconds=10.0, interval_seconds=0.25)
 
     finally:
         bridge.disconnect()

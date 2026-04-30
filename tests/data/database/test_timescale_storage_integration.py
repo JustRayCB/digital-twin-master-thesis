@@ -8,18 +8,42 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from dt.alerts.rules import SeverityLevel
-from dt.communication.dataclasses import (CameraSnapshot, ProcessedSensorData,
-                                          SensorDescriptor)
+from dt.analytics.alerts.rules import SeverityLevel
+from dt.communication.dataclasses.analytics import (
+    ActionResult,
+    ForecastResult,
+    HealthAssessment,
+    HealthState,
+    Recommendation,
+    ModelMetadata,
+)
+from dt.communication.dataclasses import (
+    CameraSnapshot,
+    ProcessedSensorData,
+    SensorDescriptor,
+)
+from dt.communication.dataclasses.analytics import RecommendedAction
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
-    SensorAlertEvent)
+    AlertDefinition,
+    AlertHistoryEvent,
+    AlertStatus,
+    ExternalAlertEvent,
+    SensorAlertEvent,
+)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
+from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                  AlertHistoryQuery, CameraSnapshotQuery,
-                                                  ReadingsQuery)
+from dt.communication.dataclasses.queries import (
+    ActiveAlertsQuery,
+    AlertHistoryQuery,
+    CameraSnapshotQuery,
+    ForecastHistoryQuery,
+    HealthHistoryQuery,
+    RecommendationHistoryQuery,
+    ReadingsQuery,
+)
 from dt.communication.topics import Topics
+from dt.data.database import AnalyticsStore
 
 pytestmark = [pytest.mark.requires_timescale]
 
@@ -83,8 +107,12 @@ def test_register_and_list_sensors(metadata_store) -> None:
     """
     plant_id = metadata_store.upsert_plant(name="Test Plant")
 
-    sensor1 = SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
-    sensor2 = SensorDescriptor(id=-1, plant_id=plant_id, name="BH1750", pin=5, read_interval=60)
+    sensor1 = SensorDescriptor(
+        id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120
+    )
+    sensor2 = SensorDescriptor(
+        id=-1, plant_id=plant_id, name="BH1750", pin=5, read_interval=60
+    )
 
     id1 = metadata_store.register_sensor(sensor1)
     id2 = metadata_store.register_sensor(sensor2)
@@ -142,7 +170,9 @@ def test_register_and_list_actuators(metadata_store) -> None:
     assert [actuator["relay_channel"] for actuator in actuators] == [1, 2]
 
 
-def test_ingest_reading_persists_and_can_query_raw(metadata_store, readings_store) -> None:
+def test_ingest_reading_persists_and_can_query_raw(
+    metadata_store, readings_store
+) -> None:
     """Persist a processed reading and retrieve it by query filters.
 
     Parameters
@@ -159,7 +189,9 @@ def test_ingest_reading_persists_and_can_query_raw(metadata_store, readings_stor
     """
     plant_id = metadata_store.upsert_plant(name="Test Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120
+        )
     )
 
     now = time.time()
@@ -242,7 +274,9 @@ def test_query_aggregates_returns_1h_buckets(metadata_store, readings_store) -> 
     """
     plant_id = metadata_store.upsert_plant(name="Test Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120
+        )
     )
 
     base_time = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp()
@@ -262,23 +296,126 @@ def test_query_aggregates_returns_1h_buckets(metadata_store, readings_store) -> 
             )
         )
 
-    with readings_store.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);"))
+    with readings_store.engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
+    ) as conn:
+        conn.execute(
+            text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);")
+        )
         conn.commit()
 
     aggregates = readings_store.query_aggregates(
         ReadingsQuery(
-            sensor_id=sensor_id, since=base_time - 60, until=base_time + 7200, window="1h"
+            since=base_time - 60,
+            until=base_time + 7200,
+            window="1h",
         )
     )
 
     assert aggregates
-    assert aggregates[0].avg_value == 22.5
+    assert aggregates[0].mean_value == 22.5
     assert aggregates[0].min_value == 20.0
     assert aggregates[0].max_value == 25.0
+    assert aggregates[0].variance_value == pytest.approx(3.5)
+    assert aggregates[0].stddev_value == pytest.approx(3.5**0.5)
+    assert aggregates[0].skewness_value == pytest.approx(0.0, abs=1e-12)
 
 
-def test_save_alert_event_requires_registered_definition(metadata_store, alert_store) -> None:
+def test_query_aggregates_reuses_shared_filter_query(
+    monkeypatch, readings_store
+) -> None:
+    """Build aggregate filters via the shared helper with bucket timestamps."""
+
+    seen: dict[str, str] = {}
+
+    def fake_build_filter_query(
+        base_query: str,
+        query: ReadingsQuery,
+        time_col: str,
+    ) -> tuple[str, dict[str, float]]:
+        seen["time_col"] = time_col
+        return f"{base_query}\nORDER BY {time_col} ASC", {}
+
+    monkeypatch.setattr(readings_store, "_build_filter_query", fake_build_filter_query)
+
+    aggregates = readings_store.query_aggregates(ReadingsQuery(window="1h"))
+
+    assert isinstance(aggregates, list)
+    assert seen["time_col"] == "bucket"
+
+
+def test_query_aggregates_1h_collapses_same_topic_across_sensors(
+    metadata_store, readings_store
+) -> None:
+    """1h aggregates collapse same-hour same-topic readings across sensors."""
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    sensor_one_id = metadata_store.register_sensor(
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="temp-a", pin=4, read_interval=120
+        )
+    )
+    sensor_two_id = metadata_store.register_sensor(
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="temp-b", pin=5, read_interval=120
+        )
+    )
+
+    base_time = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp()
+    values_by_sensor = {
+        sensor_one_id: [10.0, 20.0, 30.0],
+        sensor_two_id: [40.0, 50.0, 60.0],
+    }
+    offset = 0
+    for sensor_id, values in values_by_sensor.items():
+        for value in values:
+            readings_store.ingest_reading(
+                ProcessedSensorData(
+                    plant_id=plant_id,
+                    sensor_id=sensor_id,
+                    timestamp=base_time + offset,
+                    value=value,
+                    unit="°C",
+                    topic=Topics.TEMPERATURE,
+                    correlation_id=f"combined-{sensor_id}-{offset}",
+                    flags={ValidationFlag.VALID: True},
+                    dq_score=1.0,
+                    imputed=False,
+                )
+            )
+            offset += 600
+
+    with readings_store.engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
+    ) as conn:
+        conn.execute(
+            text("CALL refresh_continuous_aggregate('sensor_readings_1h', NULL, NULL);")
+        )
+        conn.commit()
+
+    aggregates = readings_store.query_aggregates(
+        ReadingsQuery(
+            plant_id=plant_id,
+            topic=Topics.TEMPERATURE.value,
+            since=base_time - 60,
+            until=base_time + 3600,
+            window="1h",
+        )
+    )
+
+    assert len(aggregates) == 1
+    aggregate = aggregates[0]
+    assert aggregate.sample_count == 6
+    assert aggregate.mean_value == pytest.approx(35.0)
+    assert aggregate.min_value == 10.0
+    assert aggregate.max_value == 60.0
+    assert aggregate.variance_value == pytest.approx(350.0)
+    assert aggregate.stddev_value == pytest.approx(350.0**0.5)
+    assert aggregate.skewness_value == pytest.approx(0.0, abs=1e-12)
+
+
+def test_save_alert_event_requires_registered_definition(
+    metadata_store, alert_store
+) -> None:
     """Fail fast when saving an event without a pre-registered definition.
 
     Parameters
@@ -308,7 +445,9 @@ def test_save_alert_event_requires_registered_definition(metadata_store, alert_s
         alert_store.save_alert_event(event)
 
     with alert_store.engine.connect() as conn:
-        assert conn.execute(text("SELECT COUNT(*) FROM alert_history")).scalar_one() == 0
+        assert (
+            conn.execute(text("SELECT COUNT(*) FROM alert_history")).scalar_one() == 0
+        )
 
 
 def test_save_and_load_sensor_alert_event(metadata_store, alert_store) -> None:
@@ -328,7 +467,9 @@ def test_save_and_load_sensor_alert_event(metadata_store, alert_store) -> None:
     """
     plant_id = metadata_store.upsert_plant(name="Test Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120
+        )
     )
 
     definition = AlertDefinition(
@@ -430,11 +571,57 @@ def test_save_and_load_external_alert_event(metadata_store, alert_store) -> None
     assert saved_event.metadata["wind_speed"] == "100km/h"
 
 
-def test_sensor_alert_details_reject_duplicate_rows(metadata_store, alert_store) -> None:
+def test_save_external_alert_event_does_not_json_dump_in_storage(
+    metadata_store, alert_store, monkeypatch
+) -> None:
+    """Persist an external alert event without storage-layer JSON shaping."""
+    plant_id = metadata_store.upsert_plant(name="Test Plant")
+    definition = AlertDefinition(
+        alert_key="weather:storm",
+        plant_id=plant_id,
+        sensor_id=None,
+        source="weather_api",
+        rule_id=None,
+        rule_name="Storm Warning",
+        kind=AlertType.EXTERNAL,
+        persistence_count=0,
+        cooldown_seconds=0,
+    )
+    alert_store.save_alert_definition(definition)
+
+    event = ExternalAlertEvent(
+        alert_key=definition.alert_key,
+        plant_id=plant_id,
+        timestamp=time.time(),
+        status=AlertStatus.ACTIVE,
+        severity=SeverityLevel.CRITICAL,
+        message="Storm approaching",
+        correlation_id="corr-ext-2",
+        metadata={"wind_speed": "100km/h", "direction": "NW"},
+    )
+
+    from dt.communication.adapters import dump
+
+    dumped_event = dump("db_row", event)
+    monkeypatch.setattr("dt.data.database.alerts_storage.dump", lambda *_: dumped_event)
+    monkeypatch.setattr(
+        "json.dumps",
+        lambda *args, **kwargs: pytest.fail("storage should not json.dumps alert metadata"),
+    )
+
+    event_id = alert_store.save_alert_event(event)
+    assert event_id > 0
+
+
+def test_sensor_alert_details_reject_duplicate_rows(
+    metadata_store, alert_store
+) -> None:
     """Enforce one sensor detail row per alert_history event."""
     plant_id = metadata_store.upsert_plant(name="Test Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="DHT22", pin=4, read_interval=120
+        )
     )
 
     definition = AlertDefinition(
@@ -503,7 +690,9 @@ def test_sensor_alert_details_reject_duplicate_rows(metadata_store, alert_store)
         )
 
 
-def test_external_alert_details_reject_duplicate_rows(metadata_store, alert_store) -> None:
+def test_external_alert_details_reject_duplicate_rows(
+    metadata_store, alert_store
+) -> None:
     """Enforce one external detail row per alert_history event."""
     plant_id = metadata_store.upsert_plant(name="Test Plant")
     definition = AlertDefinition(
@@ -611,14 +800,16 @@ def test_ingest_camera_snapshot_and_get_latest_returns_newest(
     """Persist camera snapshots and return the latest snapshot for the plant/topic."""
     plant_id = metadata_store.upsert_plant(name="Camera Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60
+        )
     )
 
     older = CameraSnapshot(
         plant_id=plant_id,
         sensor_id=sensor_id,
         timestamp=1_735_689_600.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="camera-older",
         mime_type="image/jpeg",
         image="AQI=",
@@ -629,7 +820,7 @@ def test_ingest_camera_snapshot_and_get_latest_returns_newest(
         plant_id=plant_id,
         sensor_id=sensor_id,
         timestamp=1_735_689_700.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="camera-newer",
         mime_type="image/jpeg",
         image="AQM=",
@@ -648,7 +839,7 @@ def test_ingest_camera_snapshot_and_get_latest_returns_newest(
     assert latest is not None
     assert latest.correlation_id == "camera-newer"
     assert latest.image == "AQM="
-    assert latest.topic is Topics.CAMERA_IMAGE
+    assert latest.topic is Topics.CAMERA_IMAGE_TOP
     assert latest.width == 640
     assert latest.height == 480
 
@@ -660,10 +851,14 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
     plant_one = metadata_store.upsert_plant(name="Plant One")
     plant_two = metadata_store.upsert_plant(name="Plant Two")
     sensor_one = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_one, name="Camera One", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_one, name="Camera One", pin=-1, read_interval=60
+        )
     )
     sensor_two = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_two, name="Camera Two", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_two, name="Camera Two", pin=-1, read_interval=60
+        )
     )
 
     snapshot_store.ingest_camera_snapshot(
@@ -671,7 +866,7 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
             plant_id=plant_one,
             sensor_id=sensor_one,
             timestamp=1_735_689_600.0,
-            topic=Topics.CAMERA_IMAGE,
+            topic=Topics.CAMERA_IMAGE_TOP,
             correlation_id="camera-plant-1",
             mime_type="image/jpeg",
             image="AQI=",
@@ -684,7 +879,7 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
             plant_id=plant_two,
             sensor_id=sensor_two,
             timestamp=1_735_689_700.0,
-            topic=Topics.CAMERA_IMAGE,
+            topic=Topics.CAMERA_IMAGE_TOP,
             correlation_id="camera-plant-2",
             mime_type="image/jpeg",
             image="AQM=",
@@ -701,11 +896,15 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
     assert missing_plant is None
 
 
-def test_query_camera_snapshots_filters_by_time_interval(metadata_store, snapshot_store) -> None:
+def test_query_camera_snapshots_filters_by_time_interval(
+    metadata_store, snapshot_store
+) -> None:
     """Return only snapshots within the requested time interval."""
     plant_id = metadata_store.upsert_plant(name="Interval Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60
+        )
     )
 
     for timestamp, correlation_id in (
@@ -718,7 +917,7 @@ def test_query_camera_snapshots_filters_by_time_interval(metadata_store, snapsho
                 plant_id=plant_id,
                 sensor_id=sensor_id,
                 timestamp=timestamp,
-                topic=Topics.CAMERA_IMAGE,
+                topic=Topics.CAMERA_IMAGE_TOP,
                 correlation_id=correlation_id,
                 mime_type="image/jpeg",
                 image="AQI=",
@@ -728,23 +927,29 @@ def test_query_camera_snapshots_filters_by_time_interval(metadata_store, snapsho
         )
 
     snapshots = snapshot_store.query_camera_snapshots(
-        CameraSnapshotQuery(plant_id=plant_id, since=1_735_689_650.0, until=1_735_689_750.0)
+        CameraSnapshotQuery(
+            plant_id=plant_id, since=1_735_689_650.0, until=1_735_689_750.0
+        )
     )
 
     assert [snapshot.correlation_id for snapshot in snapshots] == ["camera-middle"]
 
 
-def test_ingest_camera_snapshot_persists_file_backed_blob(metadata_store, snapshot_store) -> None:
+def test_ingest_camera_snapshot_persists_file_backed_blob(
+    metadata_store, snapshot_store
+) -> None:
     """Persist snapshot metadata in the DB and raw bytes on the filesystem."""
     plant_id = metadata_store.upsert_plant(name="File-backed Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60
+        )
     )
     snapshot = CameraSnapshot(
         plant_id=plant_id,
         sensor_id=sensor_id,
         timestamp=1_735_689_800.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="camera-file-backed",
         mime_type="image/jpeg",
         image="aGVsbG8=",
@@ -778,13 +983,15 @@ def test_ingest_camera_snapshot_rolls_back_when_file_write_fails(
     """Do not commit DB metadata when the snapshot file write fails."""
     plant_id = metadata_store.upsert_plant(name="Rollback Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60
+        )
     )
     snapshot = CameraSnapshot(
         plant_id=plant_id,
         sensor_id=sensor_id,
         timestamp=1_735_689_900.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="camera-write-failure",
         mime_type="image/jpeg",
         image="AQI=",
@@ -819,13 +1026,15 @@ def test_get_latest_camera_snapshot_raises_clear_error_when_file_missing(
     """Raise a clear runtime error when file-backed snapshot bytes are missing."""
     plant_id = metadata_store.upsert_plant(name="Missing File Plant")
     sensor_id = metadata_store.register_sensor(
-        SensorDescriptor(id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60)
+        SensorDescriptor(
+            id=-1, plant_id=plant_id, name="Camera", pin=-1, read_interval=60
+        )
     )
     snapshot = CameraSnapshot(
         plant_id=plant_id,
         sensor_id=sensor_id,
         timestamp=1_735_690_000.0,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="camera-missing-file",
         mime_type="image/jpeg",
         image="AQM=",
@@ -850,3 +1059,141 @@ def test_get_latest_camera_snapshot_raises_clear_error_when_file_missing(
 
     with pytest.raises(RuntimeError, match="Snapshot file not found"):
         snapshot_store.get_latest_camera_snapshot(plant_id=plant_id)
+
+
+def test_log_action_execution_appends_status_events(
+    metadata_store, controller_store
+) -> None:
+    """Persist one row per action status event for the same execution."""
+    plant_id = metadata_store.upsert_plant(name="Action Event Plant")
+    actuator_id = metadata_store.register_actuator(plant_id, "Water Pump", 17, 1)
+
+    running = ActionCommand(
+        plant_id=plant_id,
+        execution_id="exec-append-1",
+        action_id="manual:1:1:ON",
+        actuator_id=actuator_id,
+        event_at=time.time(),
+        duration=0.0,
+        command="ON",
+        reason="append test",
+        correlation_id="corr-append-1",
+        source="manual",
+        status="running",
+    )
+    completed = ActionCommand(
+        plant_id=plant_id,
+        execution_id=running.execution_id,
+        action_id=running.action_id,
+        actuator_id=actuator_id,
+        event_at=running.event_at + 1,
+        duration=0.0,
+        command="ON",
+        reason="append test",
+        correlation_id="corr-append-1",
+        source="manual",
+        status="completed",
+    )
+
+    controller_store.log_action_execution(running)
+    controller_store.log_action_execution(completed)
+
+    history = controller_store.get_action_history(plant_id, limit=10)
+
+    assert [item.status for item in history[:2]] == ["completed", "running"]
+    assert {item.execution_id for item in history[:2]} == {"exec-append-1"}
+    assert history[0].event_at == pytest.approx(completed.event_at, abs=1e-6)
+    assert history[1].event_at == pytest.approx(running.event_at, abs=1e-6)
+
+
+def test_log_and_get_health_history(metadata_store, db_engine) -> None:
+    """Persist health assessments and read them back as typed rows."""
+    plant_id = metadata_store.upsert_plant(name="Health History Plant")
+    analytics_store = AnalyticsStore(engine=db_engine)
+    assessment = HealthAssessment(
+        plant_id=plant_id,
+        timestamp=1_735_689_600.0,
+        correlation_id="health-corr-1",
+        state=HealthState.CRITICAL,
+        score=0.12,
+        summary="Plant is dry and stressed",
+        confidence=0.91,
+        model_metadata=ModelMetadata(model_name="health-baseline", model_version="1.0"),
+    )
+
+    analytics_store.log_health_assessment(assessment)
+
+    history = analytics_store.get_health_history(HealthHistoryQuery(plant_id=plant_id))
+
+    assert history == [assessment]
+
+
+def test_log_and_get_forecast_history(metadata_store, db_engine) -> None:
+    """Persist forecast results and read them back as typed rows."""
+    plant_id = metadata_store.upsert_plant(name="Forecast History Plant")
+    analytics_store = AnalyticsStore(engine=db_engine)
+    forecast = ForecastResult(
+        plant_id=plant_id,
+        timestamp=1_735_689_700.0,
+        correlation_id="forecast-corr-1",
+        metric="soil_moisture",
+        horizon_seconds=3600,
+        predicted_value=24.5,
+        unit="%",
+        model_metadata=ModelMetadata(model_name="moisture-forecaster", model_version="2.0"),
+        features_used=["soil_moisture.last", "context.soil_moisture_mean_24h"],
+        inference_metadata={"confidence": 0.73},
+    )
+
+    analytics_store.log_forecast_result(forecast)
+
+    history = analytics_store.get_forecast_history(
+        ForecastHistoryQuery(plant_id=plant_id)
+    )
+
+    assert history == [forecast]
+
+
+def test_recommendation_history_persists_unified_recommendations(
+    metadata_store, db_engine
+) -> None:
+    """Persist unified recommendation events as history rows."""
+    plant_id = metadata_store.upsert_plant(name="Lifecycle Plant")
+    analytics_store = AnalyticsStore(engine=db_engine)
+
+    first_recommendation = Recommendation(
+        plant_id=plant_id,
+        timestamp=1_735_689_790.0,
+        correlation_id="lifecycle-corr-1",
+        confidence=0.61,
+        reason="Health is stressed but irrigation guard is not met",
+        actions=[RecommendedAction(capability="advisory", command="inspect_plant")],
+        model_metadata=ModelMetadata(model_name="policy-engine", model_version="1.0"),
+        action_results=[ActionResult(action_index=0, status="advisory_only")],
+    )
+
+    second_recommendation = Recommendation(
+        plant_id=plant_id,
+        timestamp=1_735_689_900.0,
+        correlation_id="lifecycle-corr-2",
+        confidence=0.94,
+        reason="Dry forecast and high confidence",
+        actions=[
+            RecommendedAction(
+                capability="irrigation",
+                command="ON",
+                duration_seconds=5.0,
+            )
+        ],
+        model_metadata=ModelMetadata(model_name="policy-engine", model_version="1.0"),
+        action_results=[ActionResult(action_index=0, status="accepted")],
+    )
+
+    analytics_store.log_recommendation(first_recommendation)
+    analytics_store.log_recommendation(second_recommendation)
+
+    history = analytics_store.get_recommendation_history(
+        RecommendationHistoryQuery(plant_id=plant_id)
+    )
+
+    assert history == [second_recommendation, first_recommendation]

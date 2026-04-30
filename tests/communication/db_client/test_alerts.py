@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,

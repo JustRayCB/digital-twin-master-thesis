@@ -31,7 +31,8 @@ def test_preprocessable_raw_topics_exclude_camera_snapshot_topic() -> None:
     """Preprocessing subscribes only to numeric raw topics."""
     preprocessable_topics = preprocess_main._build_preprocessable_raw_topics()
 
-    assert Topics.CAMERA_IMAGE.raw not in preprocessable_topics
+    assert Topics.CAMERA_IMAGE_TOP.raw not in preprocessable_topics
+    assert Topics.CAMERA_IMAGE_SIDE.raw not in preprocessable_topics
     assert Topics.TEMPERATURE.raw in preprocessable_topics
 
 

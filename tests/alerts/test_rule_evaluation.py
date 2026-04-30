@@ -1,9 +1,13 @@
 """Tests for alert rule evaluation engine."""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
-from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.analytics.alerts.evaluator import RuleEvaluator
+from dt.analytics.alerts.rules import (ActiveHours, AlertCondition, AlertRule,
+                             ConditionType, EvaluationStage, SeverityLevel)
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
 from dt.communication.dataclasses.alerts.alert_type import AlertType
@@ -11,6 +15,10 @@ from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.topics import Topics
 
 pytestmark = [pytest.mark.requires_kafka, pytest.mark.requires_timescale]
+
+
+def _timestamp_for_local_time(year: int, month: int, day: int, hour: int, minute: int) -> float:
+    return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo("Europe/Brussels")).timestamp()
 
 
 @pytest.fixture
@@ -487,6 +495,149 @@ def test_evaluator_returns_empty_list_when_no_rules_match():
     candidates = evaluator.evaluate(data)
 
     assert candidates == []
+
+
+def test_active_hours_rule_triggers_inside_local_window() -> None:
+    """A rule with active hours should evaluate normally inside its window."""
+    rule = AlertRule(
+        rule_id="light_daytime",
+        name="Daytime Low Light",
+        description="Light below {threshold} lux",
+        severity=SeverityLevel.WARNING,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="light_intensity",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": "<", "threshold": 1000.0},
+        ),
+        active_hours=ActiveHours(
+            start=datetime.strptime("08:00", "%H:%M").time(),
+            end=datetime.strptime("20:00", "%H:%M").time(),
+        ),
+        persistence_count=1,
+        cooldown_seconds=60,
+    )
+
+    data = ProcessedSensorData(
+        plant_id=1,
+        sensor_id=105,
+        timestamp=_timestamp_for_local_time(2026, 1, 15, 9, 0),
+        value=500.0,
+        unit="lux",
+        topic=Topics.LIGHT_INTENSITY,
+        correlation_id="inside-window",
+        flags={ValidationFlag.VALID: True},
+        dq_score=0.95,
+        imputed=False,
+    )
+
+    candidates = RuleEvaluator([rule]).evaluate(data)
+
+    assert len(candidates) == 1
+
+
+def test_active_hours_rule_does_not_trigger_outside_local_window() -> None:
+    """A rule with active hours should be skipped outside its window."""
+    rule = AlertRule(
+        rule_id="light_daytime",
+        name="Daytime Low Light",
+        description="Light below {threshold} lux",
+        severity=SeverityLevel.WARNING,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="light_intensity",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": "<", "threshold": 1000.0},
+        ),
+        active_hours=ActiveHours(
+            start=datetime.strptime("08:00", "%H:%M").time(),
+            end=datetime.strptime("20:00", "%H:%M").time(),
+        ),
+        persistence_count=1,
+        cooldown_seconds=60,
+    )
+
+    data = ProcessedSensorData(
+        plant_id=1,
+        sensor_id=105,
+        timestamp=_timestamp_for_local_time(2026, 1, 15, 22, 0),
+        value=500.0,
+        unit="lux",
+        topic=Topics.LIGHT_INTENSITY,
+        correlation_id="outside-window",
+        flags={ValidationFlag.VALID: True},
+        dq_score=0.95,
+        imputed=False,
+    )
+
+    candidates = RuleEvaluator([rule]).evaluate(data)
+
+    assert candidates == []
+
+
+def test_active_hours_wrap_around_midnight_is_supported() -> None:
+    """Rules with windows crossing midnight should evaluate on either side of midnight."""
+    rule = AlertRule(
+        rule_id="nighttime_temp",
+        name="Nighttime Temperature",
+        description="Temperature exceeds {threshold}°C",
+        severity=SeverityLevel.WARNING,
+        evaluation_stage=EvaluationStage.PROCESSED,
+        source="temperature",
+        condition=AlertCondition(
+            type=ConditionType.THRESHOLD,
+            params={"operator": ">", "threshold": 30.0},
+        ),
+        active_hours=ActiveHours(
+            start=datetime.strptime("22:00", "%H:%M").time(),
+            end=datetime.strptime("06:00", "%H:%M").time(),
+        ),
+        persistence_count=1,
+        cooldown_seconds=60,
+    )
+
+    before_midnight = ProcessedSensorData(
+        plant_id=1,
+        sensor_id=101,
+        timestamp=_timestamp_for_local_time(2026, 1, 15, 23, 30),
+        value=31.0,
+        unit="Celsius",
+        topic=Topics.TEMPERATURE,
+        correlation_id="wrap-before-midnight",
+        flags={ValidationFlag.VALID: True},
+        dq_score=0.95,
+        imputed=False,
+    )
+    after_midnight = ProcessedSensorData(
+        plant_id=1,
+        sensor_id=101,
+        timestamp=_timestamp_for_local_time(2026, 1, 16, 1, 30),
+        value=31.0,
+        unit="Celsius",
+        topic=Topics.TEMPERATURE,
+        correlation_id="wrap-after-midnight",
+        flags={ValidationFlag.VALID: True},
+        dq_score=0.95,
+        imputed=False,
+    )
+    daytime = ProcessedSensorData(
+        plant_id=1,
+        sensor_id=101,
+        timestamp=_timestamp_for_local_time(2026, 1, 16, 12, 0),
+        value=31.0,
+        unit="Celsius",
+        topic=Topics.TEMPERATURE,
+        correlation_id="wrap-daytime",
+        flags={ValidationFlag.VALID: True},
+        dq_score=0.95,
+        imputed=False,
+    )
+
+    evaluator = RuleEvaluator([rule])
+
+    assert len(evaluator.evaluate(before_midnight)) == 1
+    assert len(evaluator.evaluate(after_midnight)) == 1
+    assert evaluator.evaluate(daytime) == []
 
 
 def test_evaluator_handles_multiple_rules(threshold_rule, dq_rule):

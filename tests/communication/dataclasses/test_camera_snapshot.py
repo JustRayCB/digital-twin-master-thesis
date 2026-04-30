@@ -8,7 +8,7 @@ def test_camera_snapshot_roundtrip_generic_adapter() -> None:
         plant_id=1,
         sensor_id=99,
         timestamp=1_736_000_000,
-        topic=Topics.CAMERA_IMAGE,
+        topic=Topics.CAMERA_IMAGE_TOP,
         correlation_id="cam-corr-1",
         mime_type="image/jpeg",
         image="/9j/4AAQSkZJRgABAQAAAQABAAD",
@@ -20,7 +20,7 @@ def test_camera_snapshot_roundtrip_generic_adapter() -> None:
     restored = load("generic", CameraSnapshot, encoded)
 
     assert restored == snapshot
-    assert restored.topic is Topics.CAMERA_IMAGE
+    assert restored.topic is Topics.CAMERA_IMAGE_TOP
 
 
 def test_camera_snapshot_coerces_field_types() -> None:
@@ -28,7 +28,7 @@ def test_camera_snapshot_coerces_field_types() -> None:
         plant_id="1",
         sensor_id="99",
         timestamp="1736000000.5",
-        topic="dt.sensors.camera_image",
+        topic="dt.sensors.camera_image_top",
         correlation_id=123,
         mime_type=1234,
         image=12345,
@@ -39,7 +39,7 @@ def test_camera_snapshot_coerces_field_types() -> None:
     assert payload.plant_id == 1
     assert payload.sensor_id == 99
     assert payload.timestamp == 1_736_000_000.5
-    assert payload.topic is Topics.CAMERA_IMAGE
+    assert payload.topic is Topics.CAMERA_IMAGE_TOP
     assert payload.correlation_id == "123"
     assert payload.mime_type == "1234"
     assert payload.image == "12345"

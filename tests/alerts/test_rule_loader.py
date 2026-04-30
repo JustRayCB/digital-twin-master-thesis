@@ -3,8 +3,8 @@
 import pytest
 import yaml
 
-from dt.alerts.rules import AlertRule, ConditionType, EvaluationStage, SeverityLevel
-from dt.alerts.rule_manager import build_alert_rule_manager
+from dt.analytics.alerts.rules import AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.analytics.alerts.rule_manager import build_alert_rule_manager
 
 
 @pytest.fixture
@@ -316,4 +316,50 @@ def test_non_dict_yaml_raises_error(tmp_path):
     config_file.write_text("- item1\n- item2")  # List instead of dict
 
     with pytest.raises(ValueError, match="Invalid alert rules configuration"):
+        build_alert_rule_manager(str(config_file))
+
+
+def test_load_rule_with_active_hours(sample_rules_yaml, tmp_path):
+    """Rules can define an optional local-time active window."""
+    config = yaml.safe_load(sample_rules_yaml.read_text())
+    config["alert_rules"][0]["active_hours"] = {"start": "08:00", "end": "20:00"}
+
+    config_file = tmp_path / "active_hours.yml"
+    config_file.write_text(yaml.dump(config))
+
+    rules = build_alert_rule_manager(str(config_file)).rules
+
+    assert rules[0].active_hours is not None
+    assert rules[0].active_hours.start.hour == 8
+    assert rules[0].active_hours.start.minute == 0
+    assert rules[0].active_hours.end.hour == 20
+    assert rules[0].active_hours.end.minute == 0
+
+
+def test_invalid_active_hours_format_raises_error(tmp_path):
+    """Invalid active-hour timestamps should fail validation."""
+    config = {
+        "alert_rules": [
+            {
+                "rule_id": "daylight_only",
+                "name": "Daylight Only",
+                "description": "Light below {threshold} lux",
+                "severity": "warning",
+                "evaluation_stage": "processed",
+                "source": "light_intensity",
+                "condition": {
+                    "type": "threshold",
+                    "operator": "<",
+                    "threshold": 1000.0,
+                },
+                "active_hours": {"start": "8:00", "end": "20:00"},
+                "persistence_count": 1,
+                "cooldown_seconds": 60,
+            }
+        ]
+    }
+    config_file = tmp_path / "invalid_active_hours.yml"
+    config_file.write_text(yaml.dump(config))
+
+    with pytest.raises(ValueError, match="Invalid active hours"):
         build_alert_rule_manager(str(config_file))

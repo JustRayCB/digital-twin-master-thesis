@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Generator
-
 import pytest
 from kafka import KafkaConsumer
 
@@ -67,6 +66,7 @@ def controller_database_bridge(
     kafka_bootstrap_servers: str,
     shared_readings_store,
     shared_alert_store,
+    shared_analytics_store,
     shared_controller_store,
     shared_snapshot_store,
     kafka_topics: list[str],
@@ -78,6 +78,7 @@ def controller_database_bridge(
         config=config,
         readings_storage=shared_readings_store,
         alert_storage=shared_alert_store,
+        analytics_storage=shared_analytics_store,
         controller_storage=shared_controller_store,
         snapshot_storage=shared_snapshot_store,
     )
@@ -165,50 +166,26 @@ def failing_driver() -> FailingDriver:
 
 
 @pytest.fixture
-def policy_config_path(tmp_path) -> str:
-    """Create a temporary actuator policy configuration file.
+def policy_manager(controller_database_client: DatabaseApiClient) -> PolicyManager:
+    """Create a PolicyManager backed by the database client.
 
     Parameters
     ----------
-    tmp_path : pathlib.Path
-        Temporary directory provided by pytest.
-
-    Returns
-    -------
-    str
-        Path to the temporary policy configuration file.
-    """
-    policy_yaml = """
-defaults:
-  max_duration_seconds: 30
-  min_cooldown_seconds: 0
-  allow_overlap: false
-  allowed_commands: ["ON", "OFF", "BOOST"]
-actuators:
-  pump:
-    max_duration_seconds: 5
-    min_cooldown_seconds: 2
-"""
-    config_path = tmp_path / "actuator_policies.yml"
-    config_path.write_text(policy_yaml)
-    return str(config_path)
-
-
-@pytest.fixture
-def policy_manager(policy_config_path: str) -> PolicyManager:
-    """Create a PolicyManager backed by the test configuration file.
-
-    Parameters
-    ----------
-    policy_config_path : str
-        Path to the policy configuration file.
+    controller_database_client : DatabaseApiClient
+        Database API client bound to the test database service.
 
     Returns
     -------
     PolicyManager
         Policy manager loading the test config.
     """
-    return PolicyManager(config_path=policy_config_path)
+    from dt.communication.dataclasses.controller import ActuatorConfig, ActuatorConfigSet
+    config = ActuatorConfigSet()
+    config.defaults = ActuatorConfig(max_duration_seconds=30, min_cooldown_seconds=0, allow_overlap=False, allowed_commands=["ON", "OFF", "BOOST"])
+    config.actuators["pump"] = ActuatorConfig(max_duration_seconds=5, min_cooldown_seconds=2)
+    controller_database_client.set_policies(config)
+
+    return PolicyManager(database_client=controller_database_client)
 
 
 @pytest.fixture

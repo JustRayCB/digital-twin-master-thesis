@@ -2,7 +2,7 @@
 
 import pytest
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.adapters.generic import GenericAdapter
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertStatus,

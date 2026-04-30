@@ -11,6 +11,7 @@ def client(
     metadata_store,
     readings_store,
     alert_store,
+    analytics_store,
     controller_store,
     snapshot_store,
 ):
@@ -31,6 +32,7 @@ def client(
         metadata_storage=metadata_store,
         readings_storage=readings_store,
         alert_storage=alert_store,
+        analytics_storage=analytics_store,
         controller_storage=controller_store,
         snapshot_storage=snapshot_store,
     )

@@ -13,16 +13,21 @@ def test_aggregated_reading_serialization_roundtrip() -> None:
     """
     payload = AggregatedReading(
         bucket=1_735_000_000.0,
-        sensor_id=7,
         plant_id=2,
         topic=Topics.TEMPERATURE,
         unit="C",
-        avg_value=20.0,
+        mean_value=20.0,
         min_value=18.0,
         max_value=22.0,
         sample_count=12,
         avg_dq_score=0.95,
         imputed_count=1,
+        avg_raw_value=19.8,
+        avg_calibrated_value=20.1,
+        avg_normalized_value=0.45,
+        variance_value=1.2,
+        stddev_value=1.095445115,
+        skewness_value=0.0,
     )
 
     encoded = dump("generic", payload)
@@ -30,3 +35,4 @@ def test_aggregated_reading_serialization_roundtrip() -> None:
 
     assert decoded == payload
     assert decoded.topic is Topics.TEMPERATURE
+    assert not hasattr(decoded, "sensor_id")

@@ -2,8 +2,8 @@
 
 import pytest
 
-from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
+from dt.analytics.alerts.evaluator import RuleEvaluator
+from dt.analytics.alerts.rules import AlertCondition, AlertRule, ConditionType, EvaluationStage, SeverityLevel
 from dt.communication.dataclasses.alerts.alert_record import AlertStatus
 from dt.communication.topics import Topics
 from tests.alerts.helpers import (
@@ -42,7 +42,9 @@ def test_service_subscribes_to_processed_topics_excluding_camera(
         # Verify subscribe was called for each non-camera sensor topic with .processed suffix
         sensor_topics = Topics.list_sensor_topics()
         expected_topics = [
-            topic.processed for topic in sensor_topics if topic != Topics.CAMERA_IMAGE
+            topic.processed
+            for topic in sensor_topics
+            if topic not in {Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE}
         ]
 
         subscribed_topics = list(consumer_service.topic_callbacks.keys())
@@ -51,7 +53,8 @@ def test_service_subscribes_to_processed_topics_excluding_camera(
         for expected_topic in expected_topics:
             assert expected_topic in subscribed_topics
         assert Topics.GREEN_RATIO.processed in subscribed_topics
-        assert Topics.CAMERA_IMAGE.processed not in subscribed_topics
+        assert Topics.CAMERA_IMAGE_TOP.processed not in subscribed_topics
+        assert Topics.CAMERA_IMAGE_SIDE.processed not in subscribed_topics
 
 
 def test_service_evaluates_payload_on_callback(
@@ -407,7 +410,7 @@ def test_service_shutdown(consumer_service, registry, publisher, evaluator):
     None
         The assertions raise if shutdown handling regresses.
     """
-    from dt.alerts.service import AlertEngineService
+    from dt.analytics.alerts.service import AlertEngineService
 
     service = AlertEngineService(
         kafka_service=consumer_service,

@@ -1,6 +1,6 @@
 import pytest
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.adapters import dump, load
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,

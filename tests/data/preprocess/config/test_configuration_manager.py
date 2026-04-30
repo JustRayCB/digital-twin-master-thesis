@@ -16,7 +16,10 @@ from dt.data.preprocess.stages.imputation import ForwardFillWithDecay
 from dt.data.preprocess.stages.normalization import (IdentityNormalization,
                                                      MinMaxNormalization)
 from dt.data.preprocess.stages.smoothing import (EWMASmoothing,
-                                                 PassThroughSmoothing)
+                                                  PassThroughSmoothing)
+
+
+DEFAULT_PREPROCESSING_CONFIG = "dt/utils/preprocessing_config.yml"
 
 
 def write_config(tmp_path, config_data: dict[str, object], filename: str) -> str:
@@ -217,7 +220,7 @@ def test_resolve_sensor_config_distinguishes_multiple_topics_for_one_sensor_id(
     config_data["streams"] = [
         {
             "sensor": "sensors.basil.picamera2.001.camera_image",
-            "topic": "camera_image",
+            "topic": "camera_image_top",
             "template": "camera.snapshot",
         },
         {
@@ -232,7 +235,7 @@ def test_resolve_sensor_config_distinguishes_multiple_topics_for_one_sensor_id(
 
     manager = ConfigurationManager(path)
     snapshot_key, snapshot_config = manager.resolve_sensor_config(
-        sensor.plant_id, sensor.id, Topics.CAMERA_IMAGE
+        sensor.plant_id, sensor.id, Topics.CAMERA_IMAGE_TOP
     )
     ratio_key, ratio_config = manager.resolve_sensor_config(
         sensor.plant_id, sensor.id, Topics.GREEN_RATIO
@@ -244,6 +247,17 @@ def test_resolve_sensor_config_distinguishes_multiple_topics_for_one_sensor_id(
     assert ratio_config.units == "ratio"
 
 
+def test_default_green_ratio_stream_uses_latest_percentage_without_smoothing() -> None:
+    """Green-ratio vitality should reflect the latest image-derived percentage."""
+    manager = ConfigurationManager(DEFAULT_PREPROCESSING_CONFIG)
+
+    smoothing = manager.get_smoothing_strategy(
+        "sensors.basil.picamera2.001.camera_image", Topics.GREEN_RATIO
+    )
+
+    assert isinstance(smoothing, PassThroughSmoothing)
+
+
 def test_profile_ids_distinguish_multiple_topics_for_one_sensor_name(
     tmp_path, config_manager_defaults
 ) -> None:
@@ -252,7 +266,7 @@ def test_profile_ids_distinguish_multiple_topics_for_one_sensor_name(
     config_data["streams"] = [
         {
             "sensor": "sensors.basil.picamera2.001.camera_image",
-            "topic": "camera_image",
+            "topic": "camera_image_top",
             "units": "image/jpeg",
             "calibration": {"strategy": "identity"},
         },
@@ -267,14 +281,14 @@ def test_profile_ids_distinguish_multiple_topics_for_one_sensor_name(
 
     manager = ConfigurationManager(path)
     snapshot_config = manager.get_stream_config(
-        "sensors.basil.picamera2.001.camera_image", Topics.CAMERA_IMAGE
+        "sensors.basil.picamera2.001.camera_image", Topics.CAMERA_IMAGE_TOP
     )
     ratio_config = manager.get_stream_config(
         "sensors.basil.picamera2.001.camera_image", Topics.GREEN_RATIO
     )
 
     assert snapshot_config.calibration_profile_id == (
-        "standalone:sensors.basil.picamera2.001.camera_image:camera_image"
+        "standalone:sensors.basil.picamera2.001.camera_image:camera_image_top"
     )
     assert ratio_config.calibration_profile_id == (
         "standalone:sensors.basil.picamera2.001.camera_image:green_ratio"
@@ -298,7 +312,7 @@ def test_resolve_sensor_config_rejects_missing_derived_stream_config(
     config_data["streams"] = [
         {
             "sensor": "sensors.basil.picamera2.001.camera_image",
-            "topic": "camera_image",
+            "topic": "camera_image_top",
             "template": "camera.snapshot",
         }
     ]

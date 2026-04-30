@@ -8,29 +8,32 @@ import pytest
 from sqlalchemy import JSON, DateTime, create_engine, literal, select
 from sqlalchemy.engine import Row
 
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.adapters.serializers.db.alert import (
     AlertHistoryEventDbSerializer, ExternalAlertEventDbSerializer,
     SensorAlertEventDbSerializer)
+from dt.communication.adapters.serializers.db.analytics import (
+    ForecastResultDbSerializer, HealthAssessmentDbSerializer,
+    RecommendationDbSerializer)
 from dt.communication.adapters.serializers.db.controller import (
     ActionCommandDbSerializer, ControlModeDbSerializer, RoutineDbSerializer)
 from dt.communication.adapters.serializers.db.sensor import (
     AggregatedReadingDbSerializer, CameraSnapshotDbSerializer,
     ProcessedSensorDataDbSerializer)
+from dt.communication.dataclasses.analytics import (
+    ActionResult, ForecastResult, HealthAssessment, HealthState, ModelMetadata,
+    Recommendation, RecommendedAction)
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertDefinition, AlertHistoryEvent, AlertStatus, ExternalAlertEvent,
-    SensorAlertEvent)
-from dt.communication.dataclasses.alerts.alert_type import AlertType
+    AlertHistoryEvent, AlertStatus, ExternalAlertEvent, SensorAlertEvent)
 from dt.communication.dataclasses.camera_snapshot import CameraSnapshot
 from dt.communication.dataclasses.controller import (Action, ActionCommand,
-                                                     CompiledRule, ControlMode,
-                                                     Routine, RoutineEdge,
-                                                     RoutineGraph, RoutineNode,
-                                                     Trigger)
+                                                        CompiledRule, ControlMode,
+                                                        Routine, RoutineEdge,
+                                                        RoutineGraph, RoutineNode,
+                                                        Trigger)
 from dt.communication.dataclasses.processed_sensor_data import (
     ProcessedSensorData, ValidationFlag)
-from dt.communication.dataclasses.sensor import SensorDescriptor
 from dt.communication.topics import Topics
 
 _ENGINE = create_engine("sqlite+pysqlite:///:memory:", future=True)
@@ -108,12 +111,15 @@ def test_aggregated_reading_serializer_loads_topic_and_bucket() -> None:
             "plant_id": 1,
             "topic": Topics.TEMPERATURE.short_name,
             "unit": "Celsius",
-            "avg_value": 25.0,
+            "mean_value": 25.0,
             "min_value": 20.0,
             "max_value": 30.0,
             "sample_count": 10,
             "avg_dq_score": 0.9,
             "imputed_count": 2,
+            "variance_value": 4.0,
+            "stddev_value": 2.0,
+            "skewness_value": 0.0,
         },
         datetime_fields={"bucket"},
     )
@@ -121,6 +127,9 @@ def test_aggregated_reading_serializer_loads_topic_and_bucket() -> None:
     assert isinstance(loaded, AggregatedReading)
     assert loaded.bucket == 1234567800.0
     assert loaded.topic == Topics.TEMPERATURE
+    assert loaded.variance_value == 4.0
+    assert loaded.stddev_value == 2.0
+    assert loaded.skewness_value == 0.0
 
 
 def test_camera_snapshot_serializer_loads_binary_image() -> None:
@@ -130,7 +139,7 @@ def test_camera_snapshot_serializer_loads_binary_image() -> None:
             "plant_id": 1,
             "sensor_id": 7,
             "timestamp": datetime.fromtimestamp(1234.5),
-            "topic": Topics.CAMERA_IMAGE.short_name,
+            "topic": Topics.CAMERA_IMAGE_TOP.short_name,
             "correlation_id": "cid",
             "mime_type": "image/jpeg",
             "image": b"\x00\x01\xff",
@@ -142,7 +151,7 @@ def test_camera_snapshot_serializer_loads_binary_image() -> None:
     loaded = serializer.load(CameraSnapshot, row)
     assert isinstance(loaded, CameraSnapshot)
     assert loaded.timestamp == 1234.5
-    assert loaded.topic == Topics.CAMERA_IMAGE
+    assert loaded.topic == Topics.CAMERA_IMAGE_TOP
     assert loaded.image == "AAH/"
 
 
@@ -236,6 +245,7 @@ def test_external_alert_serializer_dump_and_load() -> None:
     )
     dumped = serializer.dump(alert)
     assert set(dumped.keys()) == {"history", "external"}
+    assert isinstance(dumped["external"]["metadata"], str)
 
     history_row = make_row(
         dumped["history"]
@@ -330,9 +340,10 @@ def test_action_command_serializer_dump_and_load() -> None:
     serializer = ActionCommandDbSerializer()
     command = ActionCommand(
         plant_id=1,
+        execution_id="exec-1",
         action_id="a1",
         actuator_id=2,
-        started_at=1000.5,
+        event_at=1000.5,
         duration=30.0,
         command="ON",
         reason="rule",
@@ -340,15 +351,16 @@ def test_action_command_serializer_dump_and_load() -> None:
         source="manual",
     )
     dumped = serializer.dump(command)
-    assert "timestamp" not in dumped
-    assert dumped["started_at"] == 1000.5
+    assert dumped["execution_id"] == "exec-1"
+    assert dumped["event_at"] == 1000.5
 
     row = make_row(
         {
             "plant_id": 1,
+            "execution_id": "exec-1",
             "action_id": "a1",
             "actuator_id": 2,
-            "started_at": datetime.fromtimestamp(1000.5),
+            "event_at": datetime.fromtimestamp(1000.5),
             "duration": 30.0,
             "command": "ON",
             "reason": "rule",
@@ -357,10 +369,117 @@ def test_action_command_serializer_dump_and_load() -> None:
             "routine_id": None,
             "status": "completed",
             "error_message": None,
-            "ended_at": datetime.fromtimestamp(1010.5),
         },
-        datetime_fields={"started_at", "ended_at"},
+        datetime_fields={"event_at"},
     )
     loaded = serializer.load(ActionCommand, row)
-    assert loaded.started_at == 1000.5
-    assert loaded.ended_at == 1010.5
+    assert loaded.execution_id == "exec-1"
+    assert loaded.event_at == 1000.5
+
+
+def test_health_assessment_serializer_round_trip_db_fields() -> None:
+    serializer = HealthAssessmentDbSerializer()
+    assessment = HealthAssessment(
+        plant_id=3,
+        timestamp=1000.5,
+        correlation_id="h-1",
+        state=HealthState.CRITICAL,
+        score=0.12,
+        summary="Plant is dry",
+        confidence=0.91,
+        model_metadata=ModelMetadata(model_name="health-baseline", model_version="1.0"),
+    )
+
+    dumped = serializer.dump(assessment)
+
+    assert isinstance(dumped["model_metadata"], str)
+
+    row = make_row(
+        dumped | {"timestamp": datetime.fromtimestamp(dumped["timestamp"])},
+        datetime_fields={"timestamp"},
+    )
+    loaded = serializer.load(HealthAssessment, row)
+
+    assert loaded == assessment
+
+
+def test_health_assessment_serializer_does_not_mutate_dict_input() -> None:
+    serializer = HealthAssessmentDbSerializer()
+    row = {
+        "plant_id": 3,
+        "timestamp": datetime.fromtimestamp(1000.5),
+        "correlation_id": "h-1",
+        "state": "critical",
+        "score": 0.12,
+        "summary": "Plant is dry",
+        "confidence": 0.91,
+        "model_metadata": json.dumps({"model_name": "health-baseline", "model_version": "1.0"}),
+    }
+    original = row.copy()
+
+    serializer.load(HealthAssessment, row)
+
+    assert row == original
+
+
+def test_forecast_result_serializer_round_trip_db_fields() -> None:
+    serializer = ForecastResultDbSerializer()
+    forecast = ForecastResult(
+        plant_id=3,
+        timestamp=1001.5,
+        correlation_id="f-1",
+        metric="soil_moisture",
+        horizon_seconds=3600,
+        predicted_value=24.5,
+        unit="%",
+        model_metadata=ModelMetadata(model_name="moisture-forecaster", model_version="2.0"),
+        features_used=["soil_moisture.last", "context.soil_moisture_mean_24h"],
+        inference_metadata={"confidence": 0.73},
+    )
+
+    dumped = serializer.dump(forecast)
+
+    assert isinstance(dumped["features_used"], str)
+    assert isinstance(dumped["inference_metadata"], str)
+    assert isinstance(dumped["model_metadata"], str)
+
+    row = make_row(
+        dumped | {"timestamp": datetime.fromtimestamp(dumped["timestamp"])},
+        datetime_fields={"timestamp"},
+    )
+    loaded = serializer.load(ForecastResult, row)
+
+    assert loaded == forecast
+
+
+def test_recommendation_serializer_round_trip_db_fields() -> None:
+    serializer = RecommendationDbSerializer()
+    recommendation = Recommendation(
+        plant_id=3,
+        timestamp=1002.5,
+        correlation_id="r-1",
+        confidence=0.9,
+        reason="forecast drop",
+        actions=[
+            RecommendedAction(
+                capability="irrigation",
+                command="ON",
+                duration_seconds=5.0,
+            )
+        ],
+        model_metadata=ModelMetadata(model_name="policy-engine", model_version="1.0"),
+        action_results=[ActionResult(action_index=0, status="accepted")],
+    )
+
+    dumped = serializer.dump(recommendation)
+
+    assert isinstance(dumped["model_metadata"], str)
+    assert isinstance(dumped["actions"], str)
+
+    row = make_row(
+        dumped | {"timestamp": datetime.fromtimestamp(dumped["timestamp"])},
+        datetime_fields={"timestamp"},
+    )
+    loaded = serializer.load(Recommendation, row)
+
+    assert loaded == recommendation

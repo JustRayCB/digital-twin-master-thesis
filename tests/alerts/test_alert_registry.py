@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from dt.alerts.registry import AlertRegistry
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.registry import AlertRegistry
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertStatus,

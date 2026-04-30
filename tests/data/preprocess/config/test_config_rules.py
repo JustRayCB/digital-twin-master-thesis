@@ -7,7 +7,8 @@ from dt.communication.adapters.registry import load
 from dt.communication.topics import Topics
 from dt.data.preprocess.config.manager import ConfigurationManager
 from dt.data.preprocess.config.serialization import ensure_config_serialization
-from dt.data.preprocess.config.types import EWMASmoothingConfig, RocConfig, RocProfile, SystemConfig
+from dt.data.preprocess.config.types import (EWMASmoothingConfig, RocConfig,
+                                             RocProfile, SystemConfig)
 
 
 def _build_system_config(stream_overrides: dict | None = None) -> dict:
@@ -37,10 +38,29 @@ def test_load_sensor_validation_config_defaults(configure_preprocess_db_client) 
     assert manager.config.system.windows.small_sec == 60
     assert manager.config.system.weights.range_ok == 0.4
 
-    temp_config = manager.get_stream_config("sensors.basil.dht22.001.temperature", Topics.TEMPERATURE)
+    temp_config = manager.get_stream_config(
+        "sensors.basil.dht22.001.temperature", Topics.TEMPERATURE
+    )
     assert temp_config.validation.range.min == 0
-    assert temp_config.validation.range.max == 50
+    assert temp_config.validation.range.max == 40
     assert temp_config.validation.roc.active_max_per_minute == 5.0
+
+
+def test_default_preprocessing_config_matches_top_and_side_camera_sources() -> None:
+    """The shipped preprocessing config should match the active top/side camera sources."""
+    config_path = Path(__file__).resolve().parents[4] / "dt" / "utils" / "preprocessing_config.yml"
+
+    manager = ConfigurationManager(str(config_path))
+
+    manager.get_stream_config("sensors.basil.picamera2.001.camera_image", Topics.GREEN_RATIO)
+    manager.get_stream_config("sensors.basil.picamera2.001.camera_image", Topics.LEAF_COUNT)
+    manager.get_stream_config("sensors.basil.esp32.001.camera_image_side", Topics.PLANT_HEIGHT)
+
+    with pytest.raises(KeyError):
+        manager.get_stream_config("sensors.basil.picamera2.001.camera_image", Topics.PLANT_HEIGHT)
+
+    with pytest.raises(KeyError):
+        manager.get_stream_config("sensors.basil.esp32.001.camera_image_side", Topics.LEAF_COUNT)
 
 
 def test_set_active_profile_switches_active_profile() -> None:
@@ -215,9 +235,7 @@ def test_calibration_config_parses_affine_parameters() -> None:
     config = load(
         "generic",
         SystemConfig,
-        _build_system_config(
-            {"calibration": {"strategy": "affine", "scale": 1.2, "offset": -0.5}}
-        ),
+        _build_system_config({"calibration": {"strategy": "affine", "scale": 1.2, "offset": -0.5}}),
     )
 
     calibration = config.streams[0].calibration

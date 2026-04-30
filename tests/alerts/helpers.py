@@ -7,9 +7,9 @@ from contextlib import contextmanager
 
 from kafka import KafkaConsumer
 
-from dt.alerts.evaluator import RuleEvaluator
-from dt.alerts.publisher import AlertPublisher
-from dt.alerts.registry import AlertRegistry
+from dt.analytics.alerts.evaluator import RuleEvaluator
+from dt.analytics.alerts.publisher import AlertPublisher
+from dt.analytics.alerts.registry import AlertRegistry
 from dt.communication.adapters import load
 from dt.communication.dataclasses import ProcessedSensorData, SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import (
@@ -112,7 +112,7 @@ def running_alert_service(
     publisher: AlertPublisher,
 ):
     """Run the alert engine service and ensure shutdown."""
-    from dt.alerts.service import AlertEngineService
+    from dt.analytics.alerts.service import AlertEngineService
 
     service = AlertEngineService(
         kafka_service=consumer_service,

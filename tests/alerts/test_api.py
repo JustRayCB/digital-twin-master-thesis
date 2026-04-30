@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from dt.alerts.registry import AlertRegistry
-from dt.alerts.rule_manager import AlertRuleManager
-from dt.alerts.rules import SeverityLevel
-from dt.alerts.state import AlertState
+from dt.analytics.alerts.registry import AlertRegistry
+from dt.analytics.alerts.rule_manager import AlertRuleManager
+from dt.analytics.alerts.rules import SeverityLevel
+from dt.analytics.alerts.state import AlertState
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertHistoryEvent,
     AlertStatus,
@@ -50,7 +50,7 @@ def app(registry: AlertRegistry, publisher, rule_manager: AlertRuleManager):
     """
     from flask import Flask
 
-    from dt.alerts.api import create_alert_blueprint
+    from dt.analytics.alerts.api import create_alert_blueprint
 
     app = Flask(__name__)
 
@@ -435,7 +435,7 @@ def test_list_alert_rules(client, rule_manager):
         The assertions raise if rule listing regresses.
     """
     # Create mock rules
-    from dt.alerts.rules import (
+    from dt.analytics.alerts.rules import (
         AlertCondition,
         AlertRule,
         ConditionType,

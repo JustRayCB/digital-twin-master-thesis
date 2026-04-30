@@ -2,8 +2,8 @@
 
 import pytest
 
-from dt.alerts.publisher import AlertPublisher
-from dt.alerts.rules import SeverityLevel
+from dt.analytics.alerts.publisher import AlertPublisher
+from dt.analytics.alerts.rules import SeverityLevel
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition,
