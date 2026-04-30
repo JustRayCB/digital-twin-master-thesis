@@ -3,7 +3,7 @@ name = "dt"
 version = "0.1.0"
 description = "This thesis will focus on the practical implementation of a Digital Twin integrated in the framework of Internet of Things to monitor the health of a plant, using various sensors as data collectors and a Raspberry Pi as a central device."
 authors = [
-    {name = "JustRayCB",email = "rayancbpro@gmail.com"}
+    { name = "JustRayCB", email = "rayancbpro@gmail.com" }
 ]
 readme = "README.md"
 requires-python = ">=3.11,<4.0,!=3.14.1"
@@ -18,10 +18,24 @@ dependencies = [
     "kafka-python (>=2.1.5,<3.0.0)",
     "dotenv (>=0.9.9,<0.10.0)",
     "pyyaml (>=6.0.3,<7.0.0)",
-    "numpy (>=2.3.4,<3.0.0)",
     "cattrs (>=25.3.0,<26.0.0)",
     "networkx (>=3.6.1,<4.0.0)",
-    "opencv-python (>=4.13.0.92,<5.0.0.0)",
+    "scikit-image (>=0.26.0,<0.27.0)",
+    "pupil-apriltags (>=1.0.4.post11,<2.0.0)",
+    "ultralytics (>=8.1.0,<9.0.0)",
+
+    # x86_64 / normal desktop or server installs
+    "torch (>=2.0.0,<=2.10.0); platform_machine == 'x86_64'",
+    "torchvision (>=0.15.0,<=0.25.0); platform_machine == 'x86_64'",
+
+    # Raspberry Pi 64-bit / ARM64.
+    # Newer torch wheels caused Illegal instruction on your Pi.
+    "torch ==2.3.1; platform_machine == 'aarch64'",
+    "torchvision ==0.18.1; platform_machine == 'aarch64'",
+
+    # NumPy
+    "numpy>=2.3.4,<3.0.0; platform_machine == 'x86_64'",
+    "numpy>=1.26.0,<2.0.0; platform_machine == 'aarch64'",
 ]
 
 # Dev tools
@@ -36,8 +50,9 @@ pytest = ">=8.4.2,<9.0.0"
 ruff = "^0.13.2"
 mypy = "^1.18.2"
 pyupgrade = "^3.21.0"
-testcontainers = {extras = ["postgres", "kafka"], version = "^4.9.0"}
-
+testcontainers = { extras = ["postgres", "kafka"], version = "^4.9.0" }
+esptool = "^5.2.0"
+mpremote = "^1.27.0"
 
 # Spark kept out of default installs
 [tool.poetry.group.spark]
@@ -53,18 +68,18 @@ optional = true
 
 [tool.poetry.group.db.dependencies]
 sqlalchemy = "^2.0.44"
-psycopg = {extras = ["binary"], version = "^3.2.12"}
+psycopg = { extras = ["binary"], version = "^3.2.12" }
 testcontainers = "^4.13.2"
 
 [tool.poetry.group.rpi]
 optional = true
 
 [tool.poetry.group.rpi.dependencies]
-"RPi.GPIO" = {version=">=0.7.1,<0.8.0", markers="sys_platform == 'linux' and (platform_machine == 'armv7l' or platform_machine == 'aarch64')"}
-adafruit-circuitpython-dht = {version=">=4.0.7,<5.0.0", markers="sys_platform == 'linux'"}
-adafruit-circuitpython-seesaw = {version=">=1.16.5,<2.0.0", markers="sys_platform == 'linux'"}
-adafruit-circuitpython-bh1750 = {version=">=1.1.14,<2.0.0", markers="sys_platform == 'linux'"}
-adafruit-blinka = {version=">=8.58.1,<9.0.0", markers="sys_platform == 'linux'"}
+"RPi.GPIO" = { version = ">=0.7.1,<0.8.0", markers = "sys_platform == 'linux' and (platform_machine == 'armv7l' or platform_machine == 'aarch64')" }
+adafruit-circuitpython-dht = { version = ">=4.0.7,<5.0.0", markers = "sys_platform == 'linux'" }
+adafruit-circuitpython-seesaw = { version = ">=1.16.5,<2.0.0", markers = "sys_platform == 'linux'" }
+adafruit-circuitpython-bh1750 = { version = ">=1.1.14,<2.0.0", markers = "sys_platform == 'linux'" }
+adafruit-blinka = { version = ">=8.58.1,<9.0.0", markers = "sys_platform == 'linux'" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
