@@ -10,13 +10,15 @@ from typing import Any, TypeVar
 from typing_extensions import override
 
 from dt.communication.adapters.base import SerializationAdapter
-from dt.communication.dataclasses.processed_sensor_data import ProcessedSensorData, ValidationFlag
+from dt.communication.dataclasses.processed_sensor_data import (
+    ProcessedSensorData, ValidationFlag)
 from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 from dt.communication.topics import Topics
 
 T = TypeVar("T")
 
 
+# WARNING: DEPRECATED - NOT USED ANYMORE NEED TO REMOVE IT
 class SparkRowAdapter(SerializationAdapter):
     """Adapter for converting objects to/from Spark Row format.
 

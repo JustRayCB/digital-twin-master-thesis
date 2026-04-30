@@ -16,6 +16,7 @@ from .base import SerializationAdapter
 T = TypeVar("T")
 
 
+# WARNING: DEPRECATED - NOT USED ANYMORE NEED TO REMOVE IT
 class GenericAdapter(SerializationAdapter):
     """Adapter for converting objects to/from Python native types.
 

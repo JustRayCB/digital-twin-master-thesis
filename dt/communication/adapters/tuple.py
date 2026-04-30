@@ -9,6 +9,7 @@ from dt.communication.dataclasses.raw_sensor_data import RawSensorData
 T = TypeVar("T")
 
 
+# WARNING: DEPRECATED - NOT USED ANYMORE NEED TO REMOVE IT
 class TupleAdapter(SerializationAdapter):
     """Adapter for converting dataclasses to/from tuples.
 

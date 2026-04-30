@@ -34,6 +34,7 @@ from .generic import GenericAdapter
 T = TypeVar("T")
 
 
+# WARNING: DEPRECATED - NOT USED ANYMORE NEED TO REMOVE IT
 class DbRowAdapter(SerializationAdapter):
     """Adapter for converting objects to/from database rows.
 

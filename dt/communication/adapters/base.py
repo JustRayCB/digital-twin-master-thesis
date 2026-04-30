@@ -6,6 +6,7 @@ from dt.utils import get_logger
 T = TypeVar("T")
 
 
+# WARNING: DEPRECATED - NOT USED ANYMORE NEED TO REMOVE IT
 class SerializationAdapter(ABC):
     """Abstract class defining the interface all adapters must implement.
 
