@@ -8,6 +8,7 @@
 
     import { analyticsClient } from '$shared/api'
     import { processedTopics, type ProcessedTopicName } from '$shared/realtime'
+    import { formatChartTime } from '$shared/utils/time'
     import {
         analyticsStore,
         type AnalyticsSeriesKey,
@@ -93,6 +94,8 @@
     let correlationSummary: CorrelationSummary | null = null
     let exportingData = false
     let exportError: string | null = null
+    let exportSinceInput = ''
+    let exportUntilInput = ''
 
     let mounted = false
     let wasCorrelationMode = false
@@ -140,6 +143,7 @@
 
     async function setTimeView(view: AnalyticsTimeView): Promise<void> {
         await analyticsStore.setTimeView(view)
+        setExportRangeToCurrentView()
         if ($correlationMode) {
             await updateCorrelationCharts()
         }
@@ -162,6 +166,30 @@
         return 'last 30 days, hourly aggregates'
     }
 
+    function parseDatetimeLocalValue(value: string, label: string): number {
+        const timestamp = new Date(value).getTime()
+        if (!value || Number.isNaN(timestamp)) {
+            throw new Error(`Choose a valid export ${label}.`)
+        }
+        return timestamp
+    }
+
+    function setExportRangeToCurrentView(): void {
+        const { since, until } = getTimeWindow($currentTimeView, Date.now())
+        exportSinceInput = formatChartTime(since).slice(0, 16).replace(' ', 'T')
+        exportUntilInput = formatChartTime(until).slice(0, 16).replace(' ', 'T')
+        exportError = null
+    }
+
+    function getExportRange(): { since: number; until: number } {
+        const since = parseDatetimeLocalValue(exportSinceInput, 'start time')
+        const until = parseDatetimeLocalValue(exportUntilInput, 'end time')
+        if (since > until) {
+            throw new Error('Export start time must be before the end time.')
+        }
+        return { since, until }
+    }
+
     async function exportData(): Promise<void> {
         if (exportingData) {
             return
@@ -170,7 +198,7 @@
         exportingData = true
         exportError = null
         try {
-            const { since, until } = getTimeWindow($currentTimeView, Date.now())
+            const { since, until } = getExportRange()
             const payload = await analyticsClient.exportData({ plantId, since, until })
             const exportedAt = new Date().toISOString().replace(/[:.]/g, '-')
             const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -179,7 +207,7 @@
             const url = URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = url
-            link.download = `dtwin-data-${$currentTimeView}-${exportedAt}.json`
+            link.download = `dtwin-data-${exportedAt}.json`
             document.body.appendChild(link)
             link.click()
             link.remove()
@@ -217,6 +245,7 @@
 
     onMount(() => {
         mounted = true
+        setExportRangeToCurrentView()
         registerTrendCharts()
 
         void analyticsStore.initialize()
@@ -308,7 +337,44 @@
             </div>
 
             <div class="text-xs font-bold uppercase tracking-wider text-gray-500">Export</div>
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-3">
+                <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] md:items-end">
+                    <label class="flex flex-col gap-1">
+                        <span class="font-sans text-xs font-bold uppercase tracking-wider text-gray-500"
+                            >From</span
+                        >
+                        <input
+                            type="datetime-local"
+                            bind:value={exportSinceInput}
+                            max={exportUntilInput}
+                            on:input={() => {
+                                exportError = null
+                            }}
+                            class="rounded-lg border-2 border-ink bg-white px-3 py-2 font-sans text-sm text-ink shadow-hard-sm focus:outline-none focus:ring-2 focus:ring-cozy-lavender"
+                        />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-sans text-xs font-bold uppercase tracking-wider text-gray-500"
+                            >Until</span
+                        >
+                        <input
+                            type="datetime-local"
+                            bind:value={exportUntilInput}
+                            min={exportSinceInput}
+                            on:input={() => {
+                                exportError = null
+                            }}
+                            class="rounded-lg border-2 border-ink bg-white px-3 py-2 font-sans text-sm text-ink shadow-hard-sm focus:outline-none focus:ring-2 focus:ring-cozy-lavender"
+                        />
+                    </label>
+                    <button
+                        type="button"
+                        on:click={setExportRangeToCurrentView}
+                        class="rounded-lg border-2 border-ink bg-white px-4 py-2 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5"
+                    >
+                        use chart range
+                    </button>
+                </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <button
                         type="button"
@@ -319,7 +385,7 @@
                         {exportingData ? 'exporting...' : 'export dataset'}
                     </button>
                     <span class="font-sans text-xs font-medium text-gray-500">
-                        Current range with readings, aggregates, alerts, actions, recommendations,
+                        Selected range with readings, aggregates, alerts, actions, recommendations,
                         forecasts, and snapshots.
                     </span>
                 </div>
