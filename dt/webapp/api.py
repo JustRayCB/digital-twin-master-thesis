@@ -27,6 +27,8 @@ from dt.utils import get_logger
 
 logger = get_logger(__name__)
 
+EXPORT_DB_TIMEOUT_SECONDS = 240
+
 
 def create_webapp_blueprint(
     db_client: DatabaseApiClient, controller_client: ControllerClient
@@ -224,8 +226,12 @@ def create_webapp_blueprint(
                 until=query.until,
             )
 
-            alert_history = db_client.get_alert_history(alert_history_query)
-            actions = db_client.get_action_history(action_history_query)
+            alert_history = db_client.get_alert_history(
+                alert_history_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+            )
+            actions = db_client.get_action_history(
+                action_history_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+            )
             sensors = [dump("generic", sensor) for sensor in db_client.list_sensors()]
             actuators = db_client.list_actuators()
             metadata = dump("web", query)
@@ -251,36 +257,51 @@ def create_webapp_blueprint(
                 },
                 "readings": {
                     "raw": [
-                        dump("web", reading) for reading in db_client.query_readings(raw_query)
+                        dump("web", reading)
+                        for reading in db_client.query_readings(
+                            raw_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                        )
                     ],
                     "aggregates": [
                         dump("web", reading)
-                        for reading in db_client.query_readings(aggregate_query)
+                        for reading in db_client.query_readings(
+                            aggregate_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                        )
                     ],
                 },
                 "alerts": {
                     "active": [
                         dump("web", alert)
-                        for alert in db_client.get_active_alerts(active_alerts_query)
+                        for alert in db_client.get_active_alerts(
+                            active_alerts_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                        )
                     ],
                     "history": [dump("web", event) for event in alert_history],
                 },
                 "actions": [dump("web", action) for action in actions],
                 "recommendations": [
                     dump("web", recommendation)
-                    for recommendation in db_client.get_recommendation_history(recommendation_query)
+                    for recommendation in db_client.get_recommendation_history(
+                        recommendation_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                    )
                 ],
                 "health": [
                     dump("web", assessment)
-                    for assessment in db_client.get_health_history(health_query)
+                    for assessment in db_client.get_health_history(
+                        health_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                    )
                 ],
                 "forecasts": [
                     dump("web", forecast)
-                    for forecast in db_client.get_forecast_history(forecast_query)
+                    for forecast in db_client.get_forecast_history(
+                        forecast_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                    )
                 ],
                 "camera_snapshots": [
                     dump("web", snapshot)
-                    for snapshot in db_client.query_camera_snapshots(camera_query)
+                    for snapshot in db_client.query_camera_snapshots(
+                        camera_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
+                    )
                 ],
             }
 

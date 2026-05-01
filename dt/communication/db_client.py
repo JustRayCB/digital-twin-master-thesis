@@ -227,7 +227,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error deleting routine: {exc}")
             raise RuntimeError(f"Failed to delete routine: {exc}") from exc
 
-    def get_action_history(self, query: ActionHistoryQuery) -> list[ActionCommand]:
+    def get_action_history(
+        self, query: ActionHistoryQuery, *, timeout: float = 5
+    ) -> list[ActionCommand]:
         """Fetch action execution history."""
         params = dump("generic", query)
         params["limit"] = query.effective_limit
@@ -237,7 +239,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/controller/actions/history",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=5,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -274,7 +276,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error setting actuator policies: {exc}")
             raise RuntimeError(f"Failed to set actuator policies: {exc}") from exc
 
-    def get_health_history(self, query: HealthHistoryQuery) -> list[HealthAssessment]:
+    def get_health_history(
+        self, query: HealthHistoryQuery, *, timeout: float = 10
+    ) -> list[HealthAssessment]:
         """Fetch health assessment history."""
         params = dump("generic", query)
         try:
@@ -282,7 +286,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/analytics/health",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -291,7 +295,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error fetching health history: {exc}")
             raise RuntimeError(f"Failed to fetch health history: {exc}") from exc
 
-    def get_forecast_history(self, query: ForecastHistoryQuery) -> list[ForecastResult]:
+    def get_forecast_history(
+        self, query: ForecastHistoryQuery, *, timeout: float = 10
+    ) -> list[ForecastResult]:
         """Fetch forecast history."""
         params = dump("generic", query)
         try:
@@ -299,7 +305,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/analytics/forecasts",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -308,7 +314,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error fetching forecast history: {exc}")
             raise RuntimeError(f"Failed to fetch forecast history: {exc}") from exc
 
-    def get_recommendation_history(self, query: RecommendationHistoryQuery) -> list[Recommendation]:
+    def get_recommendation_history(
+        self, query: RecommendationHistoryQuery, *, timeout: float = 10
+    ) -> list[Recommendation]:
         """Fetch recommendation history."""
         params = dump("generic", query)
         try:
@@ -316,7 +324,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/analytics/recommendations",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             return [load("generic", Recommendation, item) for item in response.json()]
@@ -327,7 +335,9 @@ class DatabaseApiClient:
     # ---------------------------------------------------------------------- #
     # Readings
     # ---------------------------------------------------------------------- #
-    def query_readings(self, query: ReadingsQuery) -> list[ProcessedSensorData | AggregatedReading]:
+    def query_readings(
+        self, query: ReadingsQuery, *, timeout: float = 10
+    ) -> list[ProcessedSensorData | AggregatedReading]:
         """Fetch processed readings or aggregates based on the query window."""
         params = dump("generic", query)
         try:
@@ -335,7 +345,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/readings",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -370,7 +380,9 @@ class DatabaseApiClient:
             self.logger.error(f"Error fetching latest camera snapshot: {exc}")
             raise RuntimeError(f"Failed to fetch latest camera snapshot: {exc}") from exc
 
-    def query_camera_snapshots(self, query: CameraSnapshotQuery) -> list[CameraSnapshot]:
+    def query_camera_snapshots(
+        self, query: CameraSnapshotQuery, *, timeout: float = 10
+    ) -> list[CameraSnapshot]:
         """Fetch camera snapshots for a plant within an optional time interval."""
         params = dump("generic", query)
         try:
@@ -378,7 +390,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/camera/snapshots",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -391,7 +403,9 @@ class DatabaseApiClient:
     # ---------------------------------------------------------------------- #
     # Alerts
     # ---------------------------------------------------------------------- #
-    def get_alert_history(self, query: AlertHistoryQuery) -> list[AlertHistoryEvent]:
+    def get_alert_history(
+        self, query: AlertHistoryQuery, *, timeout: float = 10
+    ) -> list[AlertHistoryEvent]:
         """Fetch alert history events (sensor or external)."""
         params = dump("generic", query)
         try:
@@ -399,7 +413,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/alerts/history",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -409,7 +423,9 @@ class DatabaseApiClient:
 
         return [self._load_alert_event(item) for item in payload]
 
-    def get_active_alerts(self, query: ActiveAlertsQuery) -> list[AlertHistoryEvent]:
+    def get_active_alerts(
+        self, query: ActiveAlertsQuery, *, timeout: float = 10
+    ) -> list[AlertHistoryEvent]:
         """Fetch currently active alerts from the database."""
         params = dump("generic", query)
 
@@ -418,7 +434,7 @@ class DatabaseApiClient:
                 f"{self.base_url}/alerts/active",
                 params=params,
                 headers={"Content-Type": "application/json"},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
