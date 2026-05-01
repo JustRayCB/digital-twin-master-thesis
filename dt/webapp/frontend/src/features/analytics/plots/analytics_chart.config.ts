@@ -17,6 +17,7 @@ const baseLayout: PlotLayout = {
   yaxis: {
     showgrid: true,
     gridcolor: "rgba(0,0,0,0.08)",
+    rangemode: "tozero",
   },
   yaxis2: {
     title: { text: "Normalized (0–1)" },
