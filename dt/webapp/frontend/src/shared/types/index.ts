@@ -336,5 +336,4 @@ export type AnalyticsExportPayload = {
   recommendations: Recommendation[];
   health: Array<Record<string, unknown>>;
   forecasts: ForecastResult[];
-  camera_snapshots: CameraSnapshot[];
 };

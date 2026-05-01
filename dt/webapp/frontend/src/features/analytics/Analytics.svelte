@@ -394,7 +394,7 @@
                     </button>
                     <span class="font-sans text-xs font-medium text-gray-500">
                         Selected range with readings, aggregates, alerts, actions, recommendations,
-                        forecasts, and snapshots.
+                        health, and forecasts.
                     </span>
                 </div>
                 {#if exportError}

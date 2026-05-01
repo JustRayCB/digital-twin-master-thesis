@@ -13,14 +13,13 @@ from dt.communication.controller_client import ControllerClient
 from dt.communication.dataclasses.controller import (ActionDispatch,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActionHistoryQuery,
-                                                  ActiveAlertsQuery,
-                                                  AlertHistoryQuery,
-                                                  AnalyticsExportQuery,
-                                                  CameraSnapshotQuery,
-                                                  ForecastHistoryQuery,
-                                                  HealthHistoryQuery,
-                                                  ReadingsQuery,
-                                                  RecommendationHistoryQuery)
+                                                   ActiveAlertsQuery,
+                                                   AlertHistoryQuery,
+                                                   AnalyticsExportQuery,
+                                                   ForecastHistoryQuery,
+                                                   HealthHistoryQuery,
+                                                   ReadingsQuery,
+                                                   RecommendationHistoryQuery)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
 from dt.utils import get_logger
@@ -220,12 +219,6 @@ def create_webapp_blueprint(
                 since=query.since,
                 until=query.until,
             )
-            camera_query = CameraSnapshotQuery(
-                plant_id=query.plant_id,
-                since=query.since,
-                until=query.until,
-            )
-
             alert_history = db_client.get_alert_history(
                 alert_history_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
             )
@@ -295,12 +288,6 @@ def create_webapp_blueprint(
                     dump("web", forecast)
                     for forecast in db_client.get_forecast_history(
                         forecast_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
-                    )
-                ],
-                "camera_snapshots": [
-                    dump("web", snapshot)
-                    for snapshot in db_client.query_camera_snapshots(
-                        camera_query, timeout=EXPORT_DB_TIMEOUT_SECONDS
                     )
                 ],
             }
