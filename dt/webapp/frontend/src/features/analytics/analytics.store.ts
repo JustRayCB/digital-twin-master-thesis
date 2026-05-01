@@ -690,9 +690,7 @@ export function createAnalyticsStore(
 
 	/** Cleans up subscriptions and chart instances */
 	function destroy(): void {
-		stopLiveUpdates();
 		chartRegistry.destroy();
-		forecastsPort.destroy?.();
 
 		activeLoadRequestId += 1;
 		correlationModeData.set(false);
