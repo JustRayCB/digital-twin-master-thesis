@@ -11,12 +11,13 @@ from dt.communication.controller_client import ControllerClient
 from dt.communication.dataclasses.controller import (ActionDispatch,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                   AlertHistoryQuery,
-                                                   ForecastHistoryQuery,
-                                                   HealthHistoryQuery,
-                                                   ReadingsQuery,
-                                                   RecommendationHistoryQuery)
+                                                    AlertHistoryQuery,
+                                                    ForecastHistoryQuery,
+                                                    HealthHistoryQuery,
+                                                    ReadingsQuery,
+                                                    RecommendationHistoryQuery)
 from dt.communication.db_client import DatabaseApiClient
+from dt.communication.topics import Topics
 from dt.utils import get_logger
 
 logger = get_logger(__name__)
@@ -105,8 +106,10 @@ def create_webapp_blueprint(
     def get_latest_camera_snapshot():
         """Get latest camera snapshot for a plant with browser-friendly timestamp."""
         plant_id = request.args.get("plant_id", default=1, type=int)
+        topic_value = request.args.get("topic")
         try:
-            snapshot = db_client.get_latest_camera_snapshot(plant_id)
+            topic = Topics(topic_value) if topic_value else None
+            snapshot = db_client.get_latest_camera_snapshot(plant_id, topic=topic)
             if snapshot is None:
                 return jsonify({"error": "No camera snapshot found"}), 404
 
@@ -114,6 +117,8 @@ def create_webapp_blueprint(
             payload.pop("topic", None)
             return jsonify(payload), 200
 
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error fetching latest camera snapshot: {e}")
             return jsonify({"error": "Internal server error"}), 500

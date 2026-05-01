@@ -68,9 +68,10 @@ export class DbClient {
     await this.http.post<unknown>(`/api/db/alerts/${alertKey}/clear`, {});
   }
 
-  public fetchLatestSnapshot(plantId?: number): Promise<CameraSnapshot | null> {
+  public fetchLatestSnapshot(plantId?: number, topic?: string): Promise<CameraSnapshot | null> {
     return this.http.getOrNullOnNotFound<CameraSnapshot>("/api/db/camera/snapshots/latest", {
       plant_id: plantId,
+      topic,
     });
   }
 

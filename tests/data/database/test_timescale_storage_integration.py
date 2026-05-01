@@ -887,12 +887,37 @@ def test_get_latest_camera_snapshot_filters_by_plant_and_topic(
             height=480,
         )
     )
+    snapshot_store.ingest_camera_snapshot(
+        CameraSnapshot(
+            plant_id=plant_one,
+            sensor_id=sensor_one,
+            timestamp=1_735_689_800.0,
+            topic=Topics.CAMERA_IMAGE_SIDE,
+            correlation_id="camera-plant-1-side",
+            mime_type="image/jpeg",
+            image="AQQ=",
+            width=480,
+            height=640,
+        )
+    )
 
     latest_plant_one = snapshot_store.get_latest_camera_snapshot(plant_id=plant_one)
+    latest_top = snapshot_store.get_latest_camera_snapshot(
+        plant_id=plant_one,
+        topic=Topics.CAMERA_IMAGE_TOP,
+    )
+    latest_side = snapshot_store.get_latest_camera_snapshot(
+        plant_id=plant_one,
+        topic=Topics.CAMERA_IMAGE_SIDE,
+    )
     missing_plant = snapshot_store.get_latest_camera_snapshot(plant_id=999_999)
 
     assert latest_plant_one is not None
-    assert latest_plant_one.correlation_id == "camera-plant-1"
+    assert latest_plant_one.correlation_id == "camera-plant-1-side"
+    assert latest_top is not None
+    assert latest_top.correlation_id == "camera-plant-1"
+    assert latest_side is not None
+    assert latest_side.correlation_id == "camera-plant-1-side"
     assert missing_plant is None
 
 

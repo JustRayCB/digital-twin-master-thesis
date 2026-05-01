@@ -36,6 +36,45 @@ def test_get_latest_camera_snapshot_reads_real_api_payload(
     assert result == snapshot
 
 
+def test_get_latest_camera_snapshot_sends_topic_filter(
+    database_api_client: DatabaseApiClient,
+    snapshot_store,
+    sensor: SensorDescriptor,
+) -> None:
+    """Fetch the latest camera snapshot for the requested camera topic."""
+    top_snapshot = CameraSnapshot(
+        plant_id=sensor.plant_id,
+        sensor_id=sensor.id,
+        timestamp=1_735_689_600.0,
+        topic=Topics.CAMERA_IMAGE_TOP,
+        correlation_id="cam-corr-top",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
+    side_snapshot = CameraSnapshot(
+        plant_id=sensor.plant_id,
+        sensor_id=sensor.id,
+        timestamp=1_735_689_700.0,
+        topic=Topics.CAMERA_IMAGE_SIDE,
+        correlation_id="cam-corr-side",
+        mime_type="image/jpeg",
+        image="AQM=",
+        width=480,
+        height=640,
+    )
+    snapshot_store.ingest_camera_snapshot(top_snapshot)
+    snapshot_store.ingest_camera_snapshot(side_snapshot)
+
+    result = database_api_client.get_latest_camera_snapshot(
+        plant_id=sensor.plant_id,
+        topic=Topics.CAMERA_IMAGE_TOP,
+    )
+
+    assert result == top_snapshot
+
+
 def test_get_latest_camera_snapshot_returns_none_on_real_404(
     database_api_client: DatabaseApiClient,
 ) -> None:

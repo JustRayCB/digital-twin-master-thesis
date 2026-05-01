@@ -29,8 +29,19 @@ export const analyticsTopics = [
 	processedTopics.plantHeight,
 ] as const;
 
-/** Topic used for streaming new camera snapshots. */
-export const cameraSnapshotTopic = "dt.sensors.raw.camera_image";
+/** Topics used for streaming new camera snapshots. */
+export const cameraSnapshotTopics = {
+	top: "dt.sensors.raw.camera_image_top",
+	side: "dt.sensors.raw.camera_image_side",
+} as const;
+
+/** Topics used when querying persisted camera snapshots. */
+export const cameraSnapshotDataTopics = {
+	top: "dt.sensors.camera_image_top",
+	side: "dt.sensors.camera_image_side",
+} as const;
+
+export type CameraSnapshotView = keyof typeof cameraSnapshotTopics;
 
 export const recommendationSubmittedTopic = "recommendations_submitted";
 export const recommendationCompletedTopic = "recommendations_completed";

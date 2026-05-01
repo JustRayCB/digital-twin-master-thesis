@@ -4,6 +4,7 @@
 
 export {
   autoPilotEnabled,
+  cameraSnapshotView,
   currentView,
   navigate,
   openRoutineBuilder,

@@ -206,17 +206,17 @@ def setup_bridge(db_client: DatabaseApiClient, socketio: SocketIO) -> MessagingS
     )
 
     try:
-        latest_snapshot = db_client.get_latest_camera_snapshot(plant_id=1)
-        if latest_snapshot is not None:
-            with latest_by_topic_lock:
-                # Assuming the latest snapshot was from TOP
-                update_latest_payload_cache(
-                    latest_by_topic,
-                    Topics.CAMERA_IMAGE_TOP.raw,
-                    shape_camera_snapshot_payload(latest_snapshot),
-                )
+        for topic in (Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE):
+            latest_snapshot = db_client.get_latest_camera_snapshot(plant_id=1, topic=topic)
+            if latest_snapshot is not None:
+                with latest_by_topic_lock:
+                    update_latest_payload_cache(
+                        latest_by_topic,
+                        topic.raw,
+                        shape_camera_snapshot_payload(latest_snapshot),
+                    )
     except Exception as exc:
-        logger.error(f"Failed to seed camera snapshot: {exc}")
+        logger.error(f"Failed to seed camera snapshots: {exc}")
 
     for topic in Topics.list_sensor_topics():
         if topic in (Topics.CAMERA_IMAGE_TOP, Topics.CAMERA_IMAGE_SIDE):

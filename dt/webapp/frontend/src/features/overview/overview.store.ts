@@ -11,8 +11,12 @@ import {
   normalizeProcessedReadings,
 } from "$shared/readings/processed_readings";
 import { analyticsSubscriptions, cameraSubscriptions, readingSubscriptions } from "$shared/realtime";
-import { processedTopics } from "$shared/realtime/topics";
-import { openRoutineBuilder } from "$shared/stores/app.store";
+import {
+  cameraSnapshotDataTopics,
+  processedTopics,
+  type CameraSnapshotView,
+} from "$shared/realtime/topics";
+import { cameraSnapshotView, openRoutineBuilder } from "$shared/stores/app.store";
 import type {
   ActionDispatchPayload,
   ActionHistoryRecord,
@@ -48,6 +52,12 @@ type ErrorState = {
   cause: Error;
 };
 
+type PhotoSnapshot = {
+  src: string;
+  width: number | null;
+  height: number | null;
+};
+
 export type ActuatorControl = {
   id: number;
   name: string;
@@ -77,7 +87,10 @@ let readingSubscriptionToken: { cleanup: () => void } | null = null;
 let cameraSubscriptionToken: { cleanup: () => void } | null = null;
 let recommendationLifecycleSubscriptionToken: { cleanup: () => void } | null = null;
 let healthAssessmentSubscriptionToken: { cleanup: () => void } | null = null;
-let receivedRealtimeSnapshot = false;
+let receivedRealtimeSnapshotByView: Record<CameraSnapshotView, boolean> = {
+  top: false,
+  side: false,
+};
 let actuatorStateById: Record<number, boolean> = {};
 let latestSubmittedRecommendation: Recommendation | null = null;
 let latestCompletedRecommendation: Recommendation | null = null;
@@ -95,7 +108,10 @@ const actuatorsData = writable<ActuatorControl[]>([]);
 const telemetryData = writable<TelemetrySnapshot>(createEmptyTelemetrySnapshot());
 const vitalityData = writable<VitalitySnapshot>(buildVitalitySnapshot(null));
 const plantMetricsData = writable<PlantMetricsSnapshot>(createEmptyPlantMetricsSnapshot());
-const latestPhotoSrcData = writable<string | null>(null);
+const latestPhotoByViewData = writable<Record<CameraSnapshotView, PhotoSnapshot | null>>({
+  top: null,
+  side: null,
+});
 const controlModeData = writable<ControlMode | null>(null);
 const closedLoopStatusData = writable<ClosedLoopStatusSummary>({
   status: "idle",
@@ -113,7 +129,11 @@ export const actuators = derived(actuatorsData, ($actuators) => $actuators);
 export const telemetry = derived(telemetryData, ($telemetry) => $telemetry);
 export const vitality = derived(vitalityData, ($vitality) => $vitality);
 export const plantMetrics = derived(plantMetricsData, ($plantMetrics) => $plantMetrics);
-export const latestPhotoSrc = derived(latestPhotoSrcData, ($latestPhotoSrc) => $latestPhotoSrc);
+export const latestPhoto = derived(
+  [latestPhotoByViewData, cameraSnapshotView],
+  ([$latestPhotoByView, $cameraSnapshotView]) => $latestPhotoByView[$cameraSnapshotView],
+);
+export const latestPhotoSrc = derived(latestPhoto, ($latestPhoto) => $latestPhoto?.src ?? null);
 export const controlMode = derived(controlModeData, ($controlMode) => $controlMode);
 export const closedLoopStatus = derived(closedLoopStatusData, ($closedLoopStatus) => $closedLoopStatus);
 export const loadingState = derived(loadingStateData, ($loadingState) => $loadingState);
@@ -341,7 +361,7 @@ function mapActuator(actuator: Actuator, isOn: boolean): ActuatorControl {
   };
 }
 
-function extractPhotoSource(payload: unknown): string | null {
+function extractPhotoSnapshot(payload: unknown): PhotoSnapshot | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
@@ -353,7 +373,14 @@ function extractPhotoSource(payload: unknown): string | null {
     return null;
   }
 
-  return `data:${mimeType};base64,${image}`;
+  const width = Number(record.width);
+  const height = Number(record.height);
+
+  return {
+    src: `data:${mimeType};base64,${image}`,
+    width: Number.isFinite(width) && width > 0 ? width : null,
+    height: Number.isFinite(height) && height > 0 ? height : null,
+  };
 }
 
 function extractLatestValue(snapshot: TopicSnapshot, key: "value"): number | null {
@@ -514,8 +541,19 @@ function applyReadingToCards(reading: Reading): void {
   );
 }
 
-function mapSnapshotToSrc(snapshot: CameraSnapshot): string {
-  return `data:${snapshot.mime_type};base64,${snapshot.image}`;
+function mapSnapshotToPhoto(snapshot: CameraSnapshot): PhotoSnapshot {
+  return {
+    src: `data:${snapshot.mime_type};base64,${snapshot.image}`,
+    width: snapshot.width ?? null,
+    height: snapshot.height ?? null,
+  };
+}
+
+function setLatestPhoto(view: CameraSnapshotView, snapshot: PhotoSnapshot): void {
+  latestPhotoByViewData.update((current) => ({
+    ...current,
+    [view]: snapshot,
+  }));
 }
 
 function updateActuatorState(actuatorId: number, isOn: boolean): void {
@@ -541,14 +579,14 @@ function startRealtimeSubscriptions(): void {
   }
 
   if (!cameraSubscriptionToken) {
-    cameraSubscriptionToken = cameraSubscriptions.subscribeToSnapshots((payload) => {
-      const src = extractPhotoSource(payload);
-      if (!src) {
+    cameraSubscriptionToken = cameraSubscriptions.subscribeToSnapshots((view, payload) => {
+      const snapshot = extractPhotoSnapshot(payload);
+      if (!snapshot) {
         return;
       }
 
-      receivedRealtimeSnapshot = true;
-      latestPhotoSrcData.set(src);
+      receivedRealtimeSnapshotByView[view] = true;
+      setLatestPhoto(view, snapshot);
     });
   }
 
@@ -705,17 +743,24 @@ async function loadControlMode(): Promise<void> {
   controlModeData.set(mode);
 }
 
+async function loadLatestSnapshotFallbackForView(view: CameraSnapshotView): Promise<void> {
+  if (receivedRealtimeSnapshotByView[view] || get(latestPhotoByViewData)[view]) {
+    return;
+  }
+
+  const snapshot = await dbClient.fetchLatestSnapshot(currentPlantId, cameraSnapshotDataTopics[view]);
+  if (!snapshot || receivedRealtimeSnapshotByView[view]) {
+    return;
+  }
+
+  setLatestPhoto(view, mapSnapshotToPhoto(snapshot));
+}
+
 async function loadLatestSnapshotFallback(): Promise<void> {
-  if (receivedRealtimeSnapshot || get(latestPhotoSrcData)) {
-    return;
-  }
-
-  const snapshot = await dbClient.fetchLatestSnapshot(currentPlantId);
-  if (!snapshot || receivedRealtimeSnapshot) {
-    return;
-  }
-
-  latestPhotoSrcData.set(mapSnapshotToSrc(snapshot));
+  await Promise.all([
+    loadLatestSnapshotFallbackForView("top"),
+    loadLatestSnapshotFallbackForView("side"),
+  ]);
 }
 
 /**
@@ -763,7 +808,10 @@ export function destroy(): void {
 export function reset(): void {
   destroy();
 
-  receivedRealtimeSnapshot = false;
+  receivedRealtimeSnapshotByView = {
+    top: false,
+    side: false,
+  };
   actuatorStateById = {};
   latestSubmittedRecommendation = null;
   latestCompletedRecommendation = null;
@@ -776,7 +824,10 @@ export function reset(): void {
   telemetryData.set(createEmptyTelemetrySnapshot());
   vitalityData.set(buildVitalitySnapshot(null));
   plantMetricsData.set(createEmptyPlantMetricsSnapshot());
-  latestPhotoSrcData.set(null);
+  latestPhotoByViewData.set({
+    top: null,
+    side: null,
+  });
   controlModeData.set(null);
   closedLoopStatusData.set({
     status: "idle",

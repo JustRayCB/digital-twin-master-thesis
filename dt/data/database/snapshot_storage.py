@@ -34,13 +34,17 @@ class SnapshotStorage(DatabaseStorage, ABC):
         ...
 
     @abstractmethod
-    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+    def get_latest_camera_snapshot(
+        self, plant_id: int, topic: Topics | None = None
+    ) -> CameraSnapshot | None:
         """Fetch the latest camera snapshot for a plant.
 
         Parameters
         ----------
         plant_id : int
             Plant identifier.
+        topic : Topics | None
+            Optional camera topic to restrict the lookup.
         Returns
         -------
         CameraSnapshot | None
@@ -132,17 +136,27 @@ class SnapshotStore(SnapshotStorage):
         self.logger.info(f"Ingested camera snapshot {snapshot_id} for sensor {snapshot.sensor_id}")
         return snapshot_id
 
-    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+    def get_latest_camera_snapshot(
+        self, plant_id: int, topic: Topics | None = None
+    ) -> CameraSnapshot | None:
         query = """
             SELECT id, plant_id, sensor_id, timestamp, topic, correlation_id, mime_type,
                    width, height, file_ref
             FROM camera_snapshots
             WHERE plant_id = :plant_id
+        """
+        params: dict[str, int | str] = {"plant_id": plant_id}
+
+        if topic is not None:
+            query += " AND topic = :topic"
+            params["topic"] = topic.short_name
+
+        query += """
             ORDER BY timestamp DESC
             LIMIT 1
         """
         with self._get_connection() as conn:
-            row = conn.execute(text(query), {"plant_id": plant_id}).fetchone()
+            row = conn.execute(text(query), params).fetchone()
 
         if row is None:
             return None

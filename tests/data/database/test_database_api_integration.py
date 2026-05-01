@@ -352,6 +352,49 @@ def test_get_latest_camera_snapshot_returns_camera_payload(
     assert load("generic", CameraSnapshot, payload) == snapshot
 
 
+def test_get_latest_camera_snapshot_filters_by_topic(
+    client, snapshot_store, sample_sensor: SensorDescriptor
+) -> None:
+    """Latest snapshot endpoint returns the requested camera topic."""
+    top_snapshot = CameraSnapshot(
+        plant_id=sample_sensor.plant_id,
+        sensor_id=sample_sensor.id,
+        timestamp=1234567890.0,
+        topic=Topics.CAMERA_IMAGE_TOP,
+        correlation_id="camera-top",
+        mime_type="image/jpeg",
+        image="AQI=",
+        width=640,
+        height=480,
+    )
+    side_snapshot = CameraSnapshot(
+        plant_id=sample_sensor.plant_id,
+        sensor_id=sample_sensor.id,
+        timestamp=1234567990.0,
+        topic=Topics.CAMERA_IMAGE_SIDE,
+        correlation_id="camera-side",
+        mime_type="image/jpeg",
+        image="AQM=",
+        width=480,
+        height=640,
+    )
+    snapshot_store.ingest_camera_snapshot(top_snapshot)
+    snapshot_store.ingest_camera_snapshot(side_snapshot)
+
+    response = client.get(
+        "/camera/snapshots/latest",
+        query_string={
+            "plant_id": sample_sensor.plant_id,
+            "topic": Topics.CAMERA_IMAGE_TOP.value,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload, dict)
+    assert load("generic", CameraSnapshot, payload) == top_snapshot
+
+
 def test_query_camera_snapshots_returns_interval_filtered_payloads(
     client, snapshot_store, sample_sensor: SensorDescriptor
 ) -> None:

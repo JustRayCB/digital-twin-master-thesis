@@ -75,6 +75,7 @@ export type CameraSnapshot = {
   plant_id: number;
   sensor_id: number;
   time: number;
+  topic?: string | null;
   mime_type: string;
   image: string;
   width?: number | null;

@@ -9,7 +9,7 @@
   import ClosedLoopSummaryPanel from "./ClosedLoopSummaryPanel.svelte";
   import RoutineCard from "./RoutineCard.svelte";
   import TelemetryCard from "./TelemetryCard.svelte";
-  import { autoPilotEnabled, openRoutineBuilder, overviewViewMode } from "$shared/stores";
+  import { autoPilotEnabled, cameraSnapshotView, openRoutineBuilder, overviewViewMode } from "$shared/stores";
   import { PlantHealthState } from "$shared/types";
   import { onDestroy, onMount } from "svelte";
   import { writable } from "svelte/store";
@@ -20,6 +20,7 @@
     destroy,
     editRoutine,
     initialize,
+    latestPhoto,
     latestPhotoSrc,
     plantMetrics,
     routines,
@@ -34,6 +35,10 @@
   let clockInterval: ReturnType<typeof setInterval> | null = null;
 
   $: healthState.set(mapPlantHealthState($vitality.status));
+  $: photoAspectRatio =
+    $overviewViewMode === "camera" && $latestPhoto?.width && $latestPhoto?.height
+      ? `${$latestPhoto.width} / ${$latestPhoto.height}`
+      : "1 / 1";
 
   function mapPlantHealthState(status: string): PlantHealthState {
     if (status === "Critical") {
@@ -95,17 +100,36 @@
     <div class="flex flex-col items-center justify-center relative min-h-[500px]">
       <div class="absolute w-full h-full border-4 border-dashed border-gray-200 rounded-3xl -z-10"></div>
 
-      <div class="polaroid-container bg-white p-4 pb-16 shadow-hard-lg border-2 border-gray-100 max-w-lg w-full relative">
+      <div class="polaroid-container bg-white p-4 pb-16 shadow-hard-lg border-2 border-gray-100 max-w-2xl w-full relative">
         <div class="absolute -top-4 left-1/2 -translate-x-1/2 w-32 h-10 bg-yellow-100/80 border border-yellow-200/50 rotate-1 shadow-sm z-10 tape"></div>
 
-        <div class="bg-gradient-to-br from-gray-100 to-gray-200 aspect-square w-full border-2 border-ink relative overflow-hidden flex items-center justify-center group">
+        {#if $overviewViewMode === "camera"}
+          <div class="absolute top-5 right-5 z-30 flex bg-cozy-white/90 p-1 border-2 border-ink rounded-lg shadow-hard-sm backdrop-blur-sm">
+            <label class="cursor-pointer select-none">
+              <input type="radio" name="camera-view" value="top" class="peer sr-only" bind:group={$cameraSnapshotView} />
+              <div class="flex items-center gap-1 px-3 py-1 rounded-md font-retro text-lg text-gray-400 peer-checked:bg-cozy-lavender peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
+                <span class="material-symbols-outlined text-base">grid_view</span>
+                TOP
+              </div>
+            </label>
+            <label class="cursor-pointer select-none">
+              <input type="radio" name="camera-view" value="side" class="peer sr-only" bind:group={$cameraSnapshotView} />
+              <div class="flex items-center gap-1 px-3 py-1 rounded-md font-retro text-lg text-gray-400 peer-checked:bg-cozy-peach peer-checked:text-ink peer-checked:border-ink border-2 border-transparent transition-all">
+                <span class="material-symbols-outlined text-base">view_sidebar</span>
+                SIDE
+              </div>
+            </label>
+          </div>
+        {/if}
+
+        <div class="bg-gradient-to-br from-gray-100 to-gray-200 w-full border-2 border-ink relative overflow-hidden flex items-center justify-center group" style={`aspect-ratio: ${photoAspectRatio};`}>
           <div class="absolute inset-0 z-10 pointer-events-none opacity-5" style="background: repeating-linear-gradient(0deg, #000, #000 2px, transparent 2px, transparent 4px)"></div>
           {#if $overviewViewMode === "camera"}
             {#if $latestPhotoSrc}
               <img
                 src={$latestPhotoSrc}
                 alt="Latest plant snapshot"
-                class="h-full w-full object-cover"
+                class="h-full w-full object-contain bg-gray-100"
               />
             {:else}
               <div class="flex h-full w-full items-center justify-center px-8 text-center font-retro text-2xl text-gray-400">

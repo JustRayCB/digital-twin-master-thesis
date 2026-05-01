@@ -22,12 +22,13 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      ControlMode, Routine,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                  AlertHistoryQuery,
-                                                  CameraSnapshotQuery,
-                                                  ForecastHistoryQuery,
-                                                  HealthHistoryQuery,
-                                                  ReadingsQuery,
-                                                  RecommendationHistoryQuery)
+                                                   AlertHistoryQuery,
+                                                   CameraSnapshotQuery,
+                                                   ForecastHistoryQuery,
+                                                   HealthHistoryQuery,
+                                                   ReadingsQuery,
+                                                   RecommendationHistoryQuery)
+from dt.communication.topics import Topics
 from dt.utils import Config, get_logger
 
 
@@ -342,12 +343,18 @@ class DatabaseApiClient:
         target_cls = AggregatedReading if query.window == "1h" else ProcessedSensorData
         return [load("generic", target_cls, item) for item in payload]
 
-    def get_latest_camera_snapshot(self, plant_id: int) -> CameraSnapshot | None:
+    def get_latest_camera_snapshot(
+        self, plant_id: int, topic: Topics | None = None
+    ) -> CameraSnapshot | None:
         """Fetch the latest camera snapshot for a plant."""
+        params: dict[str, int | str] = {"plant_id": plant_id}
+        if topic is not None:
+            params["topic"] = topic.value
+
         try:
             response = requests.get(
                 f"{self.base_url}/camera/snapshots/latest",
-                params={"plant_id": plant_id},
+                params=params,
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )

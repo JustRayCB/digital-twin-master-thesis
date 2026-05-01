@@ -21,6 +21,7 @@ from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
                                                     HealthHistoryQuery,
                                                     RecommendationHistoryQuery,
                                                     ReadingsQuery)
+from dt.communication.topics import Topics
 from dt.data.database import (AlertStorage, AnalyticsStorage, ControllerStorage,
                               MetadataStorage, ReadingsStorage, SnapshotStorage)
 from dt.utils import get_logger
@@ -103,8 +104,14 @@ def create_database_blueprint(
         plant_id = request.args.get("plant_id", type=int)
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400
+        topic_value = request.args.get("topic")
 
-        snapshot = snapshot_storage.get_latest_camera_snapshot(plant_id=plant_id)
+        try:
+            topic = Topics(topic_value) if topic_value else None
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        snapshot = snapshot_storage.get_latest_camera_snapshot(plant_id=plant_id, topic=topic)
         if snapshot is None:
             return jsonify({"error": "No camera snapshot found"}), 404
 

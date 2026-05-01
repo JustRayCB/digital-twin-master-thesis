@@ -15,6 +15,9 @@ export const routineDraft = writable<RoutineRecord | null>(null);
 /** Store tracking the user's preference for plant visualization in the Overview. */
 export const overviewViewMode = writable<"pixel" | "camera">("pixel");
 
+/** Store tracking the selected camera angle in the Overview photo visualization. */
+export const cameraSnapshotView = writable<"top" | "side">("top");
+
 /** Store tracking whether the AI autopilot is globally enabled for the current context. */
 export const autoPilotEnabled = writable(false);
 
