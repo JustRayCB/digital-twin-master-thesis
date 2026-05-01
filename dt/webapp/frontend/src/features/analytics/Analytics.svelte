@@ -8,7 +8,7 @@
 
     import { analyticsClient } from '$shared/api'
     import { processedTopics, type ProcessedTopicName } from '$shared/realtime'
-    import { formatChartTime } from '$shared/utils/time'
+    import { APP_DATE_LOCALE, formatChartTime } from '$shared/utils/time'
     import {
         analyticsStore,
         type AnalyticsSeriesKey,
@@ -345,6 +345,7 @@
                         >
                         <input
                             type="datetime-local"
+                            lang={APP_DATE_LOCALE}
                             bind:value={exportSinceInput}
                             max={exportUntilInput}
                             on:input={() => {
@@ -359,6 +360,7 @@
                         >
                         <input
                             type="datetime-local"
+                            lang={APP_DATE_LOCALE}
                             bind:value={exportUntilInput}
                             min={exportSinceInput}
                             on:input={() => {
