@@ -202,19 +202,6 @@
         </div>
 
         <div class="flex gap-4 items-stretch">
-          <div class="w-28 bg-white border-2 border-ink rounded-xl overflow-hidden flex flex-col justify-end relative shadow-inner shrink-0">
-            <div class="absolute inset-0 fluid-container z-0 pointer-events-none"></div>
-            <div class="wave bg-blue-400 relative z-10 w-full" style="height: 35%;">
-              <div class="absolute top-0 w-full h-2 bg-blue-500 opacity-50"></div>
-              <div class="absolute bottom-2 left-2 size-2 bg-white/50 rounded-full animate-[ping_3s_infinite]"></div>
-            </div>
-            <div class="absolute right-0 top-0 bottom-0 w-4 border-l-2 border-ink bg-gray-50 flex flex-col justify-between py-2 items-center z-20">
-              <span class="w-2 h-0.5 bg-ink"></span>
-              <span class="w-2 h-0.5 bg-ink"></span>
-              <span class="w-2 h-0.5 bg-ink"></span>
-            </div>
-          </div>
-
           <div class="flex-1 flex flex-col gap-3 min-w-0">
             <div class="bg-white border-2 border-ink rounded-lg p-3 shadow-sm">
               <div class="flex justify-between items-baseline">
