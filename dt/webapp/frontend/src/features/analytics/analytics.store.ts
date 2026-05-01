@@ -366,15 +366,7 @@ function createDefaultReadingsPort(): AnalyticsReadingsPort {
 		if (query.window === "1h") {
 			const aggregatedReadings =
 				await dbClient.fetchAggregatedReadings(query);
-			cachedReadings = retainedLiveReadings;
 			aggregatedByTopic.clear();
-			liveReadingCounts.clear();
-			for (const reading of retainedLiveReadings) {
-				const key = buildProcessedReadingCacheKey(reading);
-				if (key) {
-					liveReadingCounts.set(key, 1);
-				}
-			}
 
 			for (const reading of aggregatedReadings) {
 				const topic = typeof reading.topic === "string" ? reading.topic : "";
