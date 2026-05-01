@@ -96,6 +96,7 @@
     let exportError: string | null = null
     let exportSinceInput = ''
     let exportUntilInput = ''
+    let exportRangeUsesChartRange = false
 
     let mounted = false
     let wasCorrelationMode = false
@@ -178,6 +179,12 @@
         const { since, until } = getTimeWindow($currentTimeView, Date.now())
         exportSinceInput = formatChartTime(since).slice(0, 16).replace(' ', 'T')
         exportUntilInput = formatChartTime(until).slice(0, 16).replace(' ', 'T')
+        exportRangeUsesChartRange = true
+        exportError = null
+    }
+
+    function useCustomExportRange(): void {
+        exportRangeUsesChartRange = false
         exportError = null
     }
 
@@ -348,9 +355,7 @@
                             lang={APP_DATE_LOCALE}
                             bind:value={exportSinceInput}
                             max={exportUntilInput}
-                            on:input={() => {
-                                exportError = null
-                            }}
+                            on:input={useCustomExportRange}
                             class="rounded-lg border-2 border-ink bg-white px-3 py-2 font-sans text-sm text-ink shadow-hard-sm focus:outline-none focus:ring-2 focus:ring-cozy-lavender"
                         />
                     </label>
@@ -363,18 +368,19 @@
                             lang={APP_DATE_LOCALE}
                             bind:value={exportUntilInput}
                             min={exportSinceInput}
-                            on:input={() => {
-                                exportError = null
-                            }}
+                            on:input={useCustomExportRange}
                             class="rounded-lg border-2 border-ink bg-white px-3 py-2 font-sans text-sm text-ink shadow-hard-sm focus:outline-none focus:ring-2 focus:ring-cozy-lavender"
                         />
                     </label>
                     <button
                         type="button"
                         on:click={setExportRangeToCurrentView}
-                        class="w-fit rounded-lg border-2 border-ink bg-white px-4 py-2 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5"
+                        aria-pressed={exportRangeUsesChartRange}
+                        class={`w-fit rounded-lg border-2 border-ink px-4 py-2 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5 ${
+                            exportRangeUsesChartRange ? 'scale-105 bg-cozy-peach' : 'bg-white'
+                        }`}
                     >
-                        use chart range
+                        {exportRangeUsesChartRange ? 'using chart range' : 'use chart range'}
                     </button>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">

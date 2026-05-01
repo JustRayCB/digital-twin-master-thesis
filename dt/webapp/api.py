@@ -27,7 +27,7 @@ from dt.utils import get_logger
 
 logger = get_logger(__name__)
 
-EXPORT_DB_TIMEOUT_SECONDS = 240
+EXPORT_DB_TIMEOUT_SECONDS = 600
 
 
 def create_webapp_blueprint(

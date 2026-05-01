@@ -25,6 +25,7 @@ const baseLayout: PlotLayout = {
     side: "right",
     range: [0, 1],
     showgrid: false,
+    rangemode: "tozero",
   },
   paper_bgcolor: "rgba(0,0,0,0)",
   plot_bgcolor: "rgba(0,0,0,0)",
