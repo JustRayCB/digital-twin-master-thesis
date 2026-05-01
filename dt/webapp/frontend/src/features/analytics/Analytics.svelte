@@ -338,7 +338,7 @@
 
             <div class="text-xs font-bold uppercase tracking-wider text-gray-500">Export</div>
             <div class="flex flex-col gap-3">
-                <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] md:items-end">
+                <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_max-content] md:items-end">
                     <label class="flex flex-col gap-1">
                         <span class="font-sans text-xs font-bold uppercase tracking-wider text-gray-500"
                             >From</span
@@ -370,7 +370,7 @@
                     <button
                         type="button"
                         on:click={setExportRangeToCurrentView}
-                        class="rounded-lg border-2 border-ink bg-white px-4 py-2 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5"
+                        class="w-fit rounded-lg border-2 border-ink bg-white px-4 py-2 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5"
                     >
                         use chart range
                     </button>
