@@ -12,18 +12,20 @@ from dt.communication.adapters import dump, load
 from dt.communication.dataclasses import SensorDescriptor
 from dt.communication.dataclasses.alerts.alert_record import AlertDefinition
 from dt.communication.dataclasses.controller import (ActionCommand,
-                                                      ControlMode,
-                                                      RoutineUpdate)
+                                                     ControlMode,
+                                                     RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                    AlertHistoryQuery,
-                                                    CameraSnapshotQuery,
-                                                    ForecastHistoryQuery,
-                                                    HealthHistoryQuery,
-                                                    RecommendationHistoryQuery,
-                                                    ReadingsQuery)
+                                                  ActionHistoryQuery,
+                                                  AlertHistoryQuery,
+                                                  CameraSnapshotQuery,
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  RecommendationHistoryQuery,
+                                                  ReadingsQuery)
 from dt.communication.topics import Topics
-from dt.data.database import (AlertStorage, AnalyticsStorage, ControllerStorage,
-                              MetadataStorage, ReadingsStorage, SnapshotStorage)
+from dt.data.database import (AlertStorage, AnalyticsStorage,
+                              ControllerStorage, MetadataStorage,
+                              ReadingsStorage, SnapshotStorage)
 from dt.utils import get_logger
 
 logger = get_logger(__name__)
@@ -328,13 +330,12 @@ def create_database_blueprint(
     @bp.route("/controller/actions/history", methods=["GET"])
     def get_controller_action_history():
         """Get action execution history."""
-        plant_id = request.args.get("plant_id", type=int)
-        limit = request.args.get("limit", default=50, type=int)
+        try:
+            query = load("generic", ActionHistoryQuery, request.args.to_dict())
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
-        if not plant_id:
-            return jsonify({"error": "plant_id is required"}), 400
-
-        history = controller_storage.get_action_history(plant_id, limit)
+        history = controller_storage.get_action_history(query)
         return jsonify([dump("generic", item) for item in history])
 
     @bp.route("/controller/policies", methods=["GET"])

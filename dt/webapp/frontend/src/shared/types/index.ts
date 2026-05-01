@@ -301,3 +301,40 @@ export type CameraSnapshotQuery = {
   since?: number;
   until?: number;
 };
+
+/** Parameters for exporting analytics data for model training. */
+export type AnalyticsExportQuery = {
+  plantId: number;
+  since?: number;
+  until?: number;
+  limit?: number;
+};
+
+/** Browser-facing payload returned by the analytics export endpoint. */
+export type AnalyticsExportPayload = {
+  metadata: {
+    format: string;
+    plant_id: number;
+    exported_at: number;
+    since: number | null;
+    until: number | null;
+    limit: number | null;
+  };
+  plant: {
+    sensors: Sensor[];
+    actuators: Actuator[];
+  };
+  readings: {
+    raw: Reading[];
+    aggregates: AggregatedReading[];
+  };
+  alerts: {
+    active: ActiveAlert[];
+    history: AlertHistory[];
+  };
+  actions: Array<Record<string, unknown>>;
+  recommendations: Recommendation[];
+  health: Array<Record<string, unknown>>;
+  forecasts: ForecastResult[];
+  camera_snapshots: CameraSnapshot[];
+};

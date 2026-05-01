@@ -4,7 +4,7 @@ Provides a thin wrapper over the Flask controller API for managing modes,
 routines, and dispatching actions.
 """
 
-from typing import Any, List, Optional
+from typing import Any, List
 import requests
 
 from dt.communication.adapters import dump, load
@@ -16,6 +16,7 @@ from dt.communication.dataclasses.controller import (
     Routine,
     RoutineUpdate,
 )
+from dt.communication.dataclasses.queries import ActionHistoryQuery
 from dt.utils import Config, get_logger
 
 
@@ -136,12 +137,15 @@ class ControllerClient:
             self.logger.error(f"Error dispatching action: {exc}")
             raise RuntimeError(f"Failed to dispatch action: {exc}") from exc
 
-    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+    def get_action_history(self, query: ActionHistoryQuery) -> list[ActionCommand]:
         """Get action execution history."""
+        params = dump("generic", query)
+        params["limit"] = query.effective_limit
+        params = {key: value for key, value in params.items() if value is not None}
         try:
             response = requests.get(
                 f"{self.base_url}/controller/actions/history",
-                params={"plant_id": plant_id, "limit": limit},
+                params=params,
                 timeout=5,
             )
             response.raise_for_status()

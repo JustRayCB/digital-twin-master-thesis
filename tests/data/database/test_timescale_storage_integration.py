@@ -35,6 +35,7 @@ from dt.communication.dataclasses.controller import ActionCommand
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
 from dt.communication.dataclasses.queries import (
     ActiveAlertsQuery,
+    ActionHistoryQuery,
     AlertHistoryQuery,
     CameraSnapshotQuery,
     ForecastHistoryQuery,
@@ -571,6 +572,42 @@ def test_save_and_load_external_alert_event(metadata_store, alert_store) -> None
     assert saved_event.metadata["wind_speed"] == "100km/h"
 
 
+def test_alert_history_closed_window_ignores_limit(metadata_store, alert_store) -> None:
+    plant_id = metadata_store.upsert_plant(name="Alert Window Plant")
+    definition = AlertDefinition(
+        alert_key="weather:window",
+        plant_id=plant_id,
+        sensor_id=None,
+        source="weather_api",
+        rule_id=None,
+        rule_name="Window Warning",
+        kind=AlertType.EXTERNAL,
+        persistence_count=0,
+        cooldown_seconds=0,
+    )
+    alert_store.save_alert_definition(definition)
+
+    for timestamp in (100.0, 200.0, 300.0):
+        alert_store.save_alert_event(
+            ExternalAlertEvent(
+                alert_key=definition.alert_key,
+                plant_id=plant_id,
+                timestamp=timestamp,
+                status=AlertStatus.ACTIVE,
+                severity=SeverityLevel.WARNING,
+                message="Window alert",
+                correlation_id=f"alert-window-{timestamp}",
+                metadata={},
+            )
+        )
+
+    history = alert_store.get_alert_history(
+        AlertHistoryQuery(plant_id=plant_id, limit=1, since=100.0, until=200.0)
+    )
+
+    assert [event.timestamp for event in history] == pytest.approx([200.0, 100.0])
+
+
 def test_save_external_alert_event_does_not_json_dump_in_storage(
     metadata_store, alert_store, monkeypatch
 ) -> None:
@@ -606,7 +643,9 @@ def test_save_external_alert_event_does_not_json_dump_in_storage(
     monkeypatch.setattr("dt.data.database.alerts_storage.dump", lambda *_: dumped_event)
     monkeypatch.setattr(
         "json.dumps",
-        lambda *args, **kwargs: pytest.fail("storage should not json.dumps alert metadata"),
+        lambda *args, **kwargs: pytest.fail(
+            "storage should not json.dumps alert metadata"
+        ),
     )
 
     event_id = alert_store.save_alert_event(event)
@@ -1123,12 +1162,46 @@ def test_log_action_execution_appends_status_events(
     controller_store.log_action_execution(running)
     controller_store.log_action_execution(completed)
 
-    history = controller_store.get_action_history(plant_id, limit=10)
+    history = controller_store.get_action_history(
+        ActionHistoryQuery(plant_id=plant_id, limit=10)
+    )
 
     assert [item.status for item in history[:2]] == ["completed", "running"]
     assert {item.execution_id for item in history[:2]} == {"exec-append-1"}
     assert history[0].event_at == pytest.approx(completed.event_at, abs=1e-6)
     assert history[1].event_at == pytest.approx(running.event_at, abs=1e-6)
+
+
+def test_action_history_closed_window_ignores_limit(
+    metadata_store, controller_store
+) -> None:
+    plant_id = metadata_store.upsert_plant(name="Action Window Plant")
+    actuator_id = metadata_store.register_actuator(
+        plant_id=plant_id, name="Window Pump", pin=27, relay_channel=1
+    )
+
+    for timestamp in (100.0, 200.0, 300.0):
+        controller_store.log_action_execution(
+            ActionCommand(
+                plant_id=plant_id,
+                execution_id=f"exec-window-{timestamp}",
+                action_id=f"action-window-{timestamp}",
+                actuator_id=actuator_id,
+                event_at=timestamp,
+                duration=0.0,
+                command="ON",
+                reason="window test",
+                correlation_id=f"action-window-{timestamp}",
+                source="manual",
+                status="completed",
+            )
+        )
+
+    history = controller_store.get_action_history(
+        ActionHistoryQuery(plant_id=plant_id, since=100.0, until=200.0)
+    )
+
+    assert [action.event_at for action in history] == pytest.approx([200.0, 100.0])
 
 
 def test_log_and_get_health_history(metadata_store, db_engine) -> None:
@@ -1165,7 +1238,9 @@ def test_log_and_get_forecast_history(metadata_store, db_engine) -> None:
         horizon_seconds=3600,
         predicted_value=24.5,
         unit="%",
-        model_metadata=ModelMetadata(model_name="moisture-forecaster", model_version="2.0"),
+        model_metadata=ModelMetadata(
+            model_name="moisture-forecaster", model_version="2.0"
+        ),
         features_used=["soil_moisture.last", "context.soil_moisture_mean_24h"],
         inference_metadata={"confidence": 0.73},
     )

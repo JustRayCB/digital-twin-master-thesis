@@ -22,12 +22,13 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      ControlMode, Routine,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
+                                                   ActionHistoryQuery,
                                                    AlertHistoryQuery,
-                                                   CameraSnapshotQuery,
-                                                   ForecastHistoryQuery,
-                                                   HealthHistoryQuery,
-                                                   ReadingsQuery,
-                                                   RecommendationHistoryQuery)
+                                                  CameraSnapshotQuery,
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  ReadingsQuery,
+                                                  RecommendationHistoryQuery)
 from dt.communication.topics import Topics
 from dt.utils import Config, get_logger
 
@@ -226,12 +227,15 @@ class DatabaseApiClient:
             self.logger.error(f"Error deleting routine: {exc}")
             raise RuntimeError(f"Failed to delete routine: {exc}") from exc
 
-    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+    def get_action_history(self, query: ActionHistoryQuery) -> list[ActionCommand]:
         """Fetch action execution history."""
+        params = dump("generic", query)
+        params["limit"] = query.effective_limit
+        params = {key: value for key, value in params.items() if value is not None}
         try:
             response = requests.get(
                 f"{self.base_url}/controller/actions/history",
-                params={"plant_id": plant_id, "limit": limit},
+                params=params,
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )

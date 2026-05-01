@@ -6,6 +6,7 @@
 
     import { onDestroy, onMount, tick } from 'svelte'
 
+    import { analyticsClient } from '$shared/api'
     import { processedTopics, type ProcessedTopicName } from '$shared/realtime'
     import {
         analyticsStore,
@@ -13,14 +14,17 @@
         type AnalyticsTimeView,
         type CorrelationSummary,
     } from './analytics.store'
+    import { getTimeWindow } from './time.utils'
 
     /** Destructured store values for reactive UI updates */
-    const { correlationMode, currentTimeView, errorState, loadingState, visibleSeries } = analyticsStore
+    const { correlationMode, currentTimeView, errorState, loadingState, visibleSeries } =
+        analyticsStore
 
     /** Available view modes for the analytics dashboard */
     const viewModes = ['trends', 'correlation'] as const
     /** Supported time ranges for data aggregation */
     const timeViews: AnalyticsTimeView[] = ['day', 'week', 'month']
+    const plantId = 1
     /** Telemetry series definitions with their display labels */
     const series: Array<{ key: AnalyticsSeriesKey; label: string }> = [
         { key: 'value', label: 'processed' },
@@ -87,6 +91,8 @@
     let selectedCorrelationChart: HTMLElement | null = null
     let correlationMatrixChart: HTMLElement | null = null
     let correlationSummary: CorrelationSummary | null = null
+    let exportingData = false
+    let exportError: string | null = null
 
     let mounted = false
     let wasCorrelationMode = false
@@ -139,7 +145,6 @@
         }
     }
 
-
     function getSelectedCorrelationPair() {
         return (
             correlationPairs.find((pair) => pair.id === selectedCorrelationPairId) ??
@@ -157,13 +162,39 @@
         return 'last 30 days, hourly aggregates'
     }
 
+    async function exportData(): Promise<void> {
+        if (exportingData) {
+            return
+        }
+
+        exportingData = true
+        exportError = null
+        try {
+            const { since, until } = getTimeWindow($currentTimeView, Date.now())
+            const payload = await analyticsClient.exportData({ plantId, since, until })
+            const exportedAt = new Date().toISOString().replace(/[:.]/g, '-')
+            const blob = new Blob([JSON.stringify(payload, null, 2)], {
+                type: 'application/json',
+            })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `dtwin-data-${$currentTimeView}-${exportedAt}.json`
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            URL.revokeObjectURL(url)
+        } catch (error) {
+            exportError = error instanceof Error ? error.message : 'Export failed.'
+        } finally {
+            exportingData = false
+        }
+    }
+
     async function updateCorrelationCharts(): Promise<void> {
         await tick()
 
-        if (
-            !selectedCorrelationChart ||
-            !correlationMatrixChart
-        ) {
+        if (!selectedCorrelationChart || !correlationMatrixChart) {
             return
         }
 
@@ -199,7 +230,9 @@
 <section class="flex flex-col h-full animate-in fade-in duration-500">
     <header class="flex flex-col gap-2 mb-5">
         <h1 class="font-retro text-6xl text-ink">Sensor Trends</h1>
-        <p class="text-gray-500 mt-2 font-sans font-medium tracking-wide border-l-4 border-cozy-lavender pl-3">
+        <p
+            class="text-gray-500 mt-2 font-sans font-medium tracking-wide border-l-4 border-cozy-lavender pl-3"
+        >
             Historical data for Basil Study
         </p>
     </header>
@@ -220,7 +253,10 @@
                             }}
                             class="peer sr-only"
                         />
-                        <span class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 border-transparent peer-checked:bg-desk peer-checked:text-ink peer-checked:border-ink text-gray-400 hover:text-gray-600">{mode}</span>
+                        <span
+                            class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 border-transparent peer-checked:bg-desk peer-checked:text-ink peer-checked:border-ink text-gray-400 hover:text-gray-600"
+                            >{mode}</span
+                        >
                     </label>
                 {/each}
             </div>
@@ -239,7 +275,10 @@
                             }}
                             class="peer sr-only"
                         />
-                        <span class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 border-transparent peer-checked:bg-cozy-peach peer-checked:text-ink peer-checked:border-ink text-gray-400 hover:text-gray-600">{view}</span>
+                        <span
+                            class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 border-transparent peer-checked:bg-cozy-peach peer-checked:text-ink peer-checked:border-ink text-gray-400 hover:text-gray-600"
+                            >{view}</span
+                        >
                     </label>
                 {/each}
             </div>
@@ -260,9 +299,35 @@
                                 )}
                             class="peer sr-only"
                         />
-                        <span class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 peer-checked:bg-desk peer-checked:text-ink peer-checked:border-ink bg-white text-gray-400 border-transparent hover:text-gray-600">{item.label}</span>
+                        <span
+                            class="block px-4 py-1.5 rounded-lg font-retro text-lg uppercase transition-all border-2 peer-checked:bg-desk peer-checked:text-ink peer-checked:border-ink bg-white text-gray-400 border-transparent hover:text-gray-600"
+                            >{item.label}</span
+                        >
                     </label>
                 {/each}
+            </div>
+
+            <div class="text-xs font-bold uppercase tracking-wider text-gray-500">Export</div>
+            <div class="flex flex-col gap-2">
+                <div class="flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        on:click={() => void exportData()}
+                        disabled={exportingData}
+                        class="rounded-lg border-2 border-ink bg-cozy-mint px-4 py-1.5 font-retro text-lg uppercase text-ink shadow-hard-sm transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-60"
+                    >
+                        {exportingData ? 'exporting...' : 'export dataset'}
+                    </button>
+                    <span class="font-sans text-xs font-medium text-gray-500">
+                        Current range with readings, aggregates, alerts, actions, recommendations,
+                        forecasts, and snapshots.
+                    </span>
+                </div>
+                {#if exportError}
+                    <p class="font-sans text-sm font-semibold text-pop-red" role="alert">
+                        {exportError}
+                    </p>
+                {/if}
             </div>
 
             {#if $correlationMode}
@@ -309,13 +374,24 @@
 
     {#if $correlationMode}
         <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative min-h-[760px]">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative min-h-[760px]"
+            >
                 <div class="mb-4 flex flex-col gap-1">
                     <h2 class="font-retro text-3xl text-ink">Selected Pair</h2>
-                    <p class="font-sans text-sm text-gray-600">{getSelectedCorrelationPair().label} over {getTimeRangeLabel($currentTimeView)}</p>
+                    <p class="font-sans text-sm text-gray-600">
+                        {getSelectedCorrelationPair().label} over {getTimeRangeLabel(
+                            $currentTimeView
+                        )}
+                    </p>
                 </div>
-                <div class="min-h-[640px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white">
-                    <div bind:this={selectedCorrelationChart} style="width: 100%; height: 640px; min-height: 640px;"></div>
+                <div
+                    class="min-h-[640px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white"
+                >
+                    <div
+                        bind:this={selectedCorrelationChart}
+                        style="width: 100%; height: 640px; min-height: 640px;"
+                    ></div>
                 </div>
             </div>
             <aside class="bg-desk border-2 border-ink shadow-hard rounded-xl p-6 min-h-[460px]">
@@ -323,79 +399,139 @@
                 {#if correlationSummary}
                     <div class="mt-5 space-y-4 font-sans text-sm text-gray-700">
                         <div>
-                            <div class="text-xs font-bold uppercase tracking-wider text-gray-500">Relationship</div>
+                            <div class="text-xs font-bold uppercase tracking-wider text-gray-500">
+                                Relationship
+                            </div>
                             <p class="mt-1 text-2xl font-retro text-ink">
-                                {correlationSummary.strength} {correlationSummary.direction}
+                                {correlationSummary.strength}
+                                {correlationSummary.direction}
                             </p>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div class="rounded-lg border-2 border-ink bg-white p-3">
-                                <div class="text-xs font-bold uppercase tracking-wider text-gray-500">r</div>
-                                <div class="mt-1 font-retro text-3xl text-ink">{correlationSummary.coefficient.toFixed(3)}</div>
+                                <div
+                                    class="text-xs font-bold uppercase tracking-wider text-gray-500"
+                                >
+                                    r
+                                </div>
+                                <div class="mt-1 font-retro text-3xl text-ink">
+                                    {correlationSummary.coefficient.toFixed(3)}
+                                </div>
                             </div>
                             <div class="rounded-lg border-2 border-ink bg-white p-3">
-                                <div class="text-xs font-bold uppercase tracking-wider text-gray-500">Matched samples</div>
-                                <div class="mt-1 font-retro text-3xl text-ink">{correlationSummary.sampleCount}</div>
+                                <div
+                                    class="text-xs font-bold uppercase tracking-wider text-gray-500"
+                                >
+                                    Matched samples
+                                </div>
+                                <div class="mt-1 font-retro text-3xl text-ink">
+                                    {correlationSummary.sampleCount}
+                                </div>
                             </div>
                         </div>
                         <p>
-                            {correlationSummary.method === 'spearman' ? 'Spearman ranks the readings first, so it focuses on monotonic movement rather than exact linear scaling.' : 'Pearson uses the plotted values directly, so it measures linear movement between the two sensors.'}
+                            {correlationSummary.method === 'spearman'
+                                ? 'Spearman ranks the readings first, so it focuses on monotonic movement rather than exact linear scaling.'
+                                : 'Pearson uses the plotted values directly, so it measures linear movement between the two sensors.'}
                         </p>
                         <p>
-                            Data basis: {getTimeRangeLabel($currentTimeView)}. The matrix uses the same method and time range for every pair.
+                            Data basis: {getTimeRangeLabel($currentTimeView)}. The matrix uses the
+                            same method and time range for every pair.
                         </p>
                         <p>
-                            Matched samples are pairs of values recorded at the same timestamp; readings without a timestamp match are not plotted or used for r.
+                            Matched samples are pairs of values recorded at the same timestamp;
+                            readings without a timestamp match are not plotted or used for r.
                         </p>
                     </div>
                 {:else}
-                    <p class="mt-5 font-sans text-sm text-gray-600">Choose a pair to render correlation details.</p>
+                    <p class="mt-5 font-sans text-sm text-gray-600">
+                        Choose a pair to render correlation details.
+                    </p>
                 {/if}
             </aside>
-            <div class="xl:col-span-2 bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[520px]">
+            <div
+                class="xl:col-span-2 bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[520px]"
+            >
                 <div class="mb-4 flex flex-col gap-1">
                     <h2 class="font-retro text-3xl text-ink">All Pair Matrix</h2>
-                    <p class="font-sans text-sm text-gray-600">Every sensor pair using {selectedCorrelationMethod} correlation over {getTimeRangeLabel($currentTimeView)}.</p>
+                    <p class="font-sans text-sm text-gray-600">
+                        Every sensor pair using {selectedCorrelationMethod} correlation over {getTimeRangeLabel(
+                            $currentTimeView
+                        )}.
+                    </p>
                 </div>
-                <div class="h-full min-h-[460px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
-                    <div bind:this={correlationMatrixChart} style="width: 100%; height: 100%;"></div>
+                <div
+                    class="h-full min-h-[460px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
+                    <div
+                        bind:this={correlationMatrixChart}
+                        style="width: 100%; height: 100%;"
+                    ></div>
                 </div>
             </div>
         </div>
     {:else}
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={temperatureChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={humidityChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={lightIntensityChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={soilMoistureChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={greenRatioChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={leafCountChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
-            <div class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px] lg:col-span-2">
-                <div class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden">
+            <div
+                class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px] lg:col-span-2"
+            >
+                <div
+                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                >
                     <div bind:this={plantHeightChart} style="width: 100%; height: 100%;"></div>
                 </div>
             </div>

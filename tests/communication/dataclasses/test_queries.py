@@ -1,5 +1,6 @@
 from dt.communication.dataclasses.queries import (
     ActiveAlertsQuery,
+    ActionHistoryQuery,
     AlertHistoryQuery,
     ForecastHistoryQuery,
     HealthHistoryQuery,
@@ -56,9 +57,44 @@ def test_alert_history_query_validates_limit() -> None:
     query = AlertHistoryQuery(plant_id="3", limit="5")  # pyright: ignore[]
     assert query.plant_id == 3
     assert query.limit == 5
+    assert query.effective_limit == 5
+
+    query = AlertHistoryQuery(plant_id="3", limit="5", since="1.0", until="2.0")  # pyright: ignore[]
+    assert query.since == 1.0
+    assert query.until == 2.0
+    assert query.effective_limit is None
+
+    query = AlertHistoryQuery(plant_id="3", limit="5", since="1.0")  # pyright: ignore[]
+    assert query.since == 1.0
+    assert query.effective_limit is None
 
     try:
         AlertHistoryQuery(limit=0)
+    except ValueError as exc:
+        assert str(exc) == "limit must be positive"
+    else:
+        raise AssertionError("Expected ValueError for non-positive limit")
+
+
+def test_action_history_query_validates_required_plant_and_limit() -> None:
+    query = ActionHistoryQuery(plant_id="3", limit="5")  # pyright: ignore[]
+    assert query.plant_id == 3
+    assert query.limit == 5
+    assert query.effective_limit == 5
+
+    query = ActionHistoryQuery(plant_id="3", limit="5", since="1.0")  # pyright: ignore[]
+    assert query.since == 1.0
+    assert query.effective_limit is None
+
+    try:
+        ActionHistoryQuery()
+    except ValueError as exc:
+        assert str(exc) == "plant_id is required"
+    else:
+        raise AssertionError("Expected ValueError for missing plant_id")
+
+    try:
+        ActionHistoryQuery(plant_id=1, limit=0)
     except ValueError as exc:
         assert str(exc) == "limit must be positive"
     else:
@@ -74,6 +110,8 @@ def test_history_queries_reject_since_after_until() -> None:
         Assertions fail if range validation changes.
     """
     for query_type in (
+        ActionHistoryQuery,
+        AlertHistoryQuery,
         HealthHistoryQuery,
         ForecastHistoryQuery,
         RecommendationHistoryQuery,

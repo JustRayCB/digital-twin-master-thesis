@@ -21,6 +21,7 @@ from dt.communication.dataclasses.controller import (ActionCommand,
                                                      CompiledRule, ControlMode,
                                                      Routine, RoutineGraph,
                                                      RoutineUpdate)
+from dt.communication.dataclasses.queries import ActionHistoryQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import MessagingService
 from dt.communication.topics import Topics
@@ -126,8 +127,8 @@ class ControllerService:
         else:
             self._routine_cache.clear()
 
-    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
-        return self.database_client.get_action_history(plant_id, limit)
+    def get_action_history(self, query: ActionHistoryQuery) -> list[ActionCommand]:
+        return self.database_client.get_action_history(query)
 
     def start(self) -> None:
         logger.info("Starting Controller Service...")

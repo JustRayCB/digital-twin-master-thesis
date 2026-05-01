@@ -10,6 +10,7 @@ from dt.communication.dataclasses.controller import (ActionDispatch,
                                                      ActuatorConfigSet,
                                                      ControlMode,
                                                      RoutineUpdate)
+from dt.communication.dataclasses.queries import ActionHistoryQuery
 from dt.controller.service import ControllerService
 from dt.utils import get_logger
 
@@ -148,15 +149,12 @@ def create_controller_blueprint(service: ControllerService) -> Blueprint:
     @bp.route("/actions/history", methods=["GET"])
     def get_action_history():
         """Get action execution history."""
-        plant_id = request.args.get("plant_id", type=int)
-        limit = request.args.get("limit", default=50, type=int)
-
-        if not plant_id:
-            return jsonify({"error": "plant_id is required"}), 400
-
         try:
-            history = service.get_action_history(plant_id, limit)
+            query = load("generic", ActionHistoryQuery, request.args.to_dict())
+            history = service.get_action_history(query)
             return jsonify([dump("generic", item) for item in history])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error fetching history: {e}")
             return jsonify({"error": str(e)}), 500

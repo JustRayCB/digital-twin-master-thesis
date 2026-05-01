@@ -4,18 +4,23 @@ This module provides the API endpoints that the webapp frontend consumes.
 It proxies requests to the database service.
 """
 
+import time
+
 from flask import Blueprint, jsonify, request
 
 from dt.communication.adapters import dump, load
 from dt.communication.controller_client import ControllerClient
 from dt.communication.dataclasses.controller import (ActionDispatch,
                                                      RoutineUpdate)
-from dt.communication.dataclasses.queries import (ActiveAlertsQuery,
-                                                    AlertHistoryQuery,
-                                                    ForecastHistoryQuery,
-                                                    HealthHistoryQuery,
-                                                    ReadingsQuery,
-                                                    RecommendationHistoryQuery)
+from dt.communication.dataclasses.queries import (ActionHistoryQuery,
+                                                  ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  AnalyticsExportQuery,
+                                                  CameraSnapshotQuery,
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  ReadingsQuery,
+                                                  RecommendationHistoryQuery)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
 from dt.utils import get_logger
@@ -163,6 +168,129 @@ def create_webapp_blueprint(
             logger.error(f"Error fetching recommendation history: {e}")
             return jsonify({"error": "Internal server error"}), 500
 
+    @bp.route("/analytics/export", methods=["GET"])
+    def export_analytics_data():
+        """Export plant telemetry and analytics data for model training."""
+        try:
+            query = load("web", AnalyticsExportQuery, request.args.to_dict())
+            effective_limit = query.effective_limit
+
+            raw_query = ReadingsQuery(
+                window="raw",
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+            )
+            aggregate_query = ReadingsQuery(
+                window="1h",
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+            )
+            health_query = HealthHistoryQuery(
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+                limit=effective_limit,
+            )
+            forecast_query = ForecastHistoryQuery(
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+                limit=effective_limit,
+            )
+            recommendation_query = RecommendationHistoryQuery(
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+                limit=effective_limit,
+            )
+            active_alerts_query = ActiveAlertsQuery(plant_id=query.plant_id)
+            alert_history_query = AlertHistoryQuery(
+                plant_id=query.plant_id,
+                limit=effective_limit,
+                since=query.since,
+                until=query.until,
+            )
+            action_history_query = ActionHistoryQuery(
+                plant_id=query.plant_id,
+                limit=effective_limit,
+                since=query.since,
+                until=query.until,
+            )
+            camera_query = CameraSnapshotQuery(
+                plant_id=query.plant_id,
+                since=query.since,
+                until=query.until,
+            )
+
+            alert_history = db_client.get_alert_history(alert_history_query)
+            actions = db_client.get_action_history(action_history_query)
+            sensors = [dump("generic", sensor) for sensor in db_client.list_sensors()]
+            actuators = db_client.list_actuators()
+            metadata = dump("web", query)
+
+            payload = {
+                "metadata": {
+                    "format": "dtwin-export-v1",
+                    "plant_id": query.plant_id,
+                    "exported_at": int(time.time() * 1000),
+                    "since": metadata["since"],
+                    "until": metadata["until"],
+                    "limit": metadata["limit"],
+                },
+                "plant": {
+                    "sensors": [
+                        sensor for sensor in sensors if sensor.get("plant_id") == query.plant_id
+                    ],
+                    "actuators": [
+                        actuator
+                        for actuator in actuators
+                        if actuator.get("plant_id") == query.plant_id
+                    ],
+                },
+                "readings": {
+                    "raw": [
+                        dump("web", reading) for reading in db_client.query_readings(raw_query)
+                    ],
+                    "aggregates": [
+                        dump("web", reading)
+                        for reading in db_client.query_readings(aggregate_query)
+                    ],
+                },
+                "alerts": {
+                    "active": [
+                        dump("web", alert)
+                        for alert in db_client.get_active_alerts(active_alerts_query)
+                    ],
+                    "history": [dump("web", event) for event in alert_history],
+                },
+                "actions": [dump("web", action) for action in actions],
+                "recommendations": [
+                    dump("web", recommendation)
+                    for recommendation in db_client.get_recommendation_history(recommendation_query)
+                ],
+                "health": [
+                    dump("web", assessment)
+                    for assessment in db_client.get_health_history(health_query)
+                ],
+                "forecasts": [
+                    dump("web", forecast)
+                    for forecast in db_client.get_forecast_history(forecast_query)
+                ],
+                "camera_snapshots": [
+                    dump("web", snapshot)
+                    for snapshot in db_client.query_camera_snapshots(camera_query)
+                ],
+            }
+
+            return jsonify(payload)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error exporting analytics data: {e}")
+            return jsonify({"error": "Internal server error"}), 500
+
     @bp.route("/db/health", methods=["GET"])
     def get_health_history():
         """Get plant health assessment history."""
@@ -280,11 +408,15 @@ def create_webapp_blueprint(
 
     @bp.route("/controller/actions/history", methods=["GET"])
     def get_action_history():
-        plant_id = request.args.get("plant_id", default=1, type=int)
-        limit = request.args.get("limit", default=50, type=int)
         try:
-            actions = controller_client.get_action_history(plant_id, limit)
+            query_args = request.args.to_dict()
+            query_args.setdefault("plant_id", "1")
+            actions = controller_client.get_action_history(
+                load("generic", ActionHistoryQuery, query_args)
+            )
             return jsonify([dump("web", a) for a in actions])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error getting action history: {e}")
             return jsonify({"error": str(e)}), 500

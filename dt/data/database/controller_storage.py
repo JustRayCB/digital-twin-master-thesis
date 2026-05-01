@@ -2,7 +2,11 @@ from sqlalchemy import text
 from abc import ABC, abstractmethod
 
 from dt.communication.adapters import dump, load
-from dt.communication.dataclasses.controller import (ActionCommand, ActuatorConfig, ActuatorConfigSet, ControlMode, PlantActuatorConfig, Routine, RoutineUpdate)
+from dt.communication.dataclasses.controller import (ActionCommand,
+                                                     ActuatorConfigSet,
+                                                     ControlMode, Routine,
+                                                     RoutineUpdate)
+from dt.communication.dataclasses.queries import ActionHistoryQuery
 from dt.data.database.base_storage import DatabaseStorage
 
 
@@ -92,15 +96,13 @@ class ControllerStorage(DatabaseStorage, ABC):
         ...
 
     @abstractmethod
-    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+    def get_action_history(self, query: ActionHistoryQuery) -> list[ActionCommand]:
         """Get action execution history for a plant.
 
         Parameters
         ----------
-        plant_id : int
-            The ID of the plant.
-        limit : int, optional
-            Maximum number of records to return, by default 50.
+        query : ActionHistoryQuery
+            Query parameters including plant, optional bounds, and limit.
 
         Returns
         -------
@@ -211,15 +213,28 @@ class ControllerStore(ControllerStorage):
             conn.execute(text(query), {"id": routine_id})
             self.logger.info(f"Deleted routine {routine_id}")
 
-    def get_action_history(self, plant_id: int, limit: int = 50) -> list[ActionCommand]:
+    def get_action_history(self, query_data: ActionHistoryQuery) -> list[ActionCommand]:
+        filters = ["plant_id = :plant_id"]
+        params: dict[str, int | float] = {"plant_id": query_data.plant_id}
+        if query_data.since is not None:
+            filters.append("event_at >= to_timestamp(:since)")
+            params["since"] = query_data.since
+        if query_data.until is not None:
+            filters.append("event_at <= to_timestamp(:until)")
+            params["until"] = query_data.until
+
+        limit_clause = " LIMIT :limit" if query_data.effective_limit is not None else ""
+        if query_data.effective_limit is not None:
+            params["limit"] = query_data.effective_limit
+
         query = """
             SELECT * FROM action_executions
-            WHERE plant_id = :plant_id
+            WHERE {filters}
             ORDER BY event_at DESC, id DESC
-            LIMIT :limit
-        """
+            {limit_clause}
+        """.format(filters=" AND ".join(filters), limit_clause=limit_clause)
         with self._get_connection() as conn:
-            result = conn.execute(text(query), {"plant_id": plant_id, "limit": limit}).fetchall()
+            result = conn.execute(text(query), params).fetchall()
             return [load("db_row", ActionCommand, row) for row in result]
 
     def log_action_execution(self, action: ActionCommand) -> None:

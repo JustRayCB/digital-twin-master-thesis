@@ -48,7 +48,7 @@ class AlertStorage(DatabaseStorage, ABC):
         Parameters
         ----------
         query : AlertHistoryQuery
-            Query parameters (plant_id, limit).
+            Query parameters (plant_id, limit, since, until).
 
         Returns
         -------
@@ -260,11 +260,21 @@ class AlertsStore(AlertStorage):
             FROM alert_history
             WHERE 1=1
         """
-        params: dict[str, Any] = {"limit": query_data.limit}
+        params: dict[str, Any] = {}
         if query_data.plant_id is not None:
             query += " AND plant_id = :plant_id"
             params["plant_id"] = query_data.plant_id
-        query += " ORDER BY timestamp DESC LIMIT :limit"
+        if query_data.since is not None:
+            query += " AND timestamp >= to_timestamp(:since)"
+            params["since"] = query_data.since
+        if query_data.until is not None:
+            query += " AND timestamp <= to_timestamp(:until)"
+            params["until"] = query_data.until
+
+        limit_clause = " LIMIT :limit" if query_data.effective_limit is not None else ""
+        if query_data.effective_limit is not None:
+            params["limit"] = query_data.effective_limit
+        query += f" ORDER BY timestamp DESC{limit_clause}"
 
         return list(conn.execute(text(query), params).fetchall())
 

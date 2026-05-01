@@ -1,26 +1,26 @@
 """Tests for web serializer output."""
 
-from dt.communication.adapters import dump
-from dt.communication.adapters import load
+from dt.analytics.alerts.rules import SeverityLevel
+from dt.communication.adapters import dump, load
 from dt.communication.adapters.serializers.web.base import WebSerializer
 from dt.communication.dataclasses import ProcessedSensorData
 from dt.communication.dataclasses.aggregated_reading import AggregatedReading
 from dt.communication.dataclasses.alerts.alert_record import (
-    AlertHistoryEvent,
-    AlertStatus,
-)
-from dt.communication.dataclasses.analytics import (
-    ActionResult,
-    ForecastResult,
-    ModelMetadata,
-    Recommendation,
-    RecommendedAction,
-)
-from dt.communication.dataclasses.controller.action_command import ActionCommand
+    AlertHistoryEvent, AlertStatus)
+from dt.communication.dataclasses.analytics import (ActionResult,
+                                                    ForecastResult,
+                                                    ModelMetadata,
+                                                    Recommendation,
+                                                    RecommendedAction)
+from dt.communication.dataclasses.controller.action_command import \
+    ActionCommand
 from dt.communication.dataclasses.processed_sensor_data import ValidationFlag
-from dt.communication.dataclasses.queries import ForecastHistoryQuery, HealthHistoryQuery, ReadingsQuery
+from dt.communication.dataclasses.queries import (AnalyticsExportQuery,
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  ReadingsQuery,
+                                                  RecommendationHistoryQuery)
 from dt.communication.topics import Topics
-from dt.analytics.alerts.rules import SeverityLevel
 
 
 def test_web_dump_recommendation_converts_timestamp_and_preserves_actions() -> None:
@@ -49,7 +49,10 @@ def test_web_dump_recommendation_converts_timestamp_and_preserves_actions() -> N
     assert dumped["correlation_id"] == "rec-1"
     assert dumped["reason"] == "dry soil forecast"
     assert dumped["confidence"] == 0.84
-    assert dumped["model_metadata"] == {"model_name": "policy", "model_version": "1.0.0"}
+    assert dumped["model_metadata"] == {
+        "model_name": "policy",
+        "model_version": "1.0.0",
+    }
     assert dumped["actions"][0]["duration_seconds"] == 12.5
     assert dumped["action_results"][0]["status"] == "accepted"
 
@@ -244,7 +247,11 @@ def test_web_load_readings_query_converts_browser_timestamps_to_seconds() -> Non
 
 
 def test_web_load_analytics_history_queries_convert_browser_timestamps_to_seconds() -> None:
-    for query_type in (HealthHistoryQuery, ForecastHistoryQuery):
+    for query_type in (
+        HealthHistoryQuery,
+        ForecastHistoryQuery,
+        RecommendationHistoryQuery,
+    ):
         query = load(
             "web",
             query_type,
@@ -253,3 +260,37 @@ def test_web_load_analytics_history_queries_convert_browser_timestamps_to_second
 
         assert query.since == 1000.25
         assert query.until == 2000.5
+
+
+def test_web_dump_and_load_analytics_export_query_uses_browser_timestamps() -> None:
+    query = load(
+        "web",
+        AnalyticsExportQuery,
+        {"plant_id": "2", "since": "1000250", "until": "2000500", "limit": "25"},
+    )
+
+    assert query.plant_id == 2
+    assert query.since == 1000.25
+    assert query.until == 2000.5
+    assert query.limit == 25
+    assert query.effective_limit is None
+    assert dump("web", query) == {
+        "plant_id": 2,
+        "since": 1000250,
+        "until": 2000500,
+        "limit": None,
+    }
+
+
+def test_web_dump_analytics_export_query_ignores_limit_with_time_bound() -> None:
+    query = AnalyticsExportQuery(plant_id=2, since=1000.25, limit=25)
+
+    assert query.effective_limit is None
+    assert dump("web", query)["limit"] is None
+
+
+def test_web_dump_analytics_export_query_keeps_limit_without_time_bounds() -> None:
+    query = AnalyticsExportQuery(plant_id=2, limit=25)
+
+    assert query.effective_limit == 25
+    assert dump("web", query)["limit"] == 25

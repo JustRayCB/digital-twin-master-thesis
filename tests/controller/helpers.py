@@ -7,6 +7,7 @@ import time
 from kafka import KafkaConsumer
 
 from dt.communication.dataclasses.controller import ActionCommand
+from dt.communication.dataclasses.queries import ActionHistoryQuery
 from dt.communication.db_client import DatabaseApiClient
 
 
@@ -46,7 +47,9 @@ def wait_for_action_history(
     """Poll the database API until action history matches a predicate."""
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        history = database_client.get_action_history(plant_id, limit=limit)
+        history = database_client.get_action_history(
+            ActionHistoryQuery(plant_id=plant_id, limit=limit)
+        )
         if predicate(history):
             return history
         time.sleep(0.25)

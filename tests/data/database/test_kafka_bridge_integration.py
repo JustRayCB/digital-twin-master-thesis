@@ -19,7 +19,8 @@ from dt.communication.dataclasses.alerts.alert_record import (
     AlertDefinition, AlertStatus, ExternalAlertEvent, SensorAlertEvent)
 from dt.communication.dataclasses.alerts.alert_type import AlertType
 from dt.communication.dataclasses.controller import ActionCommand
-from dt.communication.dataclasses.queries import (AlertHistoryQuery,
+from dt.communication.dataclasses.queries import (ActionHistoryQuery,
+                                                   AlertHistoryQuery,
                                                    ForecastHistoryQuery,
                                                    HealthHistoryQuery,
                                                    RecommendationHistoryQuery,
@@ -523,7 +524,9 @@ def test_bridge_persists_action_status_events(
         )
 
         def action_persisted() -> bool:
-            history = controller_store.get_action_history(sample_plant_id, limit=20)
+            history = controller_store.get_action_history(
+                ActionHistoryQuery(plant_id=sample_plant_id, limit=20)
+            )
             return any(item.correlation_id == "action-integration-test" for item in history)
 
         wait_until(action_persisted, timeout_seconds=10.0, interval_seconds=0.25)
