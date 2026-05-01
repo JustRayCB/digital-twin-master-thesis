@@ -35,7 +35,7 @@ import {
 	buildProcessedReadingCacheKey,
 	mergeProcessedReadingIntoCache,
 	normalizeProcessedReadings,
-} from "./processed_readings";
+} from "$shared/readings/processed_readings";
 import {
 	filterReadingsByTopic,
 	filterSensorDataByTimeRange,

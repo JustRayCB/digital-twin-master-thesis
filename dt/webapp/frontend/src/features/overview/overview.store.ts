@@ -5,6 +5,11 @@
 import { derived, get, writable } from "svelte/store";
 
 import { analyticsClient, controllerClient, dbClient } from "$shared/api";
+import {
+  buildProcessedReadingCacheKey,
+  mergeProcessedReadingIntoCache,
+  normalizeProcessedReadings,
+} from "$shared/readings/processed_readings";
 import { analyticsSubscriptions, cameraSubscriptions, readingSubscriptions } from "$shared/realtime";
 import { processedTopics } from "$shared/realtime/topics";
 import { openRoutineBuilder } from "$shared/stores/app.store";
@@ -77,6 +82,8 @@ let actuatorStateById: Record<number, boolean> = {};
 let latestSubmittedRecommendation: Recommendation | null = null;
 let latestCompletedRecommendation: Recommendation | null = null;
 let actionHistoryCache: ActionHistoryRecord[] = [];
+let telemetryReadingCache: Reading[] = [];
+const telemetryReadingCounts = new Map<string, number>();
 
 let routinesOperationState: LoadingState = "idle";
 let routinesOperationError: ErrorState | null = null;
@@ -359,13 +366,9 @@ function extractLatestValue(snapshot: TopicSnapshot, key: "value"): number | nul
   return Number.isFinite(value) ? value : null;
 }
 
-function extractTopic(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const topic = (payload as { topic?: unknown }).topic;
-  return typeof topic === "string" ? topic : null;
+function getReadingTopic(reading: Reading): string | null {
+  const topic = reading.topic;
+  return typeof topic === "string" && topic.length > 0 ? topic : null;
 }
 
 const overviewReadingTopics = [
@@ -388,6 +391,96 @@ function latestReading(readings: Reading[]): Reading | null {
   );
 }
 
+function getLatestCachedReading(topic: string): Reading | null {
+  return latestReading(
+    telemetryReadingCache.filter((reading) => getReadingTopic(reading) === topic),
+  );
+}
+
+function clearTelemetryReadingsForTopic(topic: string): void {
+  telemetryReadingCache = telemetryReadingCache.filter(
+    (reading) => getReadingTopic(reading) !== topic,
+  );
+
+  for (const key of telemetryReadingCounts.keys()) {
+    if (key.startsWith(`${topic}:`)) {
+      telemetryReadingCounts.delete(key);
+    }
+  }
+}
+
+function pruneTelemetryReadingsForTopic(topic: string): void {
+  const latest = getLatestCachedReading(topic);
+  if (!latest) {
+    return;
+  }
+
+  const retainedKeys = new Set<string>();
+  telemetryReadingCache = telemetryReadingCache.filter((reading) => {
+    if (getReadingTopic(reading) !== topic) {
+      return true;
+    }
+
+    if (reading.time !== latest.time) {
+      return false;
+    }
+
+    const key = buildProcessedReadingCacheKey(reading);
+    if (key) {
+      retainedKeys.add(key);
+    }
+    return true;
+  });
+
+  for (const key of telemetryReadingCounts.keys()) {
+    if (key.startsWith(`${topic}:`) && !retainedKeys.has(key)) {
+      telemetryReadingCounts.delete(key);
+    }
+  }
+}
+
+function cacheLatestReadingsForTopic(
+  topic: string,
+  readings: Reading[],
+  counts: Map<string, number>,
+): Reading | null {
+  const topicReadings = readings.filter((reading) => getReadingTopic(reading) === topic);
+  const latest = latestReading(topicReadings);
+  const currentLatest = getLatestCachedReading(topic);
+
+  if (!latest || (currentLatest && latest.time <= currentLatest.time)) {
+    return currentLatest;
+  }
+
+  clearTelemetryReadingsForTopic(topic);
+  const latestReadings = topicReadings.filter((reading) => reading.time === latest.time);
+  telemetryReadingCache = [...telemetryReadingCache, ...latestReadings];
+
+  for (const reading of latestReadings) {
+    const key = buildProcessedReadingCacheKey(reading);
+    if (key) {
+      telemetryReadingCounts.set(key, counts.get(key) ?? 1);
+    }
+  }
+
+  return latestReading(latestReadings);
+}
+
+function mergeTelemetryReading(reading: Reading): Reading | null {
+  const topic = getReadingTopic(reading);
+  if (!topic) {
+    return null;
+  }
+
+  telemetryReadingCache = mergeProcessedReadingIntoCache(
+    telemetryReadingCache,
+    telemetryReadingCounts,
+    reading,
+  );
+  pruneTelemetryReadingsForTopic(topic);
+  return getLatestCachedReading(topic);
+}
+
 function buildSnapshotFromReadingPayload(payload: unknown): TopicSnapshot {
   const value = Number((payload as { value?: unknown })?.value);
   const time = Number((payload as { time?: unknown })?.time);
@@ -404,6 +497,21 @@ function buildSnapshotFromReadingPayload(payload: unknown): TopicSnapshot {
     calibrated_value: [],
     normalized_value: [],
   };
+}
+
+function applyReadingToCards(reading: Reading): void {
+  const topic = getReadingTopic(reading);
+  if (!topic) {
+    return;
+  }
+
+  const snapshot = buildSnapshotFromReadingPayload(reading);
+  const value = extractLatestValue(snapshot, "value");
+  plantMetricsData.update((current) => updatePlantMetricsFromReading(current, topic, value));
+
+  telemetryData.update((current) =>
+    updateTelemetryFromTopicSnapshot(current, topic, snapshot),
+  );
 }
 
 function mapSnapshotToSrc(snapshot: CameraSnapshot): string {
@@ -423,18 +531,12 @@ function updateActuatorState(actuatorId: number, isOn: boolean): void {
 function startRealtimeSubscriptions(): void {
   if (!readingSubscriptionToken) {
     readingSubscriptionToken = readingSubscriptions.subscribeToProcessedReadings((payload) => {
-      const topic = extractTopic(payload);
-      if (!topic) {
+      const reading = mergeTelemetryReading(payload as Reading);
+      if (!reading) {
         return;
       }
 
-      const snapshot = buildSnapshotFromReadingPayload(payload);
-      const value = extractLatestValue(snapshot, "value");
-      plantMetricsData.update((current) => updatePlantMetricsFromReading(current, topic, value));
-
-      telemetryData.update((current) =>
-        updateTelemetryFromTopicSnapshot(current, topic, snapshot),
-      );
+      applyReadingToCards(reading);
     });
   }
 
@@ -511,15 +613,31 @@ async function loadLatestReadings(): Promise<void> {
   const since = until - 24 * 60 * 60 * 1000;
 
   const readingsByTopic = await Promise.all(
-    overviewReadingTopics.map(async (topic) => [
+    overviewReadingTopics.map(async (topic) => {
+      const readings = await dbClient.fetchRawReadings({
+        plantId: currentPlantId,
+        topic,
+        since,
+        until,
+      });
+      const latest = latestReading(readings);
+      const normalizedCache = normalizeProcessedReadings(
+        latest ? readings.filter((reading) => reading.time === latest.time) : [],
+      );
+      return [topic, normalizedCache] as const;
+    }),
+  );
+
+  const latestByTopic = readingsByTopic.map(([topic, normalizedCache]) =>
+    [
       topic,
-      latestReading(await dbClient.fetchRawReadings({ plantId: currentPlantId, topic, since, until })),
-    ] as const),
+      cacheLatestReadingsForTopic(topic, normalizedCache.readings, normalizedCache.counts),
+    ] as const,
   );
 
   telemetryData.update((current) => {
     let next = current;
-    for (const [topic, reading] of readingsByTopic) {
+    for (const [topic, reading] of latestByTopic) {
       if (!reading) {
         continue;
       }
@@ -530,7 +648,7 @@ async function loadLatestReadings(): Promise<void> {
 
   plantMetricsData.update((current) => {
     let next = current;
-    for (const [topic, reading] of readingsByTopic) {
+    for (const [topic, reading] of latestByTopic) {
       next = updatePlantMetricsFromReading(next, topic, reading?.value ?? null);
     }
     return next;
@@ -650,6 +768,8 @@ export function reset(): void {
   latestSubmittedRecommendation = null;
   latestCompletedRecommendation = null;
   actionHistoryCache = [];
+  telemetryReadingCache = [];
+  telemetryReadingCounts.clear();
 
   routinesData.set([]);
   actuatorsData.set([]);
