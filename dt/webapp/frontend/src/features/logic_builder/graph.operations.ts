@@ -48,6 +48,7 @@ function actuatorIdForLabel(label: string, actuatorLookup: Record<string, number
 function topicForNodeLabel(label: string): string {
   const normalized = label.trim().toLowerCase();
   if (normalized === "temperature") return "dt.sensors.temperature";
+  if (normalized === "humidity") return "dt.sensors.humidity";
   if (normalized === "light level") return "dt.sensors.light";
   return "dt.sensors.soil_moisture";
 }
@@ -56,10 +57,17 @@ function triggerNodeDisplay(topic: string): { label: string; icon: string; bgCla
   if (topic === "dt.sensors.temperature") {
     return { label: "Temperature", icon: "thermostat", bgClass: "bg-cozy-peach", unit: "°C" };
   }
+  if (topic === "dt.sensors.humidity") {
+    return { label: "Humidity", icon: "humidity_percentage", bgClass: "bg-cozy-blue", unit: "%" };
+  }
   if (topic === "dt.sensors.light") {
     return { label: "Light Level", icon: "wb_sunny", bgClass: "bg-cozy-yellow", unit: "lux" };
   }
   return { label: "Moisture Level", icon: "water_drop", bgClass: "bg-cozy-lavender", unit: "%" };
+}
+
+function unitForTriggerLabel(label: string): string {
+  return triggerNodeDisplay(topicForNodeLabel(label)).unit;
 }
 
 function actionNodeDisplay(label: string): { icon: string; bgClass: string } {
@@ -112,7 +120,7 @@ export function defaultNodeConfig(type: NodeType, name: string): NodeConfig {
     if (name === "Time of Day") return { triggerKind: "time", time: "08:00" };
     if (name === "Specific Date") return { triggerKind: "date", date: "2026-02-14" };
     if (name === "Every N Days") return { triggerKind: "interval", everyDays: 2, at: "19:00" };
-    return { triggerKind: "sensor", operator: "<", value: 40, unit: "%" };
+    return { triggerKind: "sensor", operator: "<", value: 40, unit: unitForTriggerLabel(name) };
   }
   return { duration: 5, unit: "s" };
 }

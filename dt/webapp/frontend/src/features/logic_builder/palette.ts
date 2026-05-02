@@ -38,6 +38,15 @@ export const triggerPalette: DragPaletteItem[] = [
     outputs: true,
   },
   {
+    name: "Humidity",
+    desc: "Value Input",
+    icon: "humidity_percentage",
+    bg: "bg-cozy-blue",
+    type: "TRIGGER",
+    inputs: false,
+    outputs: true,
+  },
+  {
     name: "Light Level",
     desc: "Value Input",
     icon: "wb_sunny",
