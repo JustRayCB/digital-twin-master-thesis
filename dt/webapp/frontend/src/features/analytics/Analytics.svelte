@@ -460,7 +460,7 @@
                     </p>
                 </div>
                 <div
-                    class="min-h-[640px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white"
+                    class="min-h-[640px] w-full border-2 border-ink/10 rounded-lg relative bg-white"
                 >
                     <div
                         bind:this={selectedCorrelationChart}
@@ -535,7 +535,7 @@
                     </p>
                 </div>
                 <div
-                    class="h-full min-h-[460px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[460px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div
                         bind:this={correlationMatrixChart}
@@ -550,7 +550,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={temperatureChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -559,7 +559,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={humidityChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -568,7 +568,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={lightIntensityChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -577,7 +577,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={soilMoistureChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -586,7 +586,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={greenRatioChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -595,7 +595,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px]"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={leafCountChart} style="width: 100%; height: 100%;"></div>
                 </div>
@@ -604,7 +604,7 @@
                 class="bg-cozy-white border-2 border-ink shadow-hard rounded-xl p-6 relative overflow-hidden min-h-[420px] lg:col-span-2"
             >
                 <div
-                    class="h-full min-h-[360px] w-full chart-grid border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
+                    class="h-full min-h-[360px] w-full border-2 border-ink/10 rounded-lg relative bg-white overflow-hidden"
                 >
                     <div bind:this={plantHeightChart} style="width: 100%; height: 100%;"></div>
                 </div>

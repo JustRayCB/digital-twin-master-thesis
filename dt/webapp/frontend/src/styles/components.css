@@ -48,14 +48,6 @@
     background-color: #e2f0cb;
 }
 
-/* --- Analytics: Chart Grid --- */
-.chart-grid {
-    background-image:
-        linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-        linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
-    background-size: 40px 40px;
-}
-
 /* --- Journal: Fluid Animations --- */
 .fluid-container {
     background-image:
@@ -75,4 +67,3 @@
     opacity: 0.8;
     border-top: 4px solid #1c1917;
 }
-
