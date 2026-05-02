@@ -119,10 +119,10 @@ class PlantHealthBaselineModel:
             reasons.append(f"soil moisture is dry ({moisture_floor:.1f}%)")
 
         # Detect saturation
-        if moisture_ceiling >= 88.0:
+        if moisture_ceiling >= 90.0:
             severity = SignalSeverity.SEVERE
             reasons.append(f"soil moisture is saturated ({moisture_ceiling:.1f}%)")
-        elif moisture_ceiling > 75.0:
+        elif moisture_ceiling > 80.0:
             severity = max(severity, SignalSeverity.MODERATE)
             reasons.append(f"soil moisture is elevated ({moisture_ceiling:.1f}%)")
 
