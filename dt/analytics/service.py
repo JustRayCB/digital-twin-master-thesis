@@ -13,9 +13,9 @@ from dt.analytics.policies.engine import RecommendationPolicyEngine
 from dt.analytics.publisher import AnalyticsPublisher
 from dt.communication.dataclasses import AggregatedReading, ProcessedSensorData
 from dt.communication.dataclasses.analytics import (ForecastResult,
-                                                    HealthAssessment,
-                                                    HealthState,
-                                                    Recommendation)
+                                                     HealthAssessment,
+                                                     HealthState,
+                                                     Recommendation)
 from dt.communication.dataclasses.queries import ReadingsQuery
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.messaging_service import MessagingService
@@ -38,8 +38,10 @@ class AnalyticsService:
         health_model: PlantHealthBaselineModel | None = None,
         recommendation_engine: RecommendationPolicyEngine | None = None,
         recent_window_seconds: int = 7_200,  # 2 hours, the event-time window of recent readings to maintain for feature extraction
-        cadence_seconds: int = 900,  # 15 minutes, the minimum time delta between consecutive feature extractions for the same plant
+        health_assessment_cadence_seconds: int = 3_600,  # 1 hour, the minimum time delta between consecutive health assessments for the same plant
+        moisture_forecast_cadence_seconds: int = 900,  # 15 minutes, the minimum time delta between consecutive moisture forecasts for the same plant
         longer_context_cadence_seconds: int = 3_600,  # 1 hour, the minimum time delta between consecutive longer context refreshes
+        irrigation_lockout_seconds: int = 5_400,  # 90 minutes, suppress repeated irrigation recommendations after an accepted AI watering recommendation
     ) -> None:
         self.kafka_service = kafka_service
         self.alert_service = alert_service
@@ -49,13 +51,16 @@ class AnalyticsService:
         self.health_model = health_model or PlantHealthBaselineModel()
         self.recommendation_engine = recommendation_engine or RecommendationPolicyEngine()
         self.recent_window_seconds = int(recent_window_seconds)
-        self.cadence_seconds = int(cadence_seconds)
+        self.health_assessment_cadence_seconds = int(health_assessment_cadence_seconds)
+        self.moisture_forecast_cadence_seconds = int(moisture_forecast_cadence_seconds)
         self.longer_context_cadence_seconds = int(longer_context_cadence_seconds)
+        self.irrigation_lockout_seconds = int(irrigation_lockout_seconds)
         self._recent_windows: dict[int, RecentReadingsWindow] = {}
         self._hydrated_plants: set[int] = set()
         self._last_health_assessment_timestamps: dict[int, float] = {}
         self._last_moisture_forecast_timestamps: dict[int, float] = {}
-        self._last_forecast_results: list[ForecastResult] = []
+        self._last_forecast_results_by_plant: dict[int, list[ForecastResult]] = {}
+        self._last_accepted_irrigation_timestamps: dict[int, float] = {}
         self._longer_context_aggregates: dict[int, list[AggregatedReading]] = {}
         self._last_longer_context_refresh_timestamps: dict[int, float] = {}
         self._moisture_forecasters: dict[int, RecursiveLeastSquaresForecaster] = {}
@@ -69,6 +74,11 @@ class AnalyticsService:
             processed_topic = topic.processed
             self.kafka_service.subscribe(processed_topic, self._on_message)
             self.logger.info(f"Subscribed to {processed_topic}")
+        self.kafka_service.subscribe(
+            Topics.RECOMMENDATIONS_COMPLETED,
+            self._on_completed_recommendation,
+        )
+        self.logger.info(f"Subscribed to {Topics.RECOMMENDATIONS_COMPLETED}")
 
     def shutdown(self) -> None:
         self.logger.info("Shutting down analytics service")
@@ -87,11 +97,13 @@ class AnalyticsService:
         self._refresh_longer_context_aggregates(payload.plant_id, payload.timestamp)
 
         should_assess_health = self._should_run(
+            self.health_assessment_cadence_seconds,
             self._last_health_assessment_timestamps,
             payload.plant_id,
             payload.timestamp,
         )
         should_forecast_moisture = payload.topic == Topics.SOIL_MOISTURE and self._should_run(
+            self.moisture_forecast_cadence_seconds,
             self._last_moisture_forecast_timestamps,
             payload.plant_id,
             payload.timestamp,
@@ -107,13 +119,28 @@ class AnalyticsService:
         forecast_results = []
         if should_forecast_moisture:
             forecast_results = self._run_moisture_forecast(payload, features)
-            self._last_forecast_results = forecast_results
+            self._last_forecast_results_by_plant[payload.plant_id] = forecast_results
             self._last_moisture_forecast_timestamps[payload.plant_id] = payload.timestamp
 
         if should_assess_health:
             health_assessment = self._run_health_assessment(payload, features)
-            self._submit_recommendation(health_assessment, self._last_forecast_results)
+            self._submit_recommendation(
+                health_assessment,
+                self._last_forecast_results_by_plant.get(payload.plant_id, []),
+            )
             self._last_health_assessment_timestamps[payload.plant_id] = payload.timestamp
+
+    def _on_completed_recommendation(self, recommendation: Recommendation) -> None:
+        for action, result in zip(recommendation.actions, recommendation.action_results):
+            if action.capability != "irrigation":
+                continue
+            if result.status != "accepted":
+                continue
+
+            self._last_accepted_irrigation_timestamps[recommendation.plant_id] = (
+                recommendation.timestamp
+            )
+            break
 
     def _run_health_assessment(
         self,
@@ -191,6 +218,15 @@ class AnalyticsService:
         if recommendation is None:
             return
 
+        if self._is_irrigation_lockout_active(health_assessment.plant_id, health_assessment.timestamp):
+            recommendation = self._without_irrigation_actions(recommendation)
+            if recommendation is None:
+                self.logger.info(
+                    "Skipping irrigation recommendation for plant %s during post-irrigation lockout",
+                    health_assessment.plant_id,
+                )
+                return
+
         try:
             self.publisher.publish_recommendation(recommendation)
         except Exception as exc:
@@ -208,18 +244,59 @@ class AnalyticsService:
 
     def _should_run(
         self,
+        cadence_seconds: int,
         last_run_timestamps: dict[int, float],
         plant_id: int,
         reference_timestamp: float,
     ) -> bool:
-        if self.cadence_seconds <= 0:
+        if cadence_seconds <= 0:
             return True
 
         last_run_timestamp = last_run_timestamps.get(plant_id)
         if last_run_timestamp is None:
             return True
 
-        return reference_timestamp - last_run_timestamp >= self.cadence_seconds
+        return reference_timestamp - last_run_timestamp >= cadence_seconds
+
+    @staticmethod
+    def _without_irrigation_actions(recommendation: Recommendation) -> Recommendation | None:
+        if not any(action.capability == "irrigation" for action in recommendation.actions):
+            return recommendation
+
+        remaining_actions = [
+            action for action in recommendation.actions if action.capability != "irrigation"
+        ]
+        if not remaining_actions:
+            return None
+
+        filtered_action_results = []
+        if len(recommendation.action_results) == len(recommendation.actions):
+            filtered_action_results = [
+                result
+                for action, result in zip(recommendation.actions, recommendation.action_results)
+                if action.capability != "irrigation"
+            ]
+
+        return Recommendation(
+            plant_id=recommendation.plant_id,
+            timestamp=recommendation.timestamp,
+            correlation_id=recommendation.correlation_id,
+            reason=recommendation.reason,
+            confidence=recommendation.confidence,
+            actions=remaining_actions,
+            model_metadata=recommendation.model_metadata,
+            action_results=filtered_action_results,
+        )
+
+    def _is_irrigation_lockout_active(self, plant_id: int, reference_timestamp: float) -> bool:
+        if self.irrigation_lockout_seconds <= 0:
+            return False
+
+        last_irrigation_timestamp = self._last_accepted_irrigation_timestamps.get(plant_id)
+        if last_irrigation_timestamp is None:
+            return False
+
+        return reference_timestamp - last_irrigation_timestamp < self.irrigation_lockout_seconds
 
     def _hydrate_recent_window(self, plant_id: int, reference_timestamp: float) -> None:
         if plant_id in self._hydrated_plants:

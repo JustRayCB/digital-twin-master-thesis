@@ -182,7 +182,7 @@ def policy_manager(controller_database_client: DatabaseApiClient) -> PolicyManag
     from dt.communication.dataclasses.controller import ActuatorConfig, ActuatorConfigSet
     config = ActuatorConfigSet()
     config.defaults = ActuatorConfig(max_duration_seconds=30, min_cooldown_seconds=0, allow_overlap=False, allowed_commands=["ON", "OFF", "BOOST"])
-    config.actuators["pump"] = ActuatorConfig(max_duration_seconds=5, min_cooldown_seconds=2)
+    config.actuators["pump"] = ActuatorConfig(max_duration_seconds=8, min_cooldown_seconds=2)
     controller_database_client.set_policies(config)
 
     return PolicyManager(database_client=controller_database_client)

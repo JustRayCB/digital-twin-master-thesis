@@ -10,6 +10,7 @@ from kafka import KafkaConsumer
 
 from dt.communication.adapters import load
 from dt.communication.dataclasses import ProcessedSensorData
+from dt.communication.dataclasses.analytics import Recommendation, RecommendedAction
 from dt.communication.dataclasses.controller import (Action, ActionCommand,
                                                      ActionDispatch,
                                                      ControlMode, Routine,
@@ -267,3 +268,46 @@ def test_controller_service_caches_persisted_routines_as_routine_instances(
 
     assert recording_driver.commands == ["ON"]
     assert (routine_id, "trigger-1") in controller_service._last_fired
+
+
+def test_submit_recommendation_marks_timed_ai_irrigation_as_accepted(
+    controller_service: ControllerService,
+    controller_database_client: DatabaseApiClient,
+    bound_actuator,
+    recording_driver,
+) -> None:
+    """Treat successfully started timed AI irrigation as accepted."""
+    controller_database_client.set_mode(
+        ControlMode(
+            plant_id=bound_actuator.plant_id,
+            ai_autopilot_enabled=True,
+            owner="ai",
+        )
+    )
+
+    recommendation = Recommendation(
+        plant_id=bound_actuator.plant_id,
+        timestamp=time.time(),
+        correlation_id="corr-recommendation",
+        reason="automatic irrigation",
+        confidence=0.9,
+        actions=[
+            RecommendedAction(
+                capability="irrigation",
+                command="ON",
+                duration_seconds=8.0,
+            )
+        ],
+    )
+
+    result = controller_service.submit_recommendation(recommendation)
+
+    wait_for_action_history(
+        controller_database_client,
+        bound_actuator.plant_id,
+        lambda items: any(item.source == "ai" and item.status == "completed" for item in items),
+        timeout_seconds=12.0,
+    )
+
+    assert recording_driver.commands[0] == "ON"
+    assert result.action_results[0].status == "accepted"

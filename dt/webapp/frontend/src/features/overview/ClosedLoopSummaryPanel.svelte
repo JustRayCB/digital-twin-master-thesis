@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ClosedLoopStatusSummary } from "./overview.store";
+  import {formatChartTime} from "$shared/utils/time";
 
   let { summary }: { summary: ClosedLoopStatusSummary } = $props();
 
@@ -13,13 +14,6 @@
     partial: "Partial",
   };
 
-  function formatTimestamp(value: number | null): string {
-    if (!value) {
-      return "Not available";
-    }
-
-    return new Date(value).toLocaleString();
-  }
 
   function formatDuration(value: number | null | undefined): string {
     if (!Number.isFinite(value)) {
@@ -99,7 +93,7 @@
 
     <div>
       <p class="font-retro text-gray-500 uppercase tracking-wide mb-2">Updated</p>
-      <p class="text-gray-700">{formatTimestamp(summary.time)}</p>
+      <p class="text-gray-700">{summary.time !== null ? formatChartTime(summary.time) : '-'}</p>
     </div>
   </div>
 </div>

@@ -353,7 +353,7 @@ class ControllerService:
                 action.status = "failed"
                 action.error_message = f"Exception during execution: {exc}"
 
-            if action.status == "completed":
+            if action.status in {"completed", "running"}:
                 action_results.append(
                     ActionResult(
                         action_index=action_index,
