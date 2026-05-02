@@ -16,7 +16,7 @@ import {
   processedTopics,
   type CameraSnapshotView,
 } from "$shared/realtime/topics";
-import { cameraSnapshotView, openRoutineBuilder } from "$shared/stores/app.store";
+import { autoPilotEnabled, cameraSnapshotView, openRoutineBuilder } from "$shared/stores/app.store";
 import type {
   ActionDispatchPayload,
   ActionHistoryRecord,
@@ -741,6 +741,17 @@ async function refreshActuators(): Promise<void> {
 async function loadControlMode(): Promise<void> {
   const mode = await controllerClient.fetchControlMode(currentPlantId);
   controlModeData.set(mode);
+  autoPilotEnabled.set(mode.ai_autopilot_enabled);
+}
+
+export async function updateAutoPilotEnabled(enabled: boolean): Promise<void> {
+  const mode = await controllerClient.updateControlMode({
+    plant_id: currentPlantId,
+    ai_autopilot_enabled: enabled,
+    owner: enabled ? "ai" : "routine",
+  });
+  controlModeData.set(mode);
+  autoPilotEnabled.set(mode.ai_autopilot_enabled);
 }
 
 async function loadLatestSnapshotFallbackForView(view: CameraSnapshotView): Promise<void> {

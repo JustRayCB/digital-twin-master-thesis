@@ -73,8 +73,8 @@ export class ControllerClient {
 
 	public updateControlMode(
 		payload: ControlModeUpdate,
-	): Promise<{ status: string }> {
-		return this.http.put<{ status: string }>("/api/controller/mode", payload);
+	): Promise<ControlMode> {
+		return this.http.put<ControlMode>("/api/controller/mode", payload);
 	}
 
 	/**

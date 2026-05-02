@@ -27,6 +27,7 @@
     telemetry,
     toggleActuator,
     toggleRoutine,
+    updateAutoPilotEnabled,
     vitality,
   } from "./overview.store";
 
@@ -48,6 +49,16 @@
       return PlantHealthState.THIRSTY;
     }
     return PlantHealthState.HEALTHY;
+  }
+
+  async function handleAutoPilotChange(event: Event) {
+    const enabled = (event.target as HTMLInputElement).checked;
+    try {
+      await updateAutoPilotEnabled(enabled);
+    } catch (error) {
+      autoPilotEnabled.set(!enabled);
+      console.error("Failed to update AI auto-pilot mode", error);
+    }
   }
 
   onMount(() => {
@@ -290,7 +301,8 @@
               name="auto-pilot-toggle"
               id="auto-pilot-toggle"
               class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-ink appearance-none cursor-pointer right-6 checked:right-0 checked:border-green-600 z-10"
-              bind:checked={$autoPilotEnabled}
+              checked={$autoPilotEnabled}
+              on:change={(event) => void handleAutoPilotChange(event)}
             />
             <label
               for="auto-pilot-toggle"
