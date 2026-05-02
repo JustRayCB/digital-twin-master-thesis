@@ -111,10 +111,10 @@ class PlantHealthBaselineModel:
         moisture_ceiling = max(moisture_values)
 
         # Detect dryness
-        if moisture_floor <= 18.0:
+        if moisture_floor <= 30.0:
             severity = SignalSeverity.SEVERE
             reasons.append(f"soil moisture is critically dry ({moisture_floor:.1f}%)")
-        elif moisture_floor < 35.0:
+        elif moisture_floor < 45.0:
             severity = max(severity, SignalSeverity.MODERATE)
             reasons.append(f"soil moisture is dry ({moisture_floor:.1f}%)")
 
@@ -128,7 +128,7 @@ class PlantHealthBaselineModel:
 
         # Escalate only when current dryness is supported by both a falling trend
         # and a strongly persistent dry context over the last 24h.
-        if moisture_floor < 35.0:
+        if moisture_floor < 45.0:
             falling_now = soil_delta is not None and soil_delta <= -4.0
             falling_over_day = drop_rate is not None and drop_rate <= -3.0
             persistent_dry = dry_persistence is not None and dry_persistence >= 0.85
@@ -263,9 +263,7 @@ class PlantHealthBaselineModel:
                 reasons.append(f"green ratio is declining ({green_delta:.2f})")
 
         if severity > SignalSeverity.NONE:
-            leaf_count_declined = (
-                leaf_count_delta_24h is not None and leaf_count_delta_24h < 0.0
-            )
+            leaf_count_declined = leaf_count_delta_24h is not None and leaf_count_delta_24h < 0.0
             plant_height_declined = (
                 plant_height_delta_24h is not None and plant_height_delta_24h < 0.0
             )
