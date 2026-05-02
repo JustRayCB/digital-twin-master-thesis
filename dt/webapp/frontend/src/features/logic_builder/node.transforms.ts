@@ -47,7 +47,7 @@ export function actionConfigFromGraphAction(label: string, action: GraphAction):
   return { duration: Number(action.duration ?? 0), unit: "s" };
 }
 
-export function buildActionPayload(label: string, config: NodeConfig, actuatorId: number) {
+export function buildActionPayload(label: string, config: NodeConfig, actuatorId: number | undefined) {
   if (isGrowLightLabel(label)) {
     return {
       actuator_id: actuatorId,

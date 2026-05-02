@@ -128,6 +128,14 @@ function toCreatedRoutineId(response: number | { id: number; status: string }): 
   return response.id;
 }
 
+function nextEdgeId(edges: Edge[]): string {
+  const nextNumber = edges.reduce((highest, edge) => {
+    const match = /^e(\d+)$/.exec(edge.id);
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 0) + 1;
+  return `e${nextNumber}`;
+}
+
 export function createLogicBuilderStore(dependencies: LogicBuilderStoreDependencies = {}): LogicBuilderStore {
   const plantId = dependencies.plantId ?? 1;
   const routinesPort = dependencies.routinesPort ?? controllerClient;
@@ -268,7 +276,7 @@ export function createLogicBuilderStore(dependencies: LogicBuilderStoreDependenc
 
     graphData.update((current) => ({
       ...current,
-      edges: [...current.edges, { id: `e${current.edges.length + 1}`, source, target }],
+      edges: [...current.edges, { id: nextEdgeId(current.edges), source, target }],
     }));
     return true;
   }
@@ -337,11 +345,12 @@ export function createLogicBuilderStore(dependencies: LogicBuilderStoreDependenc
       throw new Error(firstError.message);
     }
 
+    const routineName = get(routineNameData).trim();
     const payload: RoutineUpdatePayload = {
       plant_id: plantId,
-      name: get(routineNameData).trim(),
+      name: routineName,
       enabled: true,
-      graph: buildGraphPayload(get(graphData), get(actuatorsData)),
+      graph: buildGraphPayload(get(graphData), get(actuatorsData), routineName, plantId),
     };
 
     const existingId = get(routineIdData);

@@ -25,6 +25,26 @@ function actionKeyForLabel(label: string): string {
   return normalizeActuatorName(label);
 }
 
+function actionLookupKeysForLabel(label: string): string[] {
+  const normalized = actionKeyForLabel(label);
+  if (normalized === "pump") return ["pump", "water pump"];
+  if (normalized === "grow light" || normalized === "timed light" || normalized === "light") {
+    return [normalized, "light", "lights", "lamp"];
+  }
+  if (normalized === "ptc heater") return ["ptc heater", "heater", "heating"];
+  return [normalized];
+}
+
+function actuatorIdForLabel(label: string, actuatorLookup: Record<string, number>): number | undefined {
+  for (const key of actionLookupKeysForLabel(label)) {
+    const actuatorId = actuatorLookup[key];
+    if (actuatorId !== undefined) {
+      return actuatorId;
+    }
+  }
+  return undefined;
+}
+
 function topicForNodeLabel(label: string): string {
   const normalized = label.trim().toLowerCase();
   if (normalized === "temperature") return "dt.sensors.temperature";
@@ -45,9 +65,9 @@ function triggerNodeDisplay(topic: string): { label: string; icon: string; bgCla
 function actionNodeDisplay(label: string): { icon: string; bgClass: string } {
   const normalized = label.trim().toLowerCase();
   if (normalized === "fan") return { icon: "air", bgClass: "bg-cozy-blue" };
-  if (normalized === "grow light") return { icon: "lightbulb", bgClass: "bg-cozy-yellow" };
+  if (normalized === "grow light" || normalized === "light" || normalized === "lamp") return { icon: "lightbulb", bgClass: "bg-cozy-yellow" };
   if (normalized === "timed light") return { icon: "timer", bgClass: "bg-cozy-yellow" };
-  if (normalized === "ptc heater") return { icon: "local_fire_department", bgClass: "bg-cozy-peach" };
+  if (normalized === "ptc heater" || normalized === "heater") return { icon: "local_fire_department", bgClass: "bg-cozy-peach" };
   return { icon: "shower", bgClass: "bg-cozy-mint" };
 }
 
@@ -97,7 +117,7 @@ export function defaultNodeConfig(type: NodeType, name: string): NodeConfig {
   return { duration: 5, unit: "s" };
 }
 
-export function buildGraphPayload(graph: LogicBuilderGraph, actuators: Actuator[]): RoutineGraphPayload {
+export function buildGraphPayload(graph: LogicBuilderGraph, actuators: Actuator[], name: string, plantId: number): RoutineGraphPayload {
   const actuatorLookup = buildActuatorLookup(actuators);
   const ui: Record<string, { x: number; y: number; label: string }> = {};
   const nodes = graph.nodes.map((node) => {
@@ -109,9 +129,9 @@ export function buildGraphPayload(graph: LogicBuilderGraph, actuators: Actuator[
       if (triggerKind === "interval") return { id: node.id, kind: "trigger" as const, trigger: { type: "interval" as const, every_days: node.config.everyDays === undefined ? undefined : Number(node.config.everyDays), at: node.config.at } };
       return { id: node.id, kind: "trigger" as const, trigger: { type: "sensor" as const, topic: topicForNodeLabel(node.label), op: node.config.operator, value: node.config.value === undefined ? undefined : Number(node.config.value) } };
     }
-    return { id: node.id, kind: "action" as const, action: buildActionPayload(node.label, node.config, actuatorLookup[actionKeyForLabel(node.label)]) };
+    return { id: node.id, kind: "action" as const, action: buildActionPayload(node.label, node.config, actuatorIdForLabel(node.label, actuatorLookup)) };
   });
-  return { nodes, edges: graph.edges.map((edge) => ({ source: edge.source, target: edge.target })), ui };
+  return { nodes, edges: graph.edges.map((edge) => ({ source: edge.source, target: edge.target })), name, plant_id: plantId, ui };
 }
 
 export function deserializeGraphPayload(payload: unknown, actuators: Actuator[]): LogicBuilderGraph {
@@ -133,7 +153,7 @@ export function getValidationErrors(routineName: string, graph: LogicBuilderGrap
   const actuatorLookup = buildActuatorLookup(actuators);
   for (const node of graph.nodes) {
     if (node.type !== "ACTION") continue;
-    if (!actuatorLookup[actionKeyForLabel(node.label)]) {
+    if (actuatorIdForLabel(node.label, actuatorLookup) === undefined) {
       errors.push({ code: "missing_action_actuator", nodeId: node.id, message: `Action node actuator_id is missing for '${node.label}'` });
     }
   }

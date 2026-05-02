@@ -91,5 +91,7 @@ export type GraphNode =
 export interface RoutineGraphPayload {
   nodes: GraphNode[];
   edges: Array<{ source: string; target: string }>;
+  name: string;
+  plant_id: number;
   ui?: Record<string, GraphUiNode>;
 }

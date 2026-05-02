@@ -237,7 +237,7 @@ export function createDroppedNode(
   }
 
   return {
-    id: `n${now}`,
+    id: `n${now}-${Math.random().toString(36).slice(2, 8)}`,
     type: dropped.type,
     x: (event.clientX - canvasBounds.left - viewport.x) / viewport.zoom - 128,
     y: (event.clientY - canvasBounds.top - viewport.y) / viewport.zoom - 40,
