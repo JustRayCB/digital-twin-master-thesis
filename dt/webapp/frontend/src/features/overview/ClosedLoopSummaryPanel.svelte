@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ClosedLoopStatusSummary } from "./overview.store";
-  import {formatChartTime} from "$shared/utils/time";
+  import {formatDisplayTime} from "$shared/utils/time";
 
   let { summary }: { summary: ClosedLoopStatusSummary } = $props();
 
@@ -93,7 +93,7 @@
 
     <div>
       <p class="font-retro text-gray-500 uppercase tracking-wide mb-2">Updated</p>
-      <p class="text-gray-700">{summary.time !== null ? formatChartTime(summary.time) : '-'}</p>
+      <p class="text-gray-700">{summary.time !== null ? formatDisplayTime(summary.time) : '-'}</p>
     </div>
   </div>
 </div>

@@ -13,13 +13,13 @@ from dt.communication.controller_client import ControllerClient
 from dt.communication.dataclasses.controller import (ActionDispatch,
                                                      RoutineUpdate)
 from dt.communication.dataclasses.queries import (ActionHistoryQuery,
-                                                   ActiveAlertsQuery,
-                                                   AlertHistoryQuery,
-                                                   AnalyticsExportQuery,
-                                                   ForecastHistoryQuery,
-                                                   HealthHistoryQuery,
-                                                   ReadingsQuery,
-                                                   RecommendationHistoryQuery)
+                                                  ActiveAlertsQuery,
+                                                  AlertHistoryQuery,
+                                                  AnalyticsExportQuery,
+                                                  ForecastHistoryQuery,
+                                                  HealthHistoryQuery,
+                                                  ReadingsQuery,
+                                                  RecommendationHistoryQuery)
 from dt.communication.db_client import DatabaseApiClient
 from dt.communication.topics import Topics
 from dt.utils import get_logger
@@ -331,6 +331,7 @@ def create_webapp_blueprint(
     @bp.route("/controller/mode", methods=["GET"])
     def get_control_mode():
         """Get control mode."""
+        logger.info(f"Received request for control mode with args: {request.args}")
         plant_id = request.args.get("plant_id", type=int)
         if not plant_id:
             return jsonify({"error": "plant_id is required"}), 400

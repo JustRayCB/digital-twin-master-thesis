@@ -42,6 +42,7 @@ def create_controller_blueprint(service: ControllerService) -> Blueprint:
     def set_mode():
         """Set controller mode for a plant."""
         data = request.json
+        logger.info(f"Received mode update request: {data}")
         if not data:
             return jsonify({"error": "JSON body required"}), 400
 
@@ -52,6 +53,7 @@ def create_controller_blueprint(service: ControllerService) -> Blueprint:
 
         try:
             mode = service.set_mode(payload)
+            logger.info(f"Mode updated successfully: {mode}")
             return jsonify({"status": "updated", "mode": dump("generic", mode)})
         except Exception as e:
             logger.error(f"Error setting mode: {e}")
