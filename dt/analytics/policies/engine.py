@@ -151,7 +151,7 @@ class RecommendationPolicyEngine:
     def _build_actions(self, recommendation_action: RecommendationAction) -> list[RecommendedAction]:
         if recommendation_action is RecommendationAction.IRRIGATE_NOW:
             return [
-                RecommendedAction(capability="irrigation", command="ON", duration_seconds=5.0)
+                RecommendedAction(capability="irrigation", command="ON", duration_seconds=8.0)
             ]
         if recommendation_action is RecommendationAction.INSPECT_PLANT:
             return [RecommendedAction(capability="advisory", command="inspect_plant")]
