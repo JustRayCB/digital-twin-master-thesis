@@ -18,7 +18,7 @@ class RecommendationPolicyEngine:
 
     def __init__(
         self,
-        irrigation_moisture_threshold: float = 45.0,
+        irrigation_moisture_threshold: float = 50.0,
         irrigation_confidence_threshold: float = 0.55,
         model_metadata: ModelMetadata | None = None,
     ) -> None:
