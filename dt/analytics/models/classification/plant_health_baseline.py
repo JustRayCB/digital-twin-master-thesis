@@ -247,10 +247,10 @@ class PlantHealthBaselineModel:
         reasons: list[str] = []
 
         if green_last is not None:
-            if green_last <= 30.0:
+            if green_last <= 40.0:
                 severity = SignalSeverity.SEVERE
                 reasons.append(f"green ratio is very low ({green_last:.2f})")
-            elif green_last <= 60.0:
+            elif green_last <= 65.0:
                 severity = max(severity, SignalSeverity.MODERATE)
                 reasons.append(f"green ratio is low ({green_last:.2f})")
 
