@@ -114,7 +114,7 @@ class PlantHealthBaselineModel:
         if moisture_floor <= 40.0:
             severity = SignalSeverity.SEVERE
             reasons.append(f"soil moisture is critically dry ({moisture_floor:.1f}%)")
-        elif moisture_floor < 50.0:
+        elif moisture_floor <= 55.0:
             severity = max(severity, SignalSeverity.MODERATE)
             reasons.append(f"soil moisture is dry ({moisture_floor:.1f}%)")
 
@@ -122,13 +122,13 @@ class PlantHealthBaselineModel:
         if moisture_ceiling >= 90.0:
             severity = SignalSeverity.SEVERE
             reasons.append(f"soil moisture is saturated ({moisture_ceiling:.1f}%)")
-        elif moisture_ceiling > 85.0:
+        elif moisture_ceiling >= 85.0:
             severity = max(severity, SignalSeverity.MODERATE)
             reasons.append(f"soil moisture is elevated ({moisture_ceiling:.1f}%)")
 
         # Escalate only when current dryness is supported by both a falling trend
         # and a strongly persistent dry context over the last 24h.
-        if moisture_floor < 50.0:
+        if moisture_floor <= 55.0:
             falling_now = soil_delta is not None and soil_delta <= -4.0
             falling_over_day = drop_rate is not None and drop_rate <= -3.0
             persistent_dry = dry_persistence is not None and dry_persistence >= 0.85
