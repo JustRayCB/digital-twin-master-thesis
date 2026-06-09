@@ -79,7 +79,7 @@ class DHT22Device:
     @classmethod
     def reset_instances(cls) -> None:
         for device in cls._devices.values():
-            device._dispose_sensor()
+            device.dispose()
         cls._devices.clear()
 
     def read_temperature(self) -> float | None:
@@ -125,9 +125,12 @@ class DHT22Device:
         power_output = self._power
         assert power_output is not None
 
-        power_output.value = False
-        time.sleep(self.power_off_seconds)
-        power_output.value = True
+        try:
+            power_output.value = False
+            time.sleep(self.power_off_seconds)
+        finally:
+            power_output.value = True
+
         time.sleep(self.reboot_wait_seconds)
 
         self._create_sensor()
@@ -136,8 +139,25 @@ class DHT22Device:
     def _create_sensor(self) -> None:
         if adafruit_dht is None:
             raise RuntimeError("adafruit_dht is required to use the DHT22 sensor")
+        if self._power is not None and not self._power.value:
+            self.logger.warning(f"DHT22 power pin was OFF; turning it ON before initialization")
+            self._power.value = True
+            time.sleep(self.reboot_wait_seconds)
         self.logger.info(f"Initializing DHT22 sensor on data pin {self.data_pin}")
         self._sensor = adafruit_dht.DHT22(self.data_pin)
+
+    def dispose(self) -> None:
+        """Release the sensor and the power GPIO."""
+        self._dispose_sensor()
+
+        if self._power is not None:
+            try:
+                self._power.value = False
+            finally:
+                deinit = getattr(self._power, "deinit", None)
+                if callable(deinit):
+                    deinit()
+                self._power = None
 
     def _dispose_sensor(self) -> None:
         if self._sensor is None:
