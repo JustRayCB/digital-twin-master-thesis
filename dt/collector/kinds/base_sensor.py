@@ -122,8 +122,15 @@ class Sensor(ABC):
             A dataclass object containing the sensor data and metadata, or None
             when the sensor does not return a value.
         """
+
         self.last_read_time = current_time
-        raw_value = self.read_sensor()
+        try:
+            raw_value = self.read_sensor()
+        except OSError as error:
+            self.logger.error(
+                f"OS Error with {self.name} on pin {self.pin}: {error}, skipping this reading"
+            )
+            return None
 
         if raw_value is None:
             self.logger.error(f"Failed to read {self.name}: no data returned")
