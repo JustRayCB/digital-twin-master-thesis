@@ -102,7 +102,7 @@ class SoilMoisturePersistenceProvider(FeatureProvider):
         ]
         if not raw_values:
             return {"context.raw_dry_threshold_persistence_24h": None}
-        dry_count = sum(1 for value in raw_values if value >= _RAW_DRY_THRESHOLD)
+        dry_count = sum(1 for value in raw_values if value <= _RAW_DRY_THRESHOLD)
         return {"context.raw_dry_threshold_persistence_24h": dry_count / len(raw_values)}
 
 
