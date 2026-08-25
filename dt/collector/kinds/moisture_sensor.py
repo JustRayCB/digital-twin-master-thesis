@@ -31,7 +31,7 @@ class SoilMoistureSensor(Sensor):
         self._unit = "%"
         self._i2c_bus = board.I2C()
         self._address = address
-        self._sensor | None = None 
+        self._sensor: Seesaw | None = None 
 
         self.logger.info(f"Initialized {self.name} on pin {self.pin}.")
 
