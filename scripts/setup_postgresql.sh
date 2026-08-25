@@ -102,3 +102,10 @@ echo "  poetry run python scripts/run_sql_migration.py"
 #   2. Update `PG_DATABASE_URL` environment variable
 #   3. Run migrations against new instance
 #   4. No application code changes required
+
+# To update the toolkit after every postgresql update : 
+# sudo -u postgres psql -X -d dt-ulb \
+#  -c 'ALTER EXTENSION timescaledb UPDATE;'
+
+# sudo -u postgres psql -X -d dt-ulb \
+#  -c 'ALTER EXTENSION timescaledb_toolkit UPDATE;'
