@@ -138,7 +138,54 @@ Activate the virtual environment with `eval $(poetry env activate)` or `make ven
 
 ### Kafka
 
-For Debian-based systems, the repository provides `scripts/setup_kafka.sh`. It installs Kafka in KRaft mode, configures a local broker, and registers a systemd service.
+For Debian-based systems, the repository provides `scripts/setup_kafka.sh`. It installs Kafka
+in KRaft mode, configures a local broker, and registers a systemd service.
+
+Kafka exposes independent listeners for each network boundary:
+
+- `LOCAL` on `127.0.0.1:9092` for services running on the Pi
+- `LAN` on port `19092`, advertised using the address detected on `eth0`
+- `EXTERNAL` on port `29092`, advertised as the detected public address by default
+
+Local services therefore remain connected when a physical network interface loses its address.
+LAN and external clients can disconnect and reconnect without changing the address returned to
+local clients. Override the detected interface or advertised hosts during setup when required:
+
+```bash
+KAFKA_LAN_INTERFACE=eth0 \
+KAFKA_EXTERNAL_HOST=kafka.example.org \
+bash scripts/setup_kafka.sh
+```
+
+Setup uses the first global IPv4 address assigned specifically to `KAFKA_LAN_INTERFACE`; it does
+not select an arbitrary active interface. Set `KAFKA_LAN_HOST` explicitly to override detection
+with a verified static address or a DNS name that every LAN client can resolve. Setup exits without
+changing Kafka when the selected interface has no address and no explicit host is supplied.
+Detection runs only during setup. Reserve the detected address in the LAN's DHCP server or use a
+stable DNS name so Kafka's stored advertised address cannot become stale after a later lease change.
+
+Apply the same listeners to an installed broker before testing interface loss. Replace the two
+host values with addresses that the corresponding clients can resolve:
+
+```bash
+export KAFKA_LAN_HOST=192.168.0.21
+export KAFKA_EXTERNAL_HOST=kafka.example.org
+sudo cp /opt/kafka/config/kraft/server.properties \
+  /opt/kafka/config/kraft/server.properties.backup
+sudo sed -Ei \
+  's#^listeners=.*#listeners=LOCAL://127.0.0.1:9092,LAN://0.0.0.0:19092,EXTERNAL://0.0.0.0:29092,CONTROLLER://127.0.0.1:9093#' \
+  /opt/kafka/config/kraft/server.properties
+sudo sed -Ei \
+  "s#^advertised\.listeners=.*#advertised.listeners=LOCAL://127.0.0.1:9092,LAN://${KAFKA_LAN_HOST}:19092,EXTERNAL://${KAFKA_EXTERNAL_HOST}:29092#" \
+  /opt/kafka/config/kraft/server.properties
+sudo sed -Ei \
+  's#^listener\.security\.protocol\.map=.*#listener.security.protocol.map=LOCAL:PLAINTEXT,LAN:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT#' \
+  /opt/kafka/config/kraft/server.properties
+sudo sed -Ei \
+  's#^inter\.broker\.listener\.name=.*#inter.broker.listener.name=LOCAL#' \
+  /opt/kafka/config/kraft/server.properties
+sudo systemctl restart kafka-kraft.service
+```
 
 Useful checks after installation:
 
@@ -169,7 +216,7 @@ Key variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `KAFKA_URL` | Kafka bootstrap server |
+| `KAFKA_URL` | Kafka bootstrap server: `localhost:9092` on the Pi or the configured LAN host on port `19092` |
 | `PG_DATABASE_URL` | PostgreSQL connection URL |
 | `SQL_POOL_SIZE` | SQLAlchemy connection pool size |
 | `FLASK_DASHBOARD_URL` | Webapp base URL |
@@ -179,6 +226,7 @@ Key variables:
 | `ALERT_RULES_PATH` | YAML alert rule file path |
 | `PREPROCESSING_CHECKPOINT_DIR` | Spark checkpoint directory |
 | `SPARK_APP_NAME` | Spark application name |
+| `SPARK_LOCAL_IP` | Spark driver address; keep `127.0.0.1` for the single-host deployment |
 | `SPARK_STARTING_OFFSETS` | Kafka offset startup policy for preprocessing |
 | `DB_MIGRATIONS_DIR` | SQL migrations directory override |
 
@@ -186,6 +234,15 @@ Configuration files used by the stack:
 
 - `dt/utils/preprocessing_config.yml`
 - `dt/utils/alert_rules.yml`
+
+### Operation without a physical network interface
+
+The Pi-local stack uses loopback addresses for Kafka and Spark, so sensor processing, storage,
+analytics, the controller, and the dashboard backend continue running if Ethernet or Wi-Fi loses
+its address. LAN and external Kafka connections use separate listeners and may disconnect without
+affecting local clients. The ESP32-CAM remains a local-network dependency; an unreachable camera
+request is logged and skipped without stopping the collector. Dashboard access from another
+device is unavailable until a local network connection returns.
 
 ## Running the stack
 

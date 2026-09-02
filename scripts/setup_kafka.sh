@@ -7,17 +7,31 @@
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
-# --- Get Network Information ---
-# Fetches the public and local IP addresses, which are used to configure
-# Kafka's advertised listeners for both internal and external access.
-echo "Fetching network information..."
-PUBLIC_IP=$(curl -4s ifconfig.me)
-if [ -z "$PUBLIC_IP" ]; then
-    echo "Could not determine public IP address. Exiting."
+# --- Broker addresses ---
+# The LAN address must resolve to this machine for clients on the local network.
+KAFKA_LAN_HOST="${KAFKA_LAN_HOST:-}"
+KAFKA_LAN_INTERFACE="${KAFKA_LAN_INTERFACE:-eth0}"
+KAFKA_EXTERNAL_HOST="${KAFKA_EXTERNAL_HOST:-}"
+
+if [ -z "$KAFKA_LAN_HOST" ]; then
+    KAFKA_LAN_HOST=$(ip -4 -o address show dev "$KAFKA_LAN_INTERFACE" scope global 2>/dev/null \
+        | awk 'NR == 1 { split($4, address, "/"); print address[1] }')
+fi
+if [ -z "$KAFKA_LAN_HOST" ]; then
+    echo "Could not determine a LAN address from $KAFKA_LAN_INTERFACE."
+    echo "Set KAFKA_LAN_HOST explicitly or select another KAFKA_LAN_INTERFACE."
     exit 1
 fi
-echo "Your public IP address is: $PUBLIC_IP"
-LOCAL_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n 1)
+if [ -z "$KAFKA_EXTERNAL_HOST" ]; then
+    echo "Fetching the address for Kafka's external listener..."
+    KAFKA_EXTERNAL_HOST=$(curl -4s ifconfig.me)
+fi
+if [ -z "$KAFKA_EXTERNAL_HOST" ]; then
+    echo "Could not determine the external Kafka address. Exiting."
+    exit 1
+fi
+echo "Kafka LAN address: $KAFKA_LAN_HOST"
+echo "Kafka external address: $KAFKA_EXTERNAL_HOST"
 
 # Variables
 KAFKA_VERSION="4.0.0"
@@ -94,10 +108,10 @@ controller.quorum.voters=1@localhost:9093
 controller.listener.names=CONTROLLER
 
 # Listener configurations
-listeners=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092,CONTROLLER://localhost:9093
-advertised.listeners=PLAINTEXT://$LOCAL_IP:9092,EXTERNAL://$PUBLIC_IP:19092
-listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-inter.broker.listener.name=PLAINTEXT
+listeners=LOCAL://127.0.0.1:9092,LAN://0.0.0.0:19092,EXTERNAL://0.0.0.0:29092,CONTROLLER://127.0.0.1:9093
+advertised.listeners=LOCAL://127.0.0.1:9092,LAN://$KAFKA_LAN_HOST:19092,EXTERNAL://$KAFKA_EXTERNAL_HOST:29092
+listener.security.protocol.map=LOCAL:PLAINTEXT,LAN:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+inter.broker.listener.name=LOCAL
 
 # Log directory
 log.dirs=$DATA_DIR

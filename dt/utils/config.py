@@ -47,6 +47,9 @@ class Config(StrEnum):
     SPARK_LOG_LEVEL = os.getenv("SPARK_LOG_LEVEL", "WARN")  # Spark log level
     SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "dt-preprocessing-app")  # Spark application name
     SPARK_MASTER = os.getenv("SPARK_MASTER", "local[2]")  # Spark master URL
+    SPARK_LOCAL_IP = os.getenv(
+        "SPARK_LOCAL_IP", "127.0.0.1"
+    )  # Driver address for the single-host deployment
     SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv(
         "SPARK_SQL_SHUFFLE_PARTITIONS", "2"
     )  # Shuffle partitions

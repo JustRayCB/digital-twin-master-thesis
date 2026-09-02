@@ -33,6 +33,8 @@ def _build_spark_session() -> SparkSession:
     builder = SparkSession.builder.appName(Config.SPARK_APP_NAME.value).master(
         Config.SPARK_MASTER.value
     )
+    builder = builder.config("spark.driver.host", Config.SPARK_LOCAL_IP.value)
+    builder = builder.config("spark.driver.bindAddress", Config.SPARK_LOCAL_IP.value)
     builder = builder.config(
         "spark.sql.shuffle.partitions", Config.SPARK_SQL_SHUFFLE_PARTITIONS.value
     )
