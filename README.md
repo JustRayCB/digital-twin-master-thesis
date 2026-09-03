@@ -1,5 +1,8 @@
 # Digital Twin for Plant Health Monitoring
 
+> [!WARNING]
+> Part of the documentation (README + runbook) has changed a lot and not yet be recorded. Sorry for the inconvenience.
+
 This repository contains a modular digital twin for plant monitoring on
 Raspberry Pi hardware. It collects live sensor readings, streams them through
 Kafka, preprocesses them with Spark Structured Streaming, persists them in
