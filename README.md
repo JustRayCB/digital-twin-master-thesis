@@ -350,3 +350,6 @@ This is an active thesis project, not a polished product distribution. The core 
 - [Presentations](docs/presentations/): project communication material
 
 If you are new to the project, start with this README, then move to `docs/runbook.pdf` for deployment, operations, contracts, and troubleshooting details.
+
+## Authors 
+- CONTULIANO BRAVO Rayan (rayan.contuliano.bravo@ulb.be)
