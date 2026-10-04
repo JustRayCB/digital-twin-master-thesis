@@ -1,9 +1,9 @@
 """Evaluate three-hour soil-moisture forecasts against persistence.
 
 Usage:
-    python scripts/evaluate_forecasts.py \
-        docs/data/dtwin-data-2026-05-15T11-25-11-175Z.json.gz \
-        --plot forecast-validation.png
+    python results/evaluate_forecasts.py \
+        results/data/dtwin-data-2026-05-15T11-25-11-175Z.json.gz \
+        --plot results/evaluation.png
 
 For each forecast made at time t, persistence predicts that soil moisture at
 t + 3 h will equal the measurement used at t. Both predictions are compared
@@ -211,9 +211,7 @@ def plot_forecasts(matches: list[ForecastMatch], output: Path) -> None:
     rls_values = [match.rls_value for match in matches]
     persistence_values = [match.persistence_value for match in matches]
     observed_values = [match.observed_value for match in matches]
-    rls_errors, rls_proportions = _empirical_cdf(
-        [abs(match.rls_error) for match in matches]
-    )
+    rls_errors, rls_proportions = _empirical_cdf([abs(match.rls_error) for match in matches])
     persistence_errors, persistence_proportions = _empirical_cdf(
         [abs(match.persistence_error) for match in matches]
     )
